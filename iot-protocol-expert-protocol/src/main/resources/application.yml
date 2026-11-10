@@ -1,0 +1,70 @@
+server:
+  port: 19080
+
+spring:
+  config:
+    import: classpath:observability-defaults.yml
+  main:
+    banner-mode: "off"
+  application:
+    name: iot-protocol-expert-protocol
+  datasource:
+    url: jdbc:h2:file:./data/protocol;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: false
+  h2:
+    console:
+      enabled: true
+      path: /h2-console
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,telemetry
+
+ipe:
+  protocol:
+    tcp-port: 8768
+    boss-threads: 1
+    worker-threads: 8
+    crypto-key-hex: "${IPE_CRYPTO_KEY_HEX:0123456789ABCDEFFEDCBA9876543210}"
+    encryption-enabled: false
+    auto-register: true
+    heartbeat-timeout-seconds: 45
+    pending-timeout-seconds: 10
+    default-rate-model-no: "0001"
+
+logging:
+  structured:
+    format:
+      console: logstash
+      file: logstash
+    json:
+      add:
+        service.name: ${spring.application.name}
+        service.version: 1.0.0
+        deployment.environment.name: ${ipe.observability.environment}
+      rename:
+        traceId: trace_id
+        spanId: span_id
+      stacktrace:
+        max-length: 8192
+  file:
+    name: ${IPE_LOG_DIR:./logs}/${spring.application.name}.json
+  logback:
+    rollingpolicy:
+      max-file-size: 20MB
+      max-history: 7
+      total-size-cap: 200MB

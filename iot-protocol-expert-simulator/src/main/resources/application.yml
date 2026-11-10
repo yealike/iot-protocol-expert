@@ -1,0 +1,71 @@
+server:
+  port: 19081
+
+spring:
+  config:
+    import: classpath:observability-defaults.yml
+  main:
+    banner-mode: "off"
+  application:
+    name: iot-protocol-expert-simulator
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,telemetry
+
+ipe:
+  simulator:
+    platform-host: 127.0.0.1
+    platform-port: 8768
+    pile-code: "32010600000001"
+    gun-count: 2
+    protocol-version: 16
+    program-version: "v1.0.0"
+    sim-card: "89860000000000000000"
+    network-type: 1
+    operator: 0
+    pile-type: 0
+    crypto-key-hex: "${IPE_CRYPTO_KEY_HEX:0123456789ABCDEFFEDCBA9876543210}"
+    encryption-enabled: false
+    heartbeat-seconds: 10
+    idle-realtime-seconds: 300
+    charging-realtime-seconds: 15
+    auto-connect: true
+    reconnect-seconds: 5
+    transaction-retry-seconds: 30
+    transaction-max-retries: 3
+    rated-voltage: 750.0
+    rated-current: 100.0
+
+logging:
+  structured:
+    format:
+      console: logstash
+      file: logstash
+    json:
+      add:
+        service.name: ${spring.application.name}
+        service.version: 1.0.0
+        deployment.environment.name: ${ipe.observability.environment}
+      rename:
+        traceId: trace_id
+        spanId: span_id
+      stacktrace:
+        max-length: 8192
+  file:
+    name: ${IPE_LOG_DIR:./logs}/${spring.application.name}.json
+  logback:
+    rollingpolicy:
+      max-file-size: 20MB
+      max-history: 7
+      total-size-cap: 200MB
+  level:
+    root: INFO
+    top.yealike.ipe.simulator: INFO
+    org.springframework: WARN
+    io.netty: WARN

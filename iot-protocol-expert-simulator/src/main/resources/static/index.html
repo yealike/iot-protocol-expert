@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>协议专家 · 充电实验室</title>
+    <link rel="stylesheet" href="/styles.css">
+    <script type="importmap">
+        {"imports":{"three":"/vendor/three/three.module.js","three/addons/controls/OrbitControls.js":"/vendor/three/OrbitControls.js"}}
+    </script>
+</head>
+<body>
+<aside><a class="logo" href="/">P<span>•</span></a>
+    <div class="side-title">PROTOCOL<br>EXPERT</div>
+    <nav><a href="#lab" class="active">◈<span>充电实验室</span></a><a href="#tariff">▥<span>费率模型</span></a><a
+            href="#configuration">⚙<span>设备参数</span></a><a href="#messages">≋<span>报文调试</span></a></nav>
+    <div class="side-bottom">云快充 V1.6<br><small>TCP 协议仿真</small></div>
+</aside>
+<main id="lab">
+    <header>
+        <div>
+            <div class="eyebrow">DEVICE SIMULATION / 云快充 1.6</div>
+            <h1>充电实验室 <span class="tag">SIMULATOR</span></h1>
+            <p>让协议、车辆与每一度电，在同一个场景中运行。</p></div>
+        <div class="connection"><span id="connection" class="badge">正在连接</span>
+            <button id="connectBtn" onclick="post('/connect')">连接平台</button>
+            <button class="quiet" onclick="post('/disconnect')">断开</button>
+        </div>
+    </header>
+    <section class="metrics">
+        <article><span>设备编号</span><strong id="pileCode">—</strong><small id="platform">—</small></article>
+        <article><span>充电功率</span><strong><b id="power">0.0</b><i>kW</i></strong><small id="chargingCount">0
+            枪正在充电</small></article>
+        <article><span>本次充电量</span><strong><b
+                id="energy">0.0000</b><i>kWh</i></strong><small>电表侧实际电量</small></article>
+        <article><span>本次累计费用</span><strong><i>¥</i><b id="amount">0.0000</b></strong><small id="price">当前电价
+            —</small></article>
+    </section>
+    <div id="error" role="alert"></div>
+    <div class="lab-grid">
+        <section class="panel scene-panel">
+            <div class="panel-title scene-heading">
+                <div><h2>能源流动 · 数字孪生</h2>
+                    <p>Model Y · 4797 × 1920 × 1624 mm</p></div>
+                <div class="scene-view-switch" role="group" aria-label="三维展示模式">
+                    <button class="active" data-scene-view="auto" aria-pressed="true">自动</button>
+                    <button data-scene-view="exterior" aria-pressed="false">整车</button>
+                    <button data-scene-view="battery" aria-pressed="false">电池透视</button>
+                </div>
+            </div>
+            <div id="scene">
+                <div id="sceneFallback" hidden>此设备无法启动 WebGL，仍可使用下方全部充电控制功能。</div>
+                <div class="scene-energy-flow" id="sceneEnergyFlow" role="img"
+                     aria-label="能量方向：交流电网，经充电桩AC/DC转换，再向车辆动力电池充入直流电">
+                    <div class="energy-node grid-source"><span class="energy-symbol">∿</span>
+                        <div><small>ENERGY SOURCE</small><b>交流电网</b></div>
+                    </div>
+                    <div class="energy-link ac-link"><i></i><span>AC</span></div>
+                    <div class="energy-node"><span class="energy-symbol convert-symbol">⇄</span>
+                        <div><small>POWER CONVERSION</small><b>充电桩 <em>AC / DC</em></b></div>
+                    </div>
+                    <div class="energy-link dc-link"><i></i><span>DC</span></div>
+                    <div class="energy-node battery-destination"><span class="energy-symbol battery-symbol">▥</span>
+                        <div><small>ENERGY STORAGE</small><b>动力电池</b></div>
+                    </div>
+                </div>
+                <div class="scene-label"><span class="live-dot"></span><span
+                        id="sceneFlowStatus">待机 · 无能量传输</span></div>
+                <span class="scene-motion" id="sceneMotion">连接器待机</span>
+                <div class="world-label grid-world" id="sceneGridLabel"><span></span>电网 · AC 输入</div>
+                <div class="world-label charger-world" id="sceneChargerLabel"><span></span>充电桩 · AC / DC 转换</div>
+                <div class="world-label battery-world" id="sceneBatteryLabel"><span></span><b id="scenePackSoc">底盘电池
+                    · SOC</b></div>
+                <div class="scene-battery-card" id="sceneBattery">
+                    <div><span class="battery-glyph">▥</span><small>动力电池 · SOC</small></div>
+                    <strong id="sceneBatteryValue">20%</strong>
+                    <p id="sceneBatteryEnergy">12.0 / 60 kWh</p>
+                    <div class="battery-card-rule"></div>
+                    <span>分组电芯按实际 SOC 点亮</span></div>
+                <div class="scene-power-card"><small>直流输出功率</small><strong id="scenePowerValue">0.0
+                    kW</strong><span>蓝色 · 交流输入<br>青绿 · 直流充电</span></div>
+                <div class="scene-meta"><b id="scenePhase">待机</b><span id="sceneSoc">SOC —</span><span
+                        class="scene-gesture">拖动旋转 · 滚轮缩放</span></div>
+            </div>
+            <div class="timebar">
+                <div><small>仿真时间</small><b id="simTime">—</b></div>
+                <label>速度 <select id="speed" onchange="setSpeed()">
+                    <option value="0">暂停</option>
+                    <option value="1" selected>1× 实时</option>
+                    <option value="10">10×</option>
+                    <option value="60">60×</option>
+                    <option value="300">300×</option>
+                    <option value="3600">3600×</option>
+                </select></label>
+                <button class="quiet" onclick="post('/clock',{advanceSeconds:60})">+1 分钟</button>
+                <button class="quiet" onclick="post('/clock',{advanceSeconds:1800})">+30 分钟</button>
+            </div>
+        </section>
+        <section class="panel control-panel">
+            <div class="panel-title"><h2>充电控制</h2>
+                <div id="gunTabs" class="tabs"></div>
+            </div>
+            <div id="gunDetail"></div>
+            <div class="flow" id="flow"></div>
+            <div class="button-grid">
+                <button class="primary" onclick="gunAction('plug')">插入充电枪</button>
+                <button onclick="remote('start')">APP 远程启动</button>
+                <button onclick="gunAction('start')">刷卡启动</button>
+                <button onclick="gunAction('vin-start')">VIN 启动</button>
+                <button onclick="post('/parallel-start')">双枪刷卡并充</button>
+                <button onclick="remote('parallel-start')">APP 并充</button>
+                <button class="danger" onclick="remote('stop')">APP 远程停机</button>
+                <button onclick="gunAction('stop')">本地停机</button>
+                <button onclick="gunAction('unplug')">拔出充电枪</button>
+                <button onclick="gunAction('offline-start')">离线卡启动</button>
+                <button class="quiet" onclick="gunAction('fault?enable=true')">注入急停故障</button>
+                <button class="quiet" onclick="gunAction('fault?enable=false')">恢复故障</button>
+            </div>
+            <details>
+                <summary>按协议停止原因结束充电</summary>
+                <div class="rate-toolbar"><select id="stopReasonSelect"></select>
+                    <button onclick="gunAction('terminate?reason='+$('stopReasonSelect').value)">执行停止并生成账单
+                    </button>
+                </div>
+            </details>
+            <details>
+                <summary>车辆与电池设置</summary>
+                <form id="vehicleForm"><label>电池容量 kWh<input id="capacity" type="number" value="60" min="1"
+                                                                 max="1000"></label><label>初始 SOC %<input
+                        id="initialSoc" type="number" value="20" min="0" max="99"></label><label class="wide">VIN<input
+                        id="vin" value="LSVAA2A40NX000001" maxlength="17"></label><label class="wide">物理卡号（8 字节
+                    HEX）<input id="card" value="00000000D14B0A54" maxlength="16"></label><label>限电量
+                    kWh（0不限制）<input id="limitEnergy" type="number" min="0" max="1000" value="0"
+                                       step="0.1"></label><label>限金额 ¥（0不限制）<input id="limitAmount" type="number"
+                                                                                         min="0" max="100000" value="0"
+                                                                                         step="0.1"></label><label>限时间
+                    min（0不限制）<input id="limitMinutes" type="number" min="0" max="600" value="0"></label>
+                    <button class="primary wide" type="submit">应用到当前枪</button>
+                </form>
+            </details>
+        </section>
+    </div>
+    <section class="panel" id="billing">
+        <div class="panel-title"><h2>分时计费明细 <small id="billingModel">—</small></h2><span class="muted">按订单费率快照计费 · 新费率用于下一笔订单</span>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    <th>时段类型</th>
+                    <th>电费单价</th>
+                    <th>服务费单价</th>
+                    <th>电量 kWh</th>
+                    <th>计损电量 kWh</th>
+                    <th>电费 ¥</th>
+                    <th>服务费 ¥</th>
+                    <th>小计 ¥</th>
+                </tr>
+                </thead>
+                <tbody id="billingRows"></tbody>
+            </table>
+        </div>
+    </section>
+    <section class="panel" id="tariff">
+        <div class="panel-title">
+            <div><h2>费率模型</h2>
+                <p>48 个半小时时段，覆盖一整天的尖峰平谷。</p></div>
+            <div>
+                <button onclick="loadPlatformRate()">读取平台费率</button>
+                <button class="primary" onclick="saveRate()">保存到平台并下发</button>
+            </div>
+        </div>
+        <div id="ratePrices" class="rate-prices"></div>
+        <div class="rate-toolbar"><label>模型编号 <input id="modelNo" value="0001" maxlength="4"></label><label>计损 %
+            <input id="lossRatio" type="number" min="0" max="100" value="0"></label><label>涂色类型 <select
+                id="paintPeriod">
+            <option value="0">尖</option>
+            <option value="1">峰</option>
+            <option value="2">平</option>
+            <option value="3">谷</option>
+        </select></label>
+            <button onclick="fillRate()">填充全部时段</button>
+            <span class="muted">点击时段设置费率</span></div>
+        <div class="rate-grid" id="rateGrid"></div>
+        <div class="clock-settings"><label>设置仿真时间（空闲时）<input id="clockInput" type="datetime-local"
+                                                                      step="1"></label>
+            <button onclick="applyClock()">应用时间</button>
+            <button onclick="crossPeriod()">跨时段演示：设为 09:59:50</button>
+            <span id="rateStatus" class="muted"></span></div>
+    </section>
+    <section class="panel" id="configuration">
+        <div class="panel-title"><h2>充电桩配置参数</h2>
+            <button onclick="refreshConfig()">刷新参数</button>
+        </div>
+        <div class="config-grid" id="configGrid"></div>
+        <div class="rate-toolbar"><label>最大输出功率 %<input id="powerLimit" type="number" value="100" min="30"
+                                                              max="100"></label>
+            <button onclick="remote('param-set',{allowWork:true,maxPowerPercent:Number($('powerLimit').value)})">
+                启用并设置功率
+            </button>
+            <button onclick="remote('param-set',{allowWork:false,maxPowerPercent:100})">停用充电桩</button>
+            <button onclick="remote('time-sync')">平台对时</button>
+            <button onclick="remote('read-realtime')">读取实时</button>
+            <button onclick="remote('lock',{gunNo:Number(selectedGun),action:255})">降地锁</button>
+            <button onclick="remote('lock',{gunNo:Number(selectedGun),action:85})">升地锁</button>
+            <button onclick="remote('reboot',{control:2})">空闲重启</button>
+        </div>
+        <details>
+            <summary>离线卡管理</summary>
+            <div class="rate-toolbar">
+                <button onclick="remote('cards/sync',{cards:[{logicalCard:'0000000010000001',physicalCard:$('card').value}]})">
+                    同步当前卡
+                </button>
+                <button onclick="remote('cards/query',{physicalCards:[$('card').value]})">查询当前卡</button>
+                <button onclick="remote('cards/clear',{physicalCards:[$('card').value]})">清除当前卡</button>
+                <span id="offlineCards"></span></div>
+            <pre id="commandResult"></pre>
+        </details>
+        <details>
+            <summary>固件升级仿真</summary>
+            <p>仅模拟下载、校验、升级结果，不下载或执行固件程序。</p>
+            <div class="rate-toolbar"><label>FTP 地址<input id="ftpHost" value="127.0.0.1"></label><label>固件路径<input
+                    id="firmwarePath" value="DC/SIM-1.1.bin"></label><label>结果场景<select id="upgradeScenario">
+                <option value="0">模拟成功</option>
+                <option value="3">模拟下载超时</option>
+            </select></label>
+                <button onclick="simulateUpgrade()">下发升级</button>
+            </div>
+            <p id="upgradeStatus"></p></details>
+    </section>
+    <section class="panel">
+        <div class="panel-title"><h2>交易记录</h2><span id="pendingCount" class="muted"></span></div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    <th>流水号</th>
+                    <th>枪</th>
+                    <th>开始 / 结束</th>
+                    <th>电量 kWh</th>
+                    <th>费用 ¥</th>
+                    <th>停止原因</th>
+                    <th>明细</th>
+                </tr>
+                </thead>
+                <tbody id="history"></tbody>
+            </table>
+        </div>
+    </section>
+    <section class="panel" id="messages">
+        <div class="panel-title"><h2>协议报文</h2>
+            <div><select id="frameFilter" onchange="renderLogs()">
+                <option value="">全部帧</option>
+                <option value="BMS">BMS 过程</option>
+                <option value="0x3B">交易记录</option>
+                <option value="0x58">费率下发</option>
+            </select>
+                <button onclick="refresh()">刷新</button>
+            </div>
+        </div>
+        <div class="table-wrap log-table">
+            <table>
+                <thead>
+                <tr>
+                    <th>时间</th>
+                    <th>方向 / 序号</th>
+                    <th>帧类型</th>
+                    <th>摘要</th>
+                    <th>报文体 HEX</th>
+                </tr>
+                </thead>
+                <tbody id="logs"></tbody>
+            </table>
+        </div>
+        <details>
+            <summary>协议目录与完整帧解码</summary>
+            <div class="rate-toolbar">
+                <button onclick="loadCatalog()">读取协议目录</button>
+                <select id="catalogSelect" onchange="showCatalog()"></select></div>
+            <pre id="catalogDetail"></pre>
+            <label>完整报文 HEX<textarea id="decodeWire" rows="3" placeholder="68 ... CRC16"></textarea></label>
+            <button onclick="decodeWire()">校验 CRC、解密并解析</button>
+            <pre id="decodedWire"></pre>
+        </details>
+    </section>
+    <footer>PROTOCOL EXPERT <span>云快充 V1.6 · <a href="/assets/model-y/specification.json" target="_blank"
+                                                   rel="noopener">外观参数参考：Tesla Model Y</a> · 仿真结果以报文和账单为准</span>
+    </footer>
+</main>
+<div id="toast" role="status"></div>
+<dialog id="detailDialog">
+    <button onclick="$('detailDialog').close()">关闭</button>
+    <pre id="detailContent"></pre>
+</dialog>
+<script src="/app.js"></script>
+<script type="module" src="/scene.js"></script>
+</body>
+</html>

@@ -1,0 +1,72 @@
+# Build outputs and downloaded runtimes
+target/
+build/
+out/
+dist/
+otel/
+*.class
+*.jar
+*.war
+*.ear
+
+# IDE and machine-specific metadata
+.idea/
+.vscode/
+*.iml
+*.ipr
+*.iws
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Runtime state, databases, logs and work directories (at any module depth)
+data/
+logs/
+run/
+tmp/
+temp/
+backups/
+.backups/
+.staging*/
+*.log
+*.log.*
+*.pid
+*.pid.lock
+*.db
+*.db.*
+*.sqlite
+*.sqlite3
+hs_err_pid*
+replay_pid*
+*.hprof
+*.jfr
+
+# Local credentials/configuration; commit sanitized examples only
+.env
+.env.*
+!.env.example
+application-local.*
+application-private.*
+application-secret.*
+*-local.properties
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
+*.keystore
+
+# Optional Python / browser tooling
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+node_modules/
+.pytest_cache/
+.cache/
+/scripts/local-settings.json
+
+# Generated acceptance records contain local traces, paths and deployment details
+/docs/*-verification.json
+/docs/*-browser-checks.json
+/observability-verification.json

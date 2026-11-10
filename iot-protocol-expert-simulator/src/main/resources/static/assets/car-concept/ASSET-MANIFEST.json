@@ -1,0 +1,10 @@
+{
+  "name": "Neutral EV exterior derived from Car Concept",
+  "source": "https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/CarConcept",
+  "author": "Eric Chadwick / Darmstadt Graphics Group GmbH (2024)",
+  "license": "CC-BY-4.0",
+  "asset": "neutral-ev.glb",
+  "bytes": 4232024,
+  "sha256": "a60cbf687594ede7848bc33c598be92318ffc2ad1464728fbd38013f7dd5ac1d",
+  "changes": "Exterior only; source textures, logos, engine and interior removed; neutral PBR materials; custom battery and connector provided separately."
+}
