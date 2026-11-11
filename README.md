@@ -4,7 +4,7 @@
 
 ## 启动
 
-已接入 Spring Boot 原生可观测性：Micrometer Tracing / Metrics、JDBC Observation、异步上下文、TCP 埋点及带 trace_id/span_id 的 JSON 日志。无需 Java Agent；默认本地模式，不外发遥测。[本地调试说明](docs/observability.md)。
+已接入 OpenTelemetry：Micrometer Tracing / Metrics、JDBC Observation、异步上下文与结构化日志通过 OTLP 发送到 OpenTelemetry Collector，再由 Grafana + Tempo / Loki / Prometheus 展示。默认开启导出，`.env-local` 中的 `IPE_OTLP_ENDPOINT` 指定 Collector 地址。[本地调试说明](docs/observability.md)。
 
 ```powershell
 # 将 JAVA_HOME 指向本机 JDK 21，或设置 IPE_JAVA_HOME
@@ -16,7 +16,7 @@ mvn -B package
 - 平台控制台：<http://localhost:19080>，TCP：8768。
 - 模拟器：<http://localhost:19081>，默认双枪；默认未插枪。
 - 停止：`.\scripts\stop-local.ps1`。
-- 最近链路：<http://localhost:19080/actuator/telemetry>、<http://localhost:19081/actuator/telemetry>，仅 `local` profile 启用。
+- 可观测性：Grafana <http://100.101.91.38:3000>；链路 Tempo、日志 Loki、指标 Prometheus。
 - 指标：两端 `/actuator/metrics` 与 `/actuator/prometheus`；JSON 日志位于 `logs/`。
 - 启动脚本支持 JAVA_HOME / IPE_JAVA_HOME，也可使用 -JavaHome 指定 JDK 21；支持项目路径中包含空格。
 

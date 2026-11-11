@@ -3,7 +3,6 @@ target/
 build/
 out/
 dist/
-otel/
 *.class
 *.jar
 *.war
@@ -70,3 +69,5 @@ node_modules/
 /docs/*-verification.json
 /docs/*-browser-checks.json
 /observability-verification.json
+/.env-local*
+/sw-verify/

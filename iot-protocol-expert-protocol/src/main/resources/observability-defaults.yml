@@ -12,11 +12,11 @@ management:
       probability: 1.0
     export:
       otlp:
-        enabled: ${IPE_OTLP_ENABLED:false}
+        enabled: ${IPE_OTLP_ENABLED:true}
   logging:
     export:
       otlp:
-        enabled: ${IPE_OTLP_ENABLED:false}
+        enabled: ${IPE_OTLP_ENABLED:true}
   opentelemetry:
     resource-attributes:
       service.name: ${spring.application.name}
@@ -37,14 +37,10 @@ management:
   otlp:
     metrics:
       export:
-        enabled: ${IPE_OTLP_ENABLED:false}
+        enabled: ${IPE_OTLP_ENABLED:true}
         url: ${IPE_OTLP_ENDPOINT:http://127.0.0.1:4318}/v1/metrics
         step: 15s
   metrics:
-    tags:
-      application_name: ${spring.application.name}
-      active_profile: ${ipe.observability.environment}
-      instance: ${spring.application.name}:${server.port}
     distribution:
       percentiles-histogram:
         http.server.requests: true
