@@ -1,5 +1,7 @@
-param([switch]$EnableOtlp, [string]$OtlpEndpoint = 'http://127.0.0.1:4318', [string]$JavaHome = $env:IPE_JAVA_HOME)
+﻿param([switch]$EnableOtlp, [string]$OtlpEndpoint = $env:IPE_OTLP_ENDPOINT, [string]$JavaHome = $env:IPE_JAVA_HOME)
 $ErrorActionPreference = 'Stop'
+if (!$EnableOtlp -and $env:IPE_OTLP_ENABLED -eq 'true') { $EnableOtlp = $true }
+if (!$OtlpEndpoint) { $OtlpEndpoint = 'http://127.0.0.1:4318' }
 $OtlpEndpoint = $OtlpEndpoint.TrimEnd('/')
 $root = Split-Path -Parent $PSScriptRoot
 $localSettings = Join-Path $PSScriptRoot 'local-settings.json'
