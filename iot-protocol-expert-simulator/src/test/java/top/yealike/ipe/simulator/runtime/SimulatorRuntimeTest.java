@@ -141,6 +141,21 @@ class SimulatorRuntimeTest {
     }
 
     @Test
+    void selectedFaultBitmapIsReportedAndCanBeCleared() {
+        runtime.fault("01", true, "0x0004");
+        assertEquals(4, gun().get("faultCode"));
+        var frame = runtime.logs(10).stream()
+                .filter(f -> "0x13".equals(f.frameTypeHex()))
+                .findFirst()
+                .orElseThrow();
+        var realtime = RealtimeFrames.decodeRealtime(FrameCodec.parseHex(frame.bodyHex()));
+        assertEquals(4, realtime.hardwareFault());
+        runtime.fault("01", false, "0");
+        assertEquals(0, gun().get("faultCode"));
+        assertThrows(IllegalArgumentException.class, () -> runtime.fault("01", true, "0x10000"));
+    }
+
+    @Test
     void parallelWaitsForAllAuthorizations() {
         runtime.plug("01");
         runtime.plug("02");

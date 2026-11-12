@@ -2,7 +2,6 @@ import { useMemo } from 'react'
 import { Avatar, Button, Dropdown, Layout, Menu, Space, Tag } from 'antd'
 import {
   AlertOutlined,
-  ApartmentOutlined,
   AppstoreOutlined,
   ClusterOutlined,
   DashboardOutlined,
@@ -22,7 +21,6 @@ interface Props {
 
 const items = [
   { key: '/overview', icon: <DashboardOutlined />, label: <Link to="/overview">总览</Link> },
-  { key: '/campus', icon: <ApartmentOutlined />, label: <Link to="/campus">园区沙盘</Link> },
   { key: '/devices', icon: <ClusterOutlined />, label: <Link to="/devices">设备</Link> },
   { key: '/products', icon: <AppstoreOutlined />, label: <Link to="/products">产品与物模型</Link> },
   { key: '/alarms', icon: <AlertOutlined />, label: <Link to="/alarms">告警</Link> }

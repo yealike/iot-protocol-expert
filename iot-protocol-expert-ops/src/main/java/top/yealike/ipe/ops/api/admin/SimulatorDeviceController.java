@@ -52,7 +52,7 @@ public class SimulatorDeviceController {
     @GetMapping("/{id}")
     public Map<String, Object> get(@PathVariable Long id) {
         DeviceInstance device = devices.get(id);
-        if (!device.enabled || !device.allowSimulate) {
+        if (!"CHARGER".equals(device.deviceType) || !device.enabled || !device.allowSimulate) {
             throw new IllegalArgumentException("设备不可用于模拟: " + device.deviceCode);
         }
         return row(instances.view(device));

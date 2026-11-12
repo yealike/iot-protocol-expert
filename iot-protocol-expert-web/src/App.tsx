@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { Spin } from 'antd'
 import { api } from './api/client'
@@ -12,9 +12,6 @@ import Products from './pages/Products'
 import ProductDetail from './pages/ProductDetail'
 import Alarms from './pages/Alarms'
 import NotFound from './pages/NotFound'
-
-// 3D 沙盘依赖 three（~530 KB），只在进入园区页时加载
-const Campus = lazy(() => import('./pages/Campus'))
 
 /**
  * 会话守卫。
@@ -50,7 +47,7 @@ export default function App() {
       <Suspense
         fallback={
           <div style={{ minHeight: 320, display: 'grid', placeItems: 'center' }}>
-            <Spin tip="正在加载 3D 场景…" />
+            <Spin tip="正在加载…" />
           </div>
         }
       >
@@ -62,7 +59,6 @@ export default function App() {
           <Route path="/products" element={<Products />} />
           <Route path="/products/:id" element={<ProductDetail />} />
           <Route path="/alarms" element={<Alarms />} />
-          <Route path="/campus" element={<Campus />} />
           <Route path="*" element={<NotFound path={location.pathname} />} />
         </Routes>
       </Suspense>

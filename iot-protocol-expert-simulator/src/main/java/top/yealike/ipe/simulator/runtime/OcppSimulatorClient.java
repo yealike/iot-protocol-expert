@@ -130,7 +130,8 @@ public class OcppSimulatorClient {
                     if (OcppConstants.ACCEPTED.equals(status)) {
                         runtime.onOcppBootAccepted(interval);
                         for (int i = 1; i <= properties.getGunCount(); i++) {
-                            statusNotification(i, runtime.gunRuntimeStatus(String.format("%02d", i)), "NoError");
+                            String gunNo = String.format("%02d", i);
+                            statusNotification(i, runtime.gunRuntimeStatus(gunNo), runtime.gunFaultCode(gunNo));
                         }
                     } else {
                         runtime.onOcppError("OCPP BootNotification 被拒绝: " + status);

@@ -174,7 +174,7 @@ public class DeviceInstanceService {
 
     public List<DeviceInstance> simulatorDevices() {
         return devices.findAll().stream()
-                .filter(device -> device.enabled && device.allowSimulate)
+                .filter(device -> "CHARGER".equals(device.deviceType) && device.enabled && device.allowSimulate)
                 .sorted(Comparator.comparing(device -> device.id))
                 .toList();
     }
@@ -576,14 +576,7 @@ public class DeviceInstanceService {
     }
 
     private List<String> defaultChannelNos(DeviceTypeCatalog type) {
-        return switch (type) {
-            case CHARGER -> List.of("01", "02");
-            case PV -> List.of("MPPT1", "MPPT2", "MPPT3", "MPPT4");
-            case STORAGE -> List.of("PACK1", "PACK2", "PACK3", "PACK4");
-            case METER -> List.of("L1", "L2", "L3");
-            case CAMERA -> List.of("LENS1");
-            default -> List.of();
-        };
+        return List.of("01", "02");
     }
 
     @Transactional
@@ -707,7 +700,7 @@ public class DeviceInstanceService {
     // ------------------------------------------------------------------ 总览
 
     public DeviceDtos.Overview overview() {
-        List<DeviceInstance> all = devices.findAll();
+        List<DeviceInstance> all = devices.findByDeviceType("CHARGER");
         long online = all.stream().filter(DeviceInstance::isOnline).count();
         long fault = all.stream()
                 .filter(d -> DeviceInstance.STATE_FAULT.equals(d.state))

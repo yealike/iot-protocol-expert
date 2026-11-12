@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import top.yealike.ipe.simulator.config.SimulatorProperties;
+import top.yealike.ipe.simulator.runtime.ChargerFleet;
 import top.yealike.ipe.simulator.runtime.SimulatorRuntime;
 
 /** 模拟器控制接口。 */
@@ -23,24 +23,16 @@ import top.yealike.ipe.simulator.runtime.SimulatorRuntime;
 public class SimulatorController {
 
     private final SimulatorRuntime runtime;
-    private final SimulatorProperties properties;
+    private final ChargerFleet fleet;
 
-    public SimulatorController(SimulatorRuntime runtime, SimulatorProperties properties) {
+    public SimulatorController(SimulatorRuntime runtime, ChargerFleet fleet) {
         this.runtime = runtime;
-        this.properties = properties;
+        this.fleet = fleet;
     }
 
     @GetMapping("/state")
     public Map<String, Object> state() {
         return runtime.state();
-    }
-
-    /** 园区 3D 沙盘地址：由独立前端站点托管，模拟器只负责内嵌。 */
-    @GetMapping("/campus-url")
-    public Map<String, Object> campusUrl() {
-        String base = properties.getWebBaseUrl();
-        String normalized = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
-        return Map.of("url", normalized + "/campus");
     }
 
     @GetMapping("/config")
@@ -62,7 +54,32 @@ public class SimulatorController {
 
     @PostMapping("/device/select")
     public Map<String, Object> selectDevice(@RequestBody DeviceSelectRequest request) {
-        return Map.of("message", "已选择设备 " + request.deviceId(), "state", runtime.selectDevice(request.deviceId()));
+        return Map.of("message", "已选择设备 " + request.deviceId(), "state", fleet.selectInteractive(request.deviceId()));
+    }
+
+    @GetMapping("/fleet")
+    public Object fleet() {
+        return fleet.states();
+    }
+
+    @PostMapping("/fleet/{deviceId}/start")
+    public Object startFleet(@PathVariable Long deviceId) {
+        return fleet.start(deviceId);
+    }
+
+    @PostMapping("/fleet/{deviceId}/stop")
+    public Object stopFleet(@PathVariable Long deviceId) {
+        fleet.stop(deviceId);
+        return Map.of("message", "已停止模拟");
+    }
+
+    @PostMapping("/fleet/{deviceId}/guns/{gunNo}/{action}")
+    public Object fleetAction(
+            @PathVariable Long deviceId,
+            @PathVariable String gunNo,
+            @PathVariable String action,
+            @RequestParam(required = false) String code) {
+        return fleet.action(deviceId, gunNo, action, code);
     }
 
     public record ProtocolRequest(String protocol) {}
@@ -104,8 +121,15 @@ public class SimulatorController {
     }
 
     @PostMapping("/guns/{gunNo}/fault")
-    public Map<String, Object> fault(@PathVariable String gunNo, @RequestParam(defaultValue = "true") boolean enable) {
-        return Map.of("message", runtime.fault(gunNo, enable), "state", runtime.state());
+    public Map<String, Object> fault(
+            @PathVariable String gunNo,
+            @RequestParam(defaultValue = "true") boolean enable,
+            @RequestParam(required = false) String code) {
+        return Map.of(
+                "message",
+                code == null ? runtime.fault(gunNo, enable) : runtime.fault(gunNo, enable, code),
+                "state",
+                runtime.state());
     }
 
     @PostMapping("/guns/{gunNo}/report")

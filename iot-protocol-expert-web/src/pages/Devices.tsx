@@ -129,7 +129,7 @@ export default function Devices() {
       <div className="page-header">
         <div>
           <h1>设备</h1>
-          <p>充电桩 / 光伏 / 风机 / 储能 / 地锁 / 门禁 / 摄像头 / 电表统一台账</p>
+          <p>充电桩设备台账</p>
         </div>
         <Space>
           {me.data?.roles?.includes('ADMIN') && (

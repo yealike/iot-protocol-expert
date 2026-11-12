@@ -116,7 +116,8 @@ public class CommandService {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("orderNo", order.orderNo);
         params.put("gunNo", gunNo);
-        params.put("idTag", idTag == null || idTag.isBlank() ? "IPE-APP" : idTag);
+        params.put("idTag", idTag == null || idTag.isBlank() ? (ocpp ? "IPE-APP" : "0") : idTag);
+        params.put("physicalCard", physicalCard);
         params.put("balance", balanceText == null || balanceText.isBlank() ? "1000.00" : balanceText);
         CommandRecord record = submit(device.id, "remote-start", params, operator);
         if (record.status == CommandRecord.Status.SUCCESS) {

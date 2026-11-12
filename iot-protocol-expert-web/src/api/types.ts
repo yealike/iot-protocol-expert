@@ -12,8 +12,7 @@ export type DeviceState = 'NOT_ACTIVE' | 'OFFLINE' | 'ONLINE' | 'FAULT'
 export type AlarmLevel = 'INFO' | 'WARN' | 'MAJOR' | 'CRITICAL'
 export type AlarmState = 'OPEN' | 'ACK' | 'CLOSED'
 
-export type DeviceTypeCode =
-  'CHARGER' | 'PV' | 'WIND' | 'STORAGE' | 'LOCK' | 'GATE' | 'CAMERA' | 'METER'
+export type DeviceTypeCode = 'CHARGER'
 
 export interface TagValue {
   key: string
