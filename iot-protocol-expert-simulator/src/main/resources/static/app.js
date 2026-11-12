@@ -44,7 +44,34 @@ async function post(path, body = {}) {
     }
 }
 
+async function loadDevices() {
+    const select = $('deviceSelect');
+    try {
+        const devices = await api('/api/devices');
+        if (!devices || !devices.length) {
+            select.innerHTML = '<option value="">没有可模拟设备</option>';
+            return;
+        }
+        select.innerHTML = devices.map(d => `<option value="${d.id}">${esc(d.sn)} · ${esc(d.protocolLabel || d.protocol)} · ${esc(d.protocolDeviceId)}</option>`).join('');
+        if (live.deviceId) select.value = String(live.deviceId);
+    } catch (e) {
+        select.innerHTML = '<option value="">设备列表加载失败</option>';
+        toast('设备列表加载失败：' + e.message, true);
+    }
+}
+
+async function selectDevice() {
+    const deviceId = $('deviceSelect').value;
+    if (!deviceId) return;
+    const r = await post('/device/select', {deviceId: Number(deviceId)});
+    if (r) toast('已选择 ' + (r.state?.deviceSn || deviceId) + '，正在重建连接');
+}
+
 async function gunAction(action) {
+    if (live.protocol === 'ocpp16j' && (action === 'offline-start' || action === 'vin-start')) {
+        toast('OCPP 1.6J 不支持该启动方式', true);
+        return
+    }
     const commandGun = selectedGun;
     if (['plug', 'unplug', 'start', 'vin-start', 'offline-start'].includes(action)) await window.chargingScene?.whenConnectorSettled();
     return post('/guns/' + commandGun + '/' + action)
@@ -81,11 +108,16 @@ function chooseGun(no) {
 function renderState() {
     const s = live, g = s.guns?.find(g => g.gunNo === selectedGun);
     if (!g) return;
-    $('connection').textContent = s.loggedIn ? '平台已登录' : s.connected ? 'TCP 已连接' : '平台离线';
+    $('connection').textContent = s.loggedIn ? '平台已登录' : s.connected ? (s.protocol === 'ocpp16j' ? 'WebSocket 已连接' : 'TCP 已连接') : '平台离线';
     $('connection').className = 'badge ' + (s.loggedIn ? 'ok' : 'bad');
     $('connectBtn').disabled = s.connected;
     $('pileCode').textContent = s.pileCode;
-    $('platform').textContent = 'TCP ' + s.platform;
+    $('platform').textContent = (s.protocol === 'ocpp16j' ? 'WS ' : 'TCP ') + s.platform;
+    if (document.activeElement !== $('deviceSelect') && s.deviceId) $('deviceSelect').value = String(s.deviceId);
+    $('deviceProtocol').textContent = (s.protocolLabel || '') + (s.pileCode ? ' · ' + s.pileCode : '');
+    $('eyebrow').textContent = 'DEVICE SIMULATION / ' + (s.protocolLabel || '云快充 1.6');
+    $('sideProtocol').textContent = s.protocolLabel || '云快充 1.6';
+    $('sideTransport').textContent = s.protocol === 'ocpp16j' ? 'WebSocket · OCPP-J' : 'TCP 协议仿真';
     $('power').textContent = num(s.guns.reduce((a, g) => a + Number(g.voltage) * Number(g.current) / 1000, 0), 1);
     $('chargingCount').textContent = s.guns.filter(g => g.stateCode === 3).length + ' 枪正在充电';
     $('energy').textContent = num(g.energy);
@@ -190,6 +222,10 @@ async function loadPlatformRate() {
 }
 
 async function saveRate() {
+    if (live.protocol === 'ocpp16j') {
+        toast('OCPP 1.6J 没有费率下发帧，平台按当前生效费率自动计费', true);
+        return
+    }
     try {
         const r = {...rateDraft, modelNo: $('modelNo').value, lossRatio: Number($('lossRatio').value), active: true};
         if (!/^\d{4}$/.test(r.modelNo)) throw Error('模型编号须为4位数字');
@@ -209,6 +245,9 @@ async function refreshConfig() {
         const c = await api('/api/config');
         const labels = {
             pileCode: '桩编号',
+            protocolLabel: '当前协议',
+            platformUrl: '平台连接地址',
+            ocppPort: 'OCPP WebSocket 端口',
             gunCount: '充电枪数量',
             pileType: '桩类型 0直流 / 1交流',
             platformHost: '平台主机',
@@ -278,6 +317,7 @@ async function simulateUpgrade() {
 
 refresh();
 refreshConfig();
+loadDevices();
 setInterval(refresh, 1500);
 
 let protocolCatalog = [];
@@ -310,3 +350,26 @@ api('/api/stop-reasons').then(r => {
     allStopReasons = r;
     $('stopReasonSelect').innerHTML = Object.entries(r).map(([c, n]) => `<option value="${c}">0x${Number(c).toString(16).toUpperCase()} ${esc(n)}</option>`).join('')
 }).catch(e => toast(e.message, true));
+
+/* 园区沙盘：同源代理不便时直接嵌入运维平台的 SPA 路由，首次在框内登录即可 */
+(function campusEmbed() {
+    const toggle = document.getElementById('campusToggle');
+    const frame = document.getElementById('campusFrame');
+    if (!toggle || !frame) return;
+    let loaded = false;
+    toggle.addEventListener('click', async () => {
+        const visible = !frame.hidden;
+        frame.hidden = visible;
+        toggle.classList.toggle('active', !visible);
+        if (visible || loaded) return;
+        try {
+            const info = await api('/api/campus-url');
+            frame.src = info.url;
+            loaded = true;
+        } catch (e) {
+            toast('园区沙盘地址不可用：' + e.message, true);
+            frame.hidden = true;
+            toggle.classList.remove('active');
+        }
+    });
+})();

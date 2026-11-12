@@ -7,18 +7,89 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 public class SimulatorProperties {
 
     private String platformHost = "127.0.0.1";
+
+    /** 云快充 TCP 端口。 */
     private int platformPort = 8768;
+
+    /** OCPP 1.6J WebSocket 端口。 */
+    private int ocppPort = 8769;
+
+    /** OCPP WebSocket 路径前缀。 */
+    private String ocppPath = "/ocpp";
+
+    /** 当前充电协议：ykc16 / ocpp16j。 */
+    private String protocol = "ykc16";
+
     private int platformHttpPort = 19080;
-    public int getPlatformHttpPort() { return platformHttpPort; }
-    public void setPlatformHttpPort(int port) { this.platformHttpPort=port; }
+
+    /** 运维平台内部 API 地址，用于查询可模拟设备。 */
+    private String opsBaseUrl = "http://127.0.0.1:19082";
+
+    /** 模拟器只读凭证。 */
+    private String opsSimulatorToken = "local-simulator-token";
+
+    /** 启动时自动选中的平台设备 ID；为空时保持兼容的配置驱动模式。 */
+    private Long autoSelectDeviceId;
+
+    private int opsTimeoutMs = 5000;
+
+    public int getPlatformHttpPort() {
+        return platformHttpPort;
+    }
+
+    public void setPlatformHttpPort(int port) {
+        this.platformHttpPort = port;
+    }
+
+    public String getOpsBaseUrl() {
+        return opsBaseUrl;
+    }
+
+    public void setOpsBaseUrl(String opsBaseUrl) {
+        this.opsBaseUrl = opsBaseUrl;
+    }
+
+    public String getOpsSimulatorToken() {
+        return opsSimulatorToken;
+    }
+
+    public void setOpsSimulatorToken(String opsSimulatorToken) {
+        this.opsSimulatorToken = opsSimulatorToken;
+    }
+
+    public Long getAutoSelectDeviceId() {
+        return autoSelectDeviceId;
+    }
+
+    public void setAutoSelectDeviceId(Long autoSelectDeviceId) {
+        this.autoSelectDeviceId = autoSelectDeviceId;
+    }
+
+    public int getOpsTimeoutMs() {
+        return opsTimeoutMs;
+    }
+
+    public void setOpsTimeoutMs(int opsTimeoutMs) {
+        this.opsTimeoutMs = opsTimeoutMs;
+    }
+
     /** 桩编号：14 位数字（7 字节 BCD）。 */
     private String pileCode = "32010600000001";
+
     private int gunCount = 2;
     private String stateFile = "./data/simulator-state.properties";
-    public String getStateFile() { return stateFile; }
-    public void setStateFile(String stateFile) { this.stateFile = stateFile; }
+
+    public String getStateFile() {
+        return stateFile;
+    }
+
+    public void setStateFile(String stateFile) {
+        this.stateFile = stateFile;
+    }
+
     /** 协议版本字节：v1.6 = 16。 */
     private int protocolVersion = 0x10;
+
     private String programVersion = "v1.0.0";
     private String simCard = "89860000000000000000";
     private int networkType = 1;
@@ -27,6 +98,7 @@ public class SimulatorProperties {
 
     /** 公开测试向量；真实设备请与平台一起设置 IPE_CRYPTO_KEY_HEX。 */
     private String cryptoKeyHex = "0123456789ABCDEFFEDCBA9876543210";
+
     private boolean encryptionEnabled = false;
 
     private int heartbeatSeconds = 10;
@@ -37,10 +109,12 @@ public class SimulatorProperties {
 
     /** 交易记录重试间隔与次数（规范：30 秒重试，最多 3 次）。 */
     private int transactionRetrySeconds = 30;
+
     private int transactionMaxRetries = 3;
 
     /** 演示用额定功率参数。 */
     private double ratedVoltage = 750.0;
+
     private double ratedCurrent = 100.0;
 
     public String getPlatformHost() {
@@ -57,6 +131,30 @@ public class SimulatorProperties {
 
     public void setPlatformPort(int platformPort) {
         this.platformPort = platformPort;
+    }
+
+    public int getOcppPort() {
+        return ocppPort;
+    }
+
+    public void setOcppPort(int ocppPort) {
+        this.ocppPort = ocppPort;
+    }
+
+    public String getOcppPath() {
+        return ocppPath;
+    }
+
+    public void setOcppPath(String ocppPath) {
+        this.ocppPath = ocppPath;
+    }
+
+    public String getProtocol() {
+        return protocol;
+    }
+
+    public void setProtocol(String protocol) {
+        this.protocol = protocol;
     }
 
     public String getPileCode() {

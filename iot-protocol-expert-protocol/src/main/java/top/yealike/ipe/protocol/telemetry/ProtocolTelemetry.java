@@ -1,7 +1,5 @@
 package top.yealike.ipe.protocol.telemetry;
 
-import top.yealike.ipe.protocol.codec.Frame;
-import top.yealike.ipe.protocol.codec.FrameType;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Tags;
 import io.micrometer.core.instrument.Timer;
@@ -9,16 +7,15 @@ import io.micrometer.tracing.Span;
 import io.micrometer.tracing.TraceContext;
 import io.micrometer.tracing.Tracer;
 import io.netty.channel.ChannelFuture;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import top.yealike.ipe.protocol.codec.Frame;
+import top.yealike.ipe.protocol.codec.FrameType;
 
-/**
- * Application-scoped instrumentation using Spring-managed Micrometer beans.
- */
+/** Application-scoped instrumentation using Spring-managed Micrometer beans. */
 public final class ProtocolTelemetry {
     private static final Logger log = LoggerFactory.getLogger(ProtocolTelemetry.class);
     private final Tracer tracer;
@@ -35,28 +32,31 @@ public final class ProtocolTelemetry {
         return current == null ? null : current.context();
     }
 
-    /**
-     * A null parent is an independent TCP receive root, never a fabricated remote context.
-     */
+    /** A null parent is an independent TCP receive root, never a fabricated remote context. */
     public Operation start(String side, String operation, Frame frame, TraceContext parent) {
-        String type = FrameType.ofOrNull(frame.frameType()) == null ? "unknown" : String.format("0x%02X", frame.frameType());
+        String type =
+                FrameType.ofOrNull(frame.frameType()) == null ? "unknown" : String.format("0x%02X", frame.frameType());
         Span.Kind kind = switch (operation) {
             case "receive" -> Span.Kind.SERVER;
             case "request" -> Span.Kind.CLIENT;
             default -> Span.Kind.PRODUCER;
         };
-        Span.Builder builder = tracer.spanBuilder().name("yunkuaichong " + operation + " " + type).kind(kind)
-                .tag("network.transport", "tcp").tag("ipe.protocol", "yunkuaichong-1.6")
-                .tag("ipe.side", side).tag("ipe.operation", operation).tag("ipe.frame.type", type)
-                .tag("ipe.frame.sequence", frame.sequence()).tag("ipe.frame.encrypted", frame.encrypted());
+        Span.Builder builder = tracer.spanBuilder()
+                .name("yunkuaichong " + operation + " " + type)
+                .kind(kind)
+                .tag("network.transport", "tcp")
+                .tag("ipe.protocol", "yunkuaichong-1.6")
+                .tag("ipe.side", side)
+                .tag("ipe.operation", operation)
+                .tag("ipe.frame.type", type)
+                .tag("ipe.frame.sequence", frame.sequence())
+                .tag("ipe.frame.encrypted", frame.encrypted());
         if (parent == null) builder.setNoParent();
         else builder.setParent(parent);
         return new Operation(builder.start(), side, operation, type, frame.sequence());
     }
 
-    /**
-     * Business handlers sometimes catch an error and return a protocol rejection.
-     */
+    /** Business handlers sometimes catch an error and return a protocol rejection. */
     public void failure(Throwable error) {
         Operation current = active.get();
         if (current != null) current.fail(error);
@@ -85,9 +85,14 @@ public final class ProtocolTelemetry {
         }
 
         public void fail(Throwable error) {
-            outcome = error instanceof java.util.concurrent.TimeoutException ||
-                    (error instanceof top.yealike.ipe.protocol.netty.SessionRegistry.CommandTimeoutException timeout && timeout.isTimeout())
-                    ? "timeout" : "error";
+            outcome = error instanceof java.util.concurrent.TimeoutException
+                            || (error
+                                            instanceof
+                                            top.yealike.ipe.protocol.netty.SessionRegistry.CommandTimeoutException
+                                                    timeout
+                                    && timeout.isTimeout())
+                    ? "timeout"
+                    : "error";
             span.error(error).tag("error.type", error.getClass().getName());
         }
 
@@ -97,9 +102,7 @@ public final class ProtocolTelemetry {
                     .tag("ipe.frame.encrypted", Boolean.toString(frame.encrypted()));
         }
 
-        /**
-         * Close the caller scope immediately; finish on actual socket completion.
-         */
+        /** Close the caller scope immediately; finish on actual socket completion. */
         public void completeOn(ChannelFuture future) {
             asynchronous = true;
             future.addListener(done -> {
@@ -115,16 +118,22 @@ public final class ProtocolTelemetry {
             Tags tags = Tags.of("side", side, "operation", operation, "frame_type", type, "outcome", outcome);
             try (var ignored = tracer.withSpan(span)) {
                 meters.counter("ipe.protocol.operations", tags).increment();
-                Timer.builder("ipe.protocol.operation.duration").tags(tags)
+                Timer.builder("ipe.protocol.operation.duration")
+                        .tags(tags)
                         .description("TCP processing / socket write / complete command round trip")
                         .publishPercentileHistogram()
-                        .minimumExpectedValue(Duration.ofMillis(1)).maximumExpectedValue(Duration.ofSeconds(30))
-                        .register(meters).record(elapsed, TimeUnit.NANOSECONDS);
+                        .minimumExpectedValue(Duration.ofMillis(1))
+                        .maximumExpectedValue(Duration.ofSeconds(30))
+                        .register(meters)
+                        .record(elapsed, TimeUnit.NANOSECONDS);
                 var event = outcome.equals("success") ? log.atInfo() : log.atWarn();
                 event.addKeyValue("event.name", "protocol.operation")
-                        .addKeyValue("ipe.side", side).addKeyValue("ipe.operation", operation)
-                        .addKeyValue("ipe.frame.type", type).addKeyValue("ipe.frame.sequence", sequence)
-                        .addKeyValue("outcome", outcome).addKeyValue("duration_ms", elapsed / 1_000_000.0)
+                        .addKeyValue("ipe.side", side)
+                        .addKeyValue("ipe.operation", operation)
+                        .addKeyValue("ipe.frame.type", type)
+                        .addKeyValue("ipe.frame.sequence", sequence)
+                        .addKeyValue("outcome", outcome)
+                        .addKeyValue("duration_ms", elapsed / 1_000_000.0)
                         .log("Protocol operation completed");
             } finally {
                 span.end();

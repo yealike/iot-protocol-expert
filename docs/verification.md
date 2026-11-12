@@ -1,5 +1,22 @@
 # 验收记录
 
+## 2026-11-11 三服务重构验收
+
+- 构建：`mvn -B package` 与 `mvn -B test` 均 BUILD SUCCESS；codec 19 项、protocol 3 项、simulator 15 项，共 37 项，失败 0。
+- 中间件：服务器 PostgreSQL 16.14（`ipe-postgres`，端口 55432），空库由 Flyway `V1__init.sql` 建表并写入演示数据。
+- 云快充链路：模拟器从平台选桩 → 登录 → 插枪 → 0x31 → 实时计量 → 停止 → 0x3B；订单 `SETTLED`，账单 `DEVICE_BILL`（38.6468 kWh / 42.5115 元）。
+- OCPP 链路：同站点同文本编号设备 → BootNotification → 平台远程启动 → StartTransaction → MeterValues → StopTransaction；订单 `SETTLED`，账单 `PLATFORM_ESTIMATE`（18.839 kWh / 20.7229 元）。
+- 设备隔离：切换后仅 OCPP 设备在线，云快充设备离线；订单与账单继续归属原平台设备 ID。
+- 命令：`remote-start` 命令记录 `SUCCESS`，设备随后上报 StartTransaction。
+- 站点统计：2 笔订单、电量 57.4858、订单金额 63.2344、桩账单 42.5115、平台估算 20.7229。
+- 排障：按订单号定位设备/订单，时间线确认 0x3B、0x40、账单，最后有证据环节为「交易记录确认 0x40」。
+- OTLP：运维平台 trace 已进入 Tempo；Loki 当前未返回标签，排障明确提示日志证据不足。
+- 启动脚本：`scripts/start-local.ps1` 依次启动 ops/protocol/simulator；`stop-local.ps1` 可停止三端。
+
+详细步骤与接口见 [运维平台与排障](ops-platform.md)。
+
+## 历史验收（2026-11-09，重构前）
+
 日期：2026-11-09，Asia/Shanghai。工具：指定JDK21、Maven3.8.8、真实Netty TCP服务和客户端、Playwright Chromium。
 
 ## 编译和测试

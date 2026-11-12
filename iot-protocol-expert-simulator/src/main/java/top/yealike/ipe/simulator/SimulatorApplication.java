@@ -3,8 +3,8 @@ package top.yealike.ipe.simulator;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
-import org.springframework.scheduling.annotation.EnableScheduling;
 import org.springframework.context.annotation.Import;
+import org.springframework.scheduling.annotation.EnableScheduling;
 import top.yealike.ipe.protocol.telemetry.ObservabilityConfiguration;
 
 @SpringBootApplication
