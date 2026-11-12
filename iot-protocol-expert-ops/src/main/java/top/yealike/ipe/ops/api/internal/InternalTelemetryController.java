@@ -17,6 +17,8 @@ import top.yealike.ipe.ops.service.BillService;
 @RequestMapping("/internal")
 public class InternalTelemetryController {
 
+    private final top.yealike.ipe.ops.telemetry.OrderTelemetryService telemetry;
+    private final top.yealike.ipe.ops.service.DeviceService devices;
     private final BillService bills;
     private final top.yealike.ipe.ops.service.FrameLogService frames;
     private final DevicePropertyService properties;
@@ -24,11 +26,15 @@ public class InternalTelemetryController {
     private final top.yealike.ipe.ops.service.OrderService orders;
 
     public InternalTelemetryController(
+            top.yealike.ipe.ops.telemetry.OrderTelemetryService telemetry,
+            top.yealike.ipe.ops.service.DeviceService devices,
             BillService bills,
             top.yealike.ipe.ops.service.FrameLogService frames,
             DevicePropertyService properties,
             top.yealike.ipe.ops.service.RateModelService rates,
             top.yealike.ipe.ops.service.OrderService orders) {
+        this.telemetry = telemetry;
+        this.devices = devices;
         this.bills = bills;
         this.frames = frames;
         this.properties = properties;
@@ -48,6 +54,7 @@ public class InternalTelemetryController {
     }
 
     @PostMapping("/gun-states")
+    @org.springframework.transaction.annotation.Transactional
     public void gunState(@RequestBody OpsDtos.RealtimeRequest request) {
         properties.writeBatchByProtocol(
                 request.protocol(),
@@ -63,6 +70,28 @@ public class InternalTelemetryController {
                 request.chargedEnergy(),
                 request.chargedAmount(),
                 request.transactionNo());
+        if (request.state() == 3) {
+            var device = devices.resolve(request.protocol(), request.protocolDeviceId());
+            var order =
+                    request.transactionNo() == null || request.transactionNo().isBlank()
+                            ? orders.active(device.id, request.gunNo())
+                            : orders.findByOrderNo(request.transactionNo());
+            if (order != null
+                    && java.util.Objects.equals(order.deviceId, device.id)
+                    && java.util.Objects.equals(order.gunNo, request.gunNo())
+                    && (order.status == top.yealike.ipe.ops.domain.ChargeOrder.Status.CHARGING)) {
+                telemetry.record(
+                        order,
+                        java.time.Instant.now(),
+                        "RECEIVED",
+                        request.outputVoltage(),
+                        request.outputCurrent(),
+                        null,
+                        java.math.BigDecimal.valueOf(request.gunLineTemp()),
+                        java.math.BigDecimal.valueOf(request.batteryMaxTemp()),
+                        request.soc() < 0 ? null : java.math.BigDecimal.valueOf(request.soc()));
+            }
+        }
     }
 
     /** 通用遥测入口：任意设备类型的属性批量上报。 */

@@ -17,24 +17,33 @@ spring:
       maximum-pool-size: 8
       minimum-idle: 1
       connection-timeout: 5000
+      connection-init-sql: SET search_path TO ipe_ops
   jpa:
     hibernate:
       ddl-auto: none
     open-in-view: false
     properties:
       hibernate:
+        default_schema: ipe_ops
         jdbc:
           time_zone: Asia/Shanghai
         format_sql: false
   flyway:
     enabled: true
-    baseline-on-migrate: true
+    baseline-on-migrate: false
+    default-schema: ipe_ops
+    schemas: ipe_ops
+    create-schemas: true
     locations: classpath:db/migration
     # 迁移脚本里的物模型 JSON 含 ${...} 形态的字符，关掉占位符替换，避免 Flyway 误解析
     placeholder-replacement: false
   jackson:
     time-zone: Asia/Shanghai
     date-format: yyyy-MM-dd HH:mm:ss
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
   mvc:
     problemdetails:
       enabled: true
@@ -47,9 +56,16 @@ management:
 
 ipe:
   ops:
+    tdengine:
+      url: ${IPE_TDENGINE_URL:jdbc:TAOS-WS://127.0.0.1:6041}
+      username: ${IPE_TDENGINE_USER:root}
+      password: ${IPE_TDENGINE_PASSWORD:}
+      flush-delay-ms: ${IPE_TDENGINE_FLUSH_DELAY_MS:1000}
     environment: ${IPE_ENVIRONMENT:local}
+    protocol-document-dir: ${IPE_PROTOCOL_DOCUMENT_DIR:./data/protocol-documents}
     service-token: ${IPE_OPS_SERVICE_TOKEN:local-service-token}
     simulator-token: ${IPE_OPS_SIMULATOR_TOKEN:local-simulator-token}
+    simulator-base-url: ${IPE_SIMULATOR_BASE_URL:http://127.0.0.1:19081}
     protocol-base-url: ${IPE_PROTOCOL_BASE_URL:http://127.0.0.1:19080}
     protocol-timeout-ms: ${IPE_PROTOCOL_TIMEOUT_MS:5000}
     model:

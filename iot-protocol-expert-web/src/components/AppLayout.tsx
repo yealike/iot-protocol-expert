@@ -5,7 +5,9 @@ import {
   AppstoreOutlined,
   ClusterOutlined,
   DashboardOutlined,
+  ExperimentOutlined,
   LogoutOutlined,
+  FileTextOutlined,
   UserOutlined
 } from '@ant-design/icons'
 import { Link, useLocation } from 'react-router-dom'
@@ -23,6 +25,13 @@ const items = [
   { key: '/overview', icon: <DashboardOutlined />, label: <Link to="/overview">总览</Link> },
   { key: '/devices', icon: <ClusterOutlined />, label: <Link to="/devices">设备</Link> },
   { key: '/products', icon: <AppstoreOutlined />, label: <Link to="/products">产品与物模型</Link> },
+  { key: '/orders', icon: <FileTextOutlined />, label: <Link to="/orders">订单管理</Link> },
+  {
+    key: '/protocol-documents',
+    icon: <FileTextOutlined />,
+    label: <Link to="/protocol-documents">协议文档</Link>
+  },
+  { key: '/simulator', icon: <ExperimentOutlined />, label: <Link to="/simulator">充电模拟器</Link> },
   { key: '/alarms', icon: <AlertOutlined />, label: <Link to="/alarms">告警</Link> }
 ]
 
@@ -68,7 +77,7 @@ export default function AppLayout({ user, children }: Props) {
             justifyContent: 'flex-end',
             gap: 12,
             paddingInline: 20,
-            borderBottom: '1px solid rgba(38,70,102,0.55)',
+            borderBottom: '1px solid #e4e9f1',
             position: 'sticky',
             top: 0,
             zIndex: 10,
@@ -77,7 +86,7 @@ export default function AppLayout({ user, children }: Props) {
         >
           <Space size={8}>
             {(user.roles ?? []).map((role) => (
-              <Tag key={role} color="green" bordered={false}>
+              <Tag key={role} color="blue" bordered={false}>
                 {role}
               </Tag>
             ))}

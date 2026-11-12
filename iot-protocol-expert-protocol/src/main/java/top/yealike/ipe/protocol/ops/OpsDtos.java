@@ -180,7 +180,10 @@ public final class OpsDtos {
             BigDecimal energyWh,
             BigDecimal voltage,
             BigDecimal current,
-            Integer soc) {}
+            Integer soc,
+            BigDecimal powerKw,
+            BigDecimal temperature,
+            String sampleTime) {}
 
     public record StopTransactionRequest(
             String protocolDeviceId, int transactionId, BigDecimal meterStop, LocalDateTime endedAt, String reason) {}

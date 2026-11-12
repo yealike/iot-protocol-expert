@@ -252,6 +252,21 @@ public class OrderService {
             LocalDateTime from,
             LocalDateTime to,
             Collection<ChargeOrder.Status> statuses) {
+        return searchPage(stationId, deviceId, gunNo, protocol, orderNo, from, to, statuses, 0, 500)
+                .getContent();
+    }
+
+    public org.springframework.data.domain.Page<ChargeOrder> searchPage(
+            Long stationId,
+            Long deviceId,
+            String gunNo,
+            String protocol,
+            String orderNo,
+            LocalDateTime from,
+            LocalDateTime to,
+            Collection<ChargeOrder.Status> statuses,
+            int page,
+            int size) {
         Specification<ChargeOrder> spec = (root, query, cb) -> {
             List<Predicate> predicates = new ArrayList<>();
             if (stationId != null) predicates.add(cb.equal(root.get("stationId"), stationId));
@@ -263,10 +278,15 @@ public class OrderService {
             if (to != null) predicates.add(cb.lessThan(root.get("createdAt"), to));
             if (statuses != null && !statuses.isEmpty())
                 predicates.add(root.get("status").in(statuses));
-            query.orderBy(cb.desc(root.get("id")));
             return cb.and(predicates.toArray(new Predicate[0]));
         };
-        return orders.findAll(spec).stream().limit(500).toList();
+        return orders.findAll(
+                spec,
+                org.springframework.data.domain.PageRequest.of(
+                        Math.max(0, page),
+                        Math.max(1, Math.min(size, 500)),
+                        org.springframework.data.domain.Sort.by(
+                                org.springframework.data.domain.Sort.Direction.DESC, "id")));
     }
 
     public OpsDtos.OrderView view(ChargeOrder order) {

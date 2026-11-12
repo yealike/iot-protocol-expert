@@ -35,6 +35,9 @@ export interface DeviceRow {
   deviceType: DeviceTypeCode
   deviceTypeLabel: string
   protocol: string
+  protocolName: string | null
+  protocolNameEn: string | null
+  protocolVersion: string | null
   protocolDeviceId: string
   stationId: number | null
   stationName: string | null
@@ -184,6 +187,10 @@ export interface ProductRow {
   deviceType: DeviceTypeCode
   deviceTypeLabel: string
   protocol: string
+  protocolDocumentId: number | null
+  protocolName: string | null
+  protocolNameEn: string | null
+  protocolVersion: string | null
   transport: string
   vendor: string | null
   model: string | null
@@ -255,4 +262,77 @@ export interface CurrentUser {
   authenticated: boolean
   username?: string
   roles?: string[]
+}
+
+export interface OrderView {
+  id: number
+  orderNo: string
+  deviceId: number
+  protocolDeviceId: string
+  gunNo: string
+  stationId: number | null
+  protocol: string
+  status: string
+  startTime: string | null
+  endTime: string | null
+  energy: number | null
+  amount: number | null
+  amountSource: string
+  failReason: string | null
+  stopReason: number
+  createdAt: string | null
+}
+export interface BillView {
+  id: number
+  sourceType: string
+  sourceTransactionNo: string
+  energy: number | null
+  amount: number | null
+  currency: string
+  amountType: string
+  accepted: boolean
+  rejectReason: string | null
+  receivedAt: string | null
+}
+export interface OrderDetail {
+  order: OrderView
+  bills: BillView[]
+}
+
+export interface TelemetryPoint {
+  time: string
+  timeSource: 'DEVICE' | 'RECEIVED'
+  voltage: number | null
+  current: number | null
+  power: number | null
+  gunTemperature: number | null
+  batteryTemperature: number | null
+  soc: number | null
+}
+export interface OrderTelemetry {
+  points: TelemetryPoint[]
+  truncated: boolean
+}
+
+export interface BusinessOverview {
+  date: string
+  timezone: string
+  settledOrderCount: number
+  settledEnergy: number
+  settledAmount: number
+  activeOrderCount: number
+  daily: { date: string; energy: number; amount: number; orders: number }[]
+}
+
+export interface ProtocolDocument {
+  id: number
+  protocolCode: string
+  protocolNameEn: string
+  documentVersion: string
+  title: string
+  originalFilename: string
+  fileSize: number
+  status: string
+  uploadedBy: string
+  createdAt: string
 }

@@ -59,6 +59,9 @@ public class ProductController {
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public DeviceDtos.ProductRow save(@RequestBody DeviceDtos.ProductSave input, Principal principal) {
+        if (input.productCode() != null && products.findByCode(input.productCode().trim()).isPresent()) {
+            throw new IllegalArgumentException("产品编码已存在");
+        }
         Product saved = products.save(input);
         audits.record(
                 name(principal), "product.create", "product", String.valueOf(saved.id), "SUCCESS", saved.productCode);
@@ -76,6 +79,7 @@ public class ProductController {
                 input.categoryCode(),
                 existing.deviceType,
                 input.protocol(),
+                input.protocolDocumentId(),
                 input.transport(),
                 input.vendor(),
                 input.model(),

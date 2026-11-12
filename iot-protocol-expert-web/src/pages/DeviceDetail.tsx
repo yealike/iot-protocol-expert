@@ -1,3 +1,4 @@
+import { productProtocol } from '../api/protocol'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
@@ -7,6 +8,7 @@ import {
   Col,
   Descriptions,
   Empty,
+  Popconfirm,
   Row,
   Segmented,
   Select,
@@ -16,7 +18,7 @@ import {
   Tabs,
   Tag
 } from 'antd'
-import { useParams } from 'react-router-dom'
+import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
 import { AlarmLevelTag, AlarmStateTag, DeviceStateTag } from '../components/tags'
 import Chart from '../components/Chart'
@@ -38,11 +40,18 @@ export default function DeviceDetail() {
   const [channel, setChannel] = useState<string | undefined>()
   const [trendProperty, setTrendProperty] = useState<string | undefined>()
 
+  const selectedTrend = trendProperty
+    ? (JSON.parse(trendProperty) as { propertyId: string; channelNo: string })
+    : null
   const series = useQuery({
-    queryKey: ['series', deviceId, trendProperty, channel],
+    queryKey: ['series', deviceId, trendProperty],
     queryFn: () =>
-      api.deviceSeries(deviceId, trendProperty!, channel ? { channelNo: channel } : {}),
-    enabled: Boolean(trendProperty)
+      api.deviceSeries(
+        deviceId,
+        selectedTrend!.propertyId,
+        selectedTrend!.channelNo ? { channelNo: selectedTrend!.channelNo } : {}
+      ),
+    enabled: Boolean(selectedTrend)
   })
 
   const action = useMutation({
@@ -129,30 +138,119 @@ export default function DeviceDetail() {
 
   return (
     <>
-      <div className="page-header">
+      <div className="device-hero">
         <div>
+          <Link to="/devices" className="device-back">
+            ← 返回设备列表
+          </Link>
           <h1>
             {device.name} <DeviceStateTag state={device.state} />
           </h1>
           <p>
             <span className="mono">{device.deviceCode}</span> · {device.deviceTypeLabel} ·{' '}
-            {device.protocol} · {device.stationName ?? '未分配站点'}
+            {productProtocol(device)} · {device.stationName ?? '未分配站点'}
           </p>
         </div>
         <Space>
+          <Link to={`/orders?deviceId=${deviceId}`}>查看订单</Link>
           <Button onClick={() => action.mutate('enable')} disabled={device.enabled}>
             启用
           </Button>
-          <Button onClick={() => action.mutate('disable')} disabled={!device.enabled} danger>
-            停用
-          </Button>
+          <Popconfirm
+            title="停用后设备将无法正常工作，确定继续？"
+            onConfirm={() => action.mutate('disable')}
+          >
+            <Button disabled={!device.enabled} danger>
+              停用
+            </Button>
+          </Popconfirm>
           <Button type="primary" onClick={() => action.mutate('deploy')}>
             激活
           </Button>
-          <Button onClick={() => action.mutate('undeploy')}>注销</Button>
+          <Popconfirm title="确定注销该设备？" onConfirm={() => action.mutate('undeploy')}>
+            <Button>注销</Button>
+          </Popconfirm>
         </Space>
       </div>
 
+      <div className="device-summary-grid">
+        <div>
+          <span>所属产品</span>
+          <Link to={`/products/${device.productId}`}>{device.productName ?? '—'}</Link>
+        </div>
+        <div>
+          <span>协议设备编号</span>
+          <strong className="mono">{device.protocolDeviceId}</strong>
+        </div>
+        <div>
+          <span>最近上报</span>
+          <strong>{device.lastSeen ?? '暂无数据'}</strong>
+        </div>
+        <div>
+          <span>设备开关</span>
+          <strong>{device.enabled ? '已启用' : '已停用'}</strong>
+        </div>
+      </div>
+      <div className="overview-section-title">
+        <div>
+          <h2>枪口运行</h2>
+          <span>按枪口查看实时状态与充电数据</span>
+        </div>
+      </div>
+      {channels.length ? (
+        <div className="connector-grid">
+          {channels.map((item) => (
+            <Card
+              key={item.channelNo}
+              bordered={false}
+              className="connector-card"
+              title={
+                <span>
+                  {item.name} <small>#{item.channelNo}</small>
+                </span>
+              }
+              extra={
+                <Tag color={item.enabled ? 'green' : 'default'}>
+                  {item.enabled ? '启用' : '停用'}
+                </Tag>
+              }
+            >
+              <div className="connector-values">
+                {item.properties
+                  .filter((p) =>
+                    [
+                      'gunState',
+                      'voltage',
+                      'current',
+                      'soc',
+                      'chargeEnergy',
+                      'batteryTemp',
+                      'gunLineTemp'
+                    ].includes(p.propertyId)
+                  )
+                  .map((p) => (
+                    <div key={p.propertyId}>
+                      <span>{p.name}</span>
+                      <strong>
+                        {p.display ?? '—'} <small>{p.unit ?? ''}</small>
+                      </strong>
+                    </div>
+                  ))}
+              </div>
+            </Card>
+          ))}
+        </div>
+      ) : (
+        <Card bordered={false}>
+          <Empty description="暂无枪口数据" />
+        </Card>
+      )}
+      <div className="overview-section-title">
+        <div>
+          <h2>运行数据与档案</h2>
+          <span>实时属性、历史曲线及设备信息</span>
+        </div>
+      </div>
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={9}>
           <Card title="档案" size="small" bordered={false}>
@@ -200,7 +298,7 @@ export default function DeviceDetail() {
               />
             }
           >
-            {renderPropertyTiles(channel ? properties : properties)}
+            {!channel && renderPropertyTiles(properties)}
             {channels
               .filter((item) => !channel || item.channelNo === channel)
               .map((item) => (
@@ -221,7 +319,10 @@ export default function DeviceDetail() {
                 value={trendProperty}
                 options={numericProperties.map((item) => ({
                   label: `${item.name}${item.channelNo ? ` · ${item.channelNo}` : ''}`,
-                  value: item.propertyId
+                  value: JSON.stringify({
+                    propertyId: item.propertyId,
+                    channelNo: item.channelNo ?? ''
+                  })
                 }))}
                 onChange={setTrendProperty}
               />

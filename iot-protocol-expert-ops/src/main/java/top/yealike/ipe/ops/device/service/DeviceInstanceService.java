@@ -253,6 +253,7 @@ public class DeviceInstanceService {
     private record ViewContext(
             Map<Long, String> stationNames,
             Map<Long, String> productNames,
+            Map<Long, Map<String, Object>> protocolDocuments,
             Map<Long, List<DeviceTag>> tags,
             Map<Long, Map<String, DevicePropertyLatest>> properties,
             Map<Long, int[]> channelCounts) {}
@@ -264,7 +265,7 @@ public class DeviceInstanceService {
         Map<Long, Map<String, DevicePropertyLatest>> propertyMap = new LinkedHashMap<>();
         Map<Long, int[]> channelCounts = new LinkedHashMap<>();
         if (list.isEmpty()) {
-            return new ViewContext(stationNames, productNames, tagMap, propertyMap, channelCounts);
+            return new ViewContext(stationNames, productNames, Map.of(), tagMap, propertyMap, channelCounts);
         }
         Set<Long> stationIds = new LinkedHashSet<>();
         Set<Long> productIds = new LinkedHashSet<>();
@@ -303,7 +304,7 @@ public class DeviceInstanceService {
                 counts[0]++;
             }
         }
-        return new ViewContext(stationNames, productNames, tagMap, propertyMap, channelCounts);
+        return new ViewContext(stationNames, productNames, products.protocolDocuments(productIds), tagMap, propertyMap, channelCounts);
     }
 
     public DeviceDtos.DeviceRow view(DeviceInstance device) {
@@ -334,6 +335,7 @@ public class DeviceInstanceService {
             stored = properties.latestMap(device.id);
         }
 
+        Map<String, Object> protocolDoc = context.protocolDocuments().getOrDefault(device.productId, Map.of());
         return new DeviceDtos.DeviceRow(
                 device.id,
                 device.deviceCode,
@@ -345,6 +347,9 @@ public class DeviceInstanceService {
                         .map(DeviceTypeCatalog::label)
                         .orElse(device.deviceType),
                 device.protocol,
+                (String) protocolDoc.get("protocol_code"),
+                (String) protocolDoc.get("protocol_name_en"),
+                (String) protocolDoc.get("document_version"),
                 device.protocolDeviceId,
                 device.stationId,
                 context.stationNames().get(device.stationId),
@@ -440,6 +445,9 @@ public class DeviceInstanceService {
 
         String code = input.deviceCode().trim();
         DeviceInstance device = devices.findByDeviceCode(code).orElseGet(DeviceInstance::new);
+        if (device.id != null && !Objects.equals(device.productId, product.id)) {
+            throw new IllegalArgumentException("设备已绑定产品，不能直接更换产品");
+        }
         if (device.id != null && input.deviceCode() != null && !device.deviceCode.equals(code)) {
             throw new IllegalArgumentException("设备编码创建后不可修改");
         }

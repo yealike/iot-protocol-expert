@@ -1,9 +1,14 @@
+import { productProtocol } from '../api/protocol'
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Card, Descriptions, Empty, Skeleton, Table, Tabs, Tag } from 'antd'
+import { Button, Card, Descriptions, Empty, Skeleton, Table, Tabs, Tag } from 'antd'
 import { useParams } from 'react-router-dom'
 import { api } from '../api/client'
+import ProductEditor from '../components/ProductEditor'
 
 export default function ProductDetail() {
+  const [editing, setEditing] = useState(false)
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me })
   const { id } = useParams()
   const productId = Number(id)
   const detail = useQuery({
@@ -28,10 +33,21 @@ export default function ProductDetail() {
           <h1>{product.name}</h1>
           <p>
             <span className="mono">{product.productCode}</span> · {product.deviceTypeLabel} ·{' '}
-            {product.protocol} / {product.transport}
+            {productProtocol(product)} / {product.transport}
           </p>
         </div>
+        {me.data?.roles?.includes('ADMIN') && (
+          <Button type="primary" onClick={() => setEditing(true)}>
+            编辑产品与物模型
+          </Button>
+        )}
       </div>
+      <ProductEditor
+        open={editing}
+        detail={detail.data}
+        onClose={() => setEditing(false)}
+        onSaved={() => detail.refetch()}
+      />
 
       <Card size="small" bordered={false}>
         <Descriptions column={3} size="small" colon={false}>
