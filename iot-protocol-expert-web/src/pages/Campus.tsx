@@ -15,8 +15,7 @@ const MODEL_BY_TYPE: Record<string, string> = {
   CHARGER: 'Charger',
   LOCK: 'Lock',
   GATE: 'GateIn',
-  CAMERA: 'CameraIn',
-  METER: 'Storage'
+  CAMERA: 'CameraIn'
 }
 
 function numberOf(highlights: Record<string, string>, key: string): number | undefined {
@@ -49,7 +48,7 @@ function toFeed(device: DeviceRow): DeviceFeed {
 export default function Campus() {
   const holder = useRef<HTMLDivElement>(null)
   const handle = useRef<CampusHandle | null>(null)
-  const [selected, setSelected] = useState<string | null>(null)
+  const [selected, setSelected] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const devices = useQuery({
@@ -59,12 +58,14 @@ export default function Campus() {
   })
 
   const feeds = useMemo(() => (devices.data?.content ?? []).map(toFeed), [devices.data])
+  const latestFeeds = useRef(feeds)
+  latestFeeds.current = feeds
 
   useEffect(() => {
     let cancelled = false
     const element = holder.current
     if (!element) return
-    createCampus(element, { modelUrl: '/assets/energy-campus.glb' })
+    createCampus(element, { modelUrl: '/assets/blender-energy-campus.glb' })
       .then((instance) => {
         if (cancelled) {
           instance.dispose()
@@ -72,7 +73,7 @@ export default function Campus() {
         }
         handle.current = instance
         instance.onSelect(setSelected)
-        instance.setDevices(feeds)
+        instance.setDevices(latestFeeds.current)
       })
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : '3D 场景加载失败')
@@ -93,10 +94,7 @@ export default function Campus() {
   }, [feeds])
 
   const rows = devices.data?.content ?? []
-  const selectedDevice = rows.find((row) => {
-    const model = row.sceneAnchor?.model ?? MODEL_BY_TYPE[row.deviceType] ?? row.deviceType
-    return model === selected
-  })
+  const selectedDevice = rows.find((row) => row.id === selected)
 
   return (
     <>
@@ -115,7 +113,7 @@ export default function Campus() {
         </Space>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', gap: 16 }}>
+      <div className="campus-layout">
         <div className="campus-frame" ref={holder}>
           {error ? (
             <div style={{ display: 'grid', placeItems: 'center', height: '100%' }}>
@@ -138,10 +136,8 @@ export default function Campus() {
                     cursor: 'pointer'
                   }}
                   onClick={() => {
-                    const model =
-                      row.sceneAnchor?.model ?? MODEL_BY_TYPE[row.deviceType] ?? row.deviceType
-                    setSelected(model)
-                    handle.current?.focus(model)
+                    setSelected(row.id)
+                    handle.current?.focus(row.id)
                   }}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>

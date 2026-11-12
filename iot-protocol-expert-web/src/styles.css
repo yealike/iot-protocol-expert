@@ -272,6 +272,18 @@ a {
   overflow: hidden;
 }
 
+.campus-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 16px;
+}
+
+@media (max-width: 900px) {
+  .campus-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .campus-frame {
   position: relative;
 }

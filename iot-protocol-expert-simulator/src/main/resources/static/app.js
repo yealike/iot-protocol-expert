@@ -351,7 +351,7 @@ api('/api/stop-reasons').then(r => {
     $('stopReasonSelect').innerHTML = Object.entries(r).map(([c, n]) => `<option value="${c}">0x${Number(c).toString(16).toUpperCase()} ${esc(n)}</option>`).join('')
 }).catch(e => toast(e.message, true));
 
-/* 园区沙盘：同源代理不便时直接嵌入运维平台的 SPA 路由，首次在框内登录即可 */
+/* 园区沙盘：由独立前端站点托管，嵌入其 /campus 路由，首次在框内登录即可 */
 (function campusEmbed() {
     const toggle = document.getElementById('campusToggle');
     const frame = document.getElementById('campusFrame');

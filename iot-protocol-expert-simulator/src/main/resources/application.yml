@@ -22,6 +22,7 @@ ipe:
   simulator:
     protocol: ykc16
     ops-base-url: ${IPE_OPS_BASE_URL:http://127.0.0.1:19082}
+    web-base-url: ${IPE_WEB_BASE_URL:http://localhost:5173}
     ops-simulator-token: ${IPE_OPS_SIMULATOR_TOKEN:local-simulator-token}
     auto-select-device-id: ${IPE_SIMULATOR_DEVICE_ID:}
     platform-host: 127.0.0.1

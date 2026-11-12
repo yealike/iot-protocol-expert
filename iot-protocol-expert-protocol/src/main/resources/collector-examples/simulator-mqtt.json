@@ -1,0 +1,8 @@
+{
+  "broker":{"host":"127.0.0.1","port":1883,"tls":false,"clientId":"ipe-edge-demo"},
+  "devices":[
+    {"topic":"ipe/simulation/SIM-LOCK-001/properties","protocolDeviceId":"SIM-LOCK-001","properties":{"state":"state","batteryPercent":"batteryPercent","occupied":"occupied"}},
+    {"topic":"ipe/simulation/SIM-GATE-001/properties","protocolDeviceId":"SIM-GATE-001","properties":{"state":"state","passCountToday":"passCountToday"}},
+    {"topic":"ipe/simulation/SIM-CAM-001/properties","protocol":"ONVIF","protocolDeviceId":"SIM-CAM-001","properties":{"state":"state","storageUsedPercent":"storageUsedPercent","recordEnabled":"recordEnabled"}}
+  ]
+}

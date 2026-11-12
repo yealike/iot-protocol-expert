@@ -120,15 +120,16 @@ Flyway：`iot-protocol-expert-ops/src/main/resources/db/migration/V1__init.sql`�
 
 ### 6.1 PostgreSQL
 
-个人服务器示例（应用仍在本机运行）：
+本机 PostgreSQL 示例（密码只在本机环境中设置，不要写入仓库）：
 
 ```bash
+: "${IPE_OPS_DB_PASSWORD:?请先在本机 shell 中设置 IPE_OPS_DB_PASSWORD}"
 docker run -d --name ipe-postgres --restart unless-stopped \
-  -e POSTGRES_DB=ipe_ops -e POSTGRES_USER=ipe -e POSTGRES_PASSWORD=devpass \
+  -e POSTGRES_DB=ipe_ops -e POSTGRES_USER=ipe -e POSTGRES_PASSWORD="$IPE_OPS_DB_PASSWORD" \
   -p 55432:5432 -v ipe_pg_data:/var/lib/postgresql/data postgres:16
 ```
 
-连接串默认：`jdbc:postgresql://100.101.91.38:55432/ipe_ops`，用户 `ipe`，密码 `devpass`。生产请替换密码并限制来源网段。
+连接串默认指向本机 `jdbc:postgresql://127.0.0.1:55432/ipe_ops`，用户名默认为 `ipe`。请在本机设置 `IPE_OPS_DB_PASSWORD`，生产环境使用独立密钥管理并限制数据库来源网段。
 
 ### 6.2 启动
 
@@ -138,7 +139,7 @@ mvn -B package
 .\scripts\start-local.ps1 -DeviceId 1
 ```
 
-- 运维平台 <http://localhost:19082/ops>，协议通道 19080，模拟器 19081。
+- 运维平台 API <http://localhost:19082>，前端 <http://localhost:5173>，协议通道 19080，模拟器 19081。
 - 模拟器右上角可切换设备；同一实例同一时刻只运行一台选中设备。
 - 停止：`.\scripts\stop-local.ps1`。
 
@@ -146,7 +147,7 @@ mvn -B package
 
 ```powershell
 $env:IPE_OTLP_ENABLED='true'
-$env:IPE_OTLP_ENDPOINT='http://100.101.91.38:4318'
+$env:IPE_OTLP_ENDPOINT='http://127.0.0.1:4318'
 .\scripts\start-local.ps1
 ```
 
@@ -154,7 +155,7 @@ $env:IPE_OTLP_ENDPOINT='http://100.101.91.38:4318'
 
 ## 7. 验收记录（2026-11-11，本地）
 
-环境：JDK 21、PostgreSQL 16.14、协议通道 19080、模拟器 19081、运维平台 19082、OTLP `100.101.91.38:4318`。
+环境：JDK 21、PostgreSQL 16.14、协议通道 19080、模拟器 19081、运维平台 19082、本机 OTLP Collector `127.0.0.1:4318`。
 
 | 项目 | 结果 |
 |---|---|

@@ -68,7 +68,7 @@ public class InternalTelemetryController {
     /** 通用遥测入口：任意设备类型的属性批量上报。 */
     @PostMapping("/properties")
     public int properties(@RequestBody TelemetryRequest request) {
-        return properties.writeBatchByProtocol(
+        return properties.writeGatewayBatch(
                 request.protocol(),
                 request.protocolDeviceId(),
                 request.channelNo(),

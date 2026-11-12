@@ -11,7 +11,7 @@ Protocol/Ops/Simulator --OTLP HTTP--> Collector :4318
 Ops --JDBC--> PostgreSQL (设备/订单/账单/报文/命令/排障)
 ```
 
-服务端栈位于服务器 `/home/yehan/ipe-observability`，复用现有 Grafana / Prometheus 的 `prometheus-grafana_monitoring` 网络。运维平台数据库为服务器上的 `ipe-postgres`（端口 `55432`），应用仍在本机运行。
+集中式可观测性组件部署在独立服务器上，应用仍可在本机运行。真实服务器地址、账号和部署路径仅保存在本机配置中。
 
 ## 本地启动
 
@@ -25,7 +25,7 @@ mvn -B package
 
 | 入口 | 协议通道 | 运维平台 | 模拟器 |
 |---|---|---|---|
-| 业务控制台 | — | <http://localhost:19082/ops> | <http://localhost:19081> |
+| 业务控制台 | — | <http://localhost:5173>（前端）；<http://localhost:19082>（API） | <http://localhost:19081> |
 | 健康检查 | <http://localhost:19080/actuator/health> | <http://localhost:19082/actuator/health> | <http://localhost:19081/actuator/health> |
 | 最近链路（本地缓存） | <http://localhost:19080/actuator/telemetry> | <http://localhost:19082/actuator/telemetry> | <http://localhost:19081/actuator/telemetry> |
 | Prometheus 文本指标 | <http://localhost:19080/actuator/prometheus> | <http://localhost:19082/actuator/prometheus> | <http://localhost:19081/actuator/prometheus> |
@@ -38,7 +38,7 @@ mvn -B package
 
 ```text
 IPE_OTLP_ENABLED=true
-IPE_OTLP_ENDPOINT=http://100.101.91.38:4318
+IPE_OTLP_ENDPOINT=http://127.0.0.1:4318
 IPE_ENVIRONMENT=local
 ```
 
@@ -46,7 +46,7 @@ IPE_ENVIRONMENT=local
 
 ## Grafana
 
-- 地址：<http://100.101.91.38:3000>
+- 本机 Grafana 地址：<http://127.0.0.1:3000>
 - 数据源：`IPE Tempo`、`IPE Loki`、`IPE Prometheus`
 - 常用入口：
   - Explore → `IPE Tempo` → Search，按 service / span 名称查询
@@ -59,7 +59,7 @@ Tempo 数据源自带 Trace → Logs 跳转；Loki 的 `trace_id` 派生字段�
 
 | 组件 | 地址 | 说明 |
 |---|---|---|
-| OTel Collector | `100.101.91.38:4317`（gRPC）/ `4318`（HTTP） | 应用唯一入口；batch、脱敏、队列重试 |
+| OTel Collector | `127.0.0.1:4317`（gRPC）/ `4318`（HTTP，本机示例） | 应用唯一入口；batch、脱敏、队列重试 |
 | Tempo | `127.0.0.1:3200`（仅本机/Grafana） | 本地文件存储，trace 保留 7 天 |
 | Loki | `127.0.0.1:3100` | 单机 filesystem，日志保留 7 天 |
 | Prometheus | `9090` | 抓取 Collector `:8889` 暴露的应用指标与 spanmetrics |
@@ -107,7 +107,7 @@ python scripts/verify-spring-local.py
 服务端健康检查：
 
 ```bash
-cd /home/yehan/ipe-observability
+cd /path/to/ipe-observability
 docker compose ps
 curl -s 127.0.0.1:3200/ready     # Tempo
 curl -s 127.0.0.1:3100/ready     # Loki

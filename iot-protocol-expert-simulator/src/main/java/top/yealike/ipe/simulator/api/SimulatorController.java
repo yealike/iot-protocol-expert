@@ -35,10 +35,10 @@ public class SimulatorController {
         return runtime.state();
     }
 
-    /** 园区 3D 沙盘地址：由运维平台托管，模拟器只负责嵌入。 */
+    /** 园区 3D 沙盘地址：由独立前端站点托管，模拟器只负责内嵌。 */
     @GetMapping("/campus-url")
     public Map<String, Object> campusUrl() {
-        String base = properties.getOpsBaseUrl();
+        String base = properties.getWebBaseUrl();
         String normalized = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
         return Map.of("url", normalized + "/campus");
     }

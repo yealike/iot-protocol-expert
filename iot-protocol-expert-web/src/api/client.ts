@@ -1,6 +1,7 @@
 import type {
   AlarmView,
   CurrentUser,
+  CommandView,
   DeviceDetail,
   DeviceRow,
   DeviceTypeDescriptor,
@@ -107,7 +108,13 @@ export const api = {
     request<DeviceRow>(`/api/ops/devices/${id}/undeploy`, { method: 'POST' }),
   setDeviceEnabled: (id: number, value: boolean) =>
     request<DeviceRow>(`/api/ops/devices/${id}/enabled?value=${value}`, { method: 'POST' }),
+  setDeviceWorkAllowance: (id: number, value: boolean) =>
+    request<DeviceRow>(`/api/ops/devices/${id}/work-allowance?allowWork=${value}`, {
+      method: 'POST'
+    }),
   saveDevice: (body: unknown) => request<DeviceRow>('/api/ops/devices', json(body)),
+  simulationCommand: (deviceId: number, action: string) =>
+    request<CommandView>('/api/ops/simulation/commands', json({ deviceId, action })),
 
   // ---------------------------------------------------------------- 产品
 

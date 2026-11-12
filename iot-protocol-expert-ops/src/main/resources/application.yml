@@ -10,9 +10,9 @@ spring:
   application:
     name: iot-protocol-expert-ops
   datasource:
-    url: ${IPE_OPS_DB_URL:jdbc:postgresql://100.101.91.38:55432/ipe_ops}
+    url: ${IPE_OPS_DB_URL:jdbc:postgresql://127.0.0.1:55432/ipe_ops}
     username: ${IPE_OPS_DB_USER:ipe}
-    password: ${IPE_OPS_DB_PASSWORD:devpass}
+    password: ${IPE_OPS_DB_PASSWORD:}
     hikari:
       maximum-pool-size: 8
       minimum-idle: 1

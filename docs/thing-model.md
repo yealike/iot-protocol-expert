@@ -237,7 +237,7 @@ alarm_rule (规则，可挂在产品上批量生效，也可覆盖到单设备)
 
 ```powershell
 # 清库后由 Flyway 重建（会写入种子数据）
-$env:IPE_OPS_DB_URL='jdbc:postgresql://100.101.91.38:55432/ipe_ops'
+$env:IPE_OPS_DB_URL='jdbc:postgresql://127.0.0.1:55432/ipe_ops'
 ```
 
 种子数据包含：1 个演示站点、8 个产品（7 类设备 + 电表）、以及覆盖 3D 沙盘的 10 台演示设备

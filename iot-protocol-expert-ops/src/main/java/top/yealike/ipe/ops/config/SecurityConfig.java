@@ -29,41 +29,40 @@ public class SecurityConfig {
     @Bean
     SecurityFilterChain securityFilterChain(HttpSecurity http, OpsProperties properties) throws Exception {
         http
-                // SPA 用 fetch 提交登录表单，不带 CSRF token；登录本身是凭据校验，不依赖 token
+                // 前端用 fetch 提交登录表单，不带 CSRF token；登录本身是凭据校验，不依赖 token
                 .csrf(csrf -> csrf.ignoringRequestMatchers("/internal/**", "/api/**", "/login", "/logout"))
                 .authorizeHttpRequests(auth -> auth.requestMatchers("/internal/**", "/api/ops/simulator/**")
                         .permitAll()
-                        // SPA 外壳与其静态资源必须匿名可取，否则未登录时连登录页都加载不出来
-                        .requestMatchers(
-                                "/actuator/**",
-                                "/login",
-                                "/logout",
-                                "/favicon.ico",
-                                "/",
-                                "/index.html",
-                                "/assets/**",
-                                "/overview",
-                                "/devices",
-                                "/devices/**",
-                                "/products",
-                                "/products/**",
-                                "/alarms",
-                                "/campus",
-                                "/ops")
+                        // 后端只提供 API：登录/登出/健康检查与错误页匿名可取，其余一律要求认证
+                        .requestMatchers("/actuator/**", "/login", "/logout", "/error", "/favicon.ico")
                         .permitAll()
                         .requestMatchers("/api/**")
                         .authenticated()
                         .anyRequest()
                         .authenticated())
-                // 园区 3D 沙盘需要被模拟器页面内嵌：只放行本机来源，而不是整体关闭点击劫持防护
-                .headers(headers -> headers.frameOptions(frame -> frame.disable())
-                        .contentSecurityPolicy(csp ->
-                                csp.policyDirectives("frame-ancestors 'self' http://127.0.0.1:* http://localhost:*")))
-                .formLogin(form -> form.defaultSuccessUrl("/overview", true))
+                // 前端是独立站点：未认证返回 401，而不是把 fetch 重定向到框架默认登录页
+                .exceptionHandling(exception -> exception.authenticationEntryPoint(
+                        (request, response, authException) -> response.sendError(HttpStatus.UNAUTHORIZED.value())))
+                // 登录成功/失败都以 JSON 响应，前端只关心状态码，不再由后端转发 SPA 路由
+                .formLogin(form -> form.successHandler((request, response, authentication) -> {
+                            writeJson(response, HttpStatus.OK, "{\"authenticated\":true}");
+                        })
+                        .failureHandler((request, response, exception) -> writeJson(
+                                response,
+                                HttpStatus.UNAUTHORIZED,
+                                "{\"error\":\"BAD_CREDENTIALS\",\"message\":\"账号或密码不正确\"}")))
+                .logout(logout -> logout.logoutSuccessHandler(
+                        (request, response, authentication) -> response.setStatus(HttpStatus.NO_CONTENT.value())))
                 .httpBasic(basic -> {})
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
                 .addFilterBefore(new ServiceTokenFilter(properties), UsernamePasswordAuthenticationFilter.class);
         return http.build();
+    }
+
+    private static void writeJson(HttpServletResponse response, HttpStatus status, String body) throws IOException {
+        response.setStatus(status.value());
+        response.setContentType("application/json;charset=UTF-8");
+        response.getWriter().write(body);
     }
 
     /** 内部调用与模拟器只读接口使用服务令牌，不建立用户会话。 */

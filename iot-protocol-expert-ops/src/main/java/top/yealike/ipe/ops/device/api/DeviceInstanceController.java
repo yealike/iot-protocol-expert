@@ -79,6 +79,10 @@ public class DeviceInstanceController {
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
     public DeviceDtos.DeviceRow create(@RequestBody DeviceDtos.DeviceSave input, Principal principal) {
+        if (input.deviceCode() != null
+                && devices.findByCode(input.deviceCode().trim()).isPresent()) {
+            throw new IllegalArgumentException("设备编码已存在: " + input.deviceCode().trim());
+        }
         DeviceInstance saved = devices.save(input);
         audits.record(
                 name(principal), "device.create", "device", String.valueOf(saved.id), "SUCCESS", saved.deviceCode);

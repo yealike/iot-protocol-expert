@@ -111,6 +111,48 @@ public class DevicePropertyService {
         return writeBatchInternal(device, channelNo, values, occurredAt == null ? LocalDateTime.now() : occurredAt);
     }
 
+    /** Generic gateway telemetry must use a registered, enabled device and declared properties. */
+    @Transactional
+    public int writeGatewayBatch(
+            String protocol,
+            String protocolDeviceId,
+            String channelNo,
+            Map<String, Object> values,
+            LocalDateTime occurredAt) {
+        DeviceInstance device = devices.findByProtocolAndProtocolDeviceId(protocol, protocolDeviceId)
+                .orElseThrow(() -> new IllegalArgumentException("设备未登记: " + protocol + "/" + protocolDeviceId));
+        if (!device.enabled || (device.protocolDeviceId.startsWith("SIM-") && !device.allowSimulate)) {
+            throw new IllegalArgumentException("设备未启用或不允许模拟: " + device.deviceCode);
+        }
+        if (values == null || values.isEmpty() || values.size() > 100) {
+            throw new IllegalArgumentException("属性数量必须为 1 至 100");
+        }
+        ThingModel model = models.of(device);
+        for (String key : values.keySet()) {
+            var property = model.property(key).orElseThrow(() -> new IllegalArgumentException("物模型未定义属性: " + key));
+            if (values.get(key) == null) {
+                throw new IllegalArgumentException("属性值不能为空: " + key);
+            }
+            if (property.channel() && (channelNo == null || channelNo.isBlank())) {
+                throw new IllegalArgumentException("通道属性必须提供通道号: " + key);
+            }
+        }
+        int written =
+                writeBatchInternal(device, channelNo, values, occurredAt == null ? LocalDateTime.now() : occurredAt);
+        if (written > 0 && !"CHARGER".equals(device.deviceType)) {
+            LocalDateTime now = LocalDateTime.now();
+            if (!device.isOnline()) {
+                device.state = DeviceInstance.STATE_ONLINE;
+                device.onlineAt = now;
+            }
+            device.lastSeen = now;
+            device.updatedAt = now;
+            device.sessionId = "gateway-telemetry";
+            devices.save(device);
+        }
+        return written;
+    }
+
     private int writeBatchInternal(
             DeviceInstance device, String channelNo, Map<String, Object> values, LocalDateTime occurredAt) {
         ThingModel model = models.of(device);

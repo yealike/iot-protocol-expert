@@ -6,7 +6,6 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "build:ops": "tsc -b && vite build --outDir ../iot-protocol-expert-ops/src/main/resources/static/app --emptyOutDir",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "format": "prettier --write .",

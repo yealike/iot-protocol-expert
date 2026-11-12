@@ -3,6 +3,8 @@ target/
 build/
 out/
 dist/
+# 前端产物不再回灌后端模块
+/iot-protocol-expert-ops/src/main/resources/static/
 *.class
 *.jar
 *.war

@@ -14,7 +14,7 @@ Java 21 / Spring Boot 4.0.9 / Netty / PostgreSQL 16 / Flyway / React 19 + Vite +
 | `iot-protocol-expert-codec` | — | 云快充与 OCPP 纯编解码库 | 无 |
 | `iot-protocol-expert-protocol` | 19080；TCP 8768；ws 8769 | 连接、校验、编解码、会话与下行发送 | **零业务持久化** |
 | `iot-protocol-expert-ops` | 19082 | 产品与物模型、设备、通道、属性/事件/告警、订单账单、报文、命令、排障、用户与审计 | PostgreSQL |
-| `iot-protocol-expert-web` | 5173（dev） | React SPA：总览、设备、产品与物模型、告警、园区 3D 沙盘 | 无 |
+| `iot-protocol-expert-web` | 5173（dev） | React SPA：总览、设备、产品与物模型、告警、园区 3D 沙盘；生产构建 `dist/` 独立托管 | 无 |
 | `iot-protocol-expert-simulator` | 19081 | 从平台选桩，模拟插枪、充电、上报与账单补传，内嵌园区沙盘 | 模拟器自身状态文件 |
 
 ```text
@@ -35,9 +35,11 @@ Java 21 / Spring Boot 4.0.9 / Netty / PostgreSQL 16 / Flyway / React 19 + Vite +
 需要 JDK 21、PostgreSQL 16。仓库不部署服务；中间件可放在个人服务器，本机运行应用。
 
 ```powershell
-# 1) 准备 PostgreSQL（示例：服务器 100.101.91.38:55432）
-#    docker run -d --name ipe-postgres -e POSTGRES_DB=ipe_ops -e POSTGRES_USER=ipe \
-#      -e POSTGRES_PASSWORD=devpass -p 55432:5432 -v ipe_pg_data:/var/lib/postgresql/data postgres:16
+# 1) 准备本机 PostgreSQL。密码只在本机输入，不要提交到仓库。
+$env:IPE_OPS_DB_PASSWORD = Read-Host '设置本机 PostgreSQL 密码'
+docker run -d --name ipe-postgres -e POSTGRES_DB=ipe_ops -e POSTGRES_USER=ipe `
+  -e "POSTGRES_PASSWORD=$env:IPE_OPS_DB_PASSWORD" -p 55432:5432 `
+  -v ipe_pg_data:/var/lib/postgresql/data postgres:16
 
 # 2) 编译
 $env:JAVA_HOME='D:\develop\jdk\jdk-21'; $env:PATH="$env:JAVA_HOME\bin;$env:PATH"
@@ -47,7 +49,8 @@ mvn -B package
 .\scripts\start-local.ps1 -DeviceId 1
 ```
 
-- 运维平台：<http://localhost:19082/>（React SPA，未登录时显示登录页）。
+- 运维平台后端：<http://localhost:19082/>（只提供 API，不托管前端页面）。
+- 运维平台前端：<http://localhost:5173/>（`npm run dev`；生产构建 `dist/`，由静态服务器托管并反代到后端）。
 - 协议通道：<http://localhost:19080>，TCP `8768`，OCPP `ws://localhost:8769/ocpp/{编号}`。
 - 模拟器：<http://localhost:19081>，右上角从平台设备目录选择一台桩。
 - 停止：`.\scripts\stop-local.ps1`。
@@ -94,11 +97,11 @@ mvn -B package
 
 ```powershell
 $env:IPE_OTLP_ENABLED='true'
-$env:IPE_OTLP_ENDPOINT='http://100.101.91.38:4318'
+$env:IPE_OTLP_ENDPOINT='http://127.0.0.1:4318'
 .\scripts\start-local.ps1
 ```
 
-- Grafana：<http://100.101.91.38:3000>
+- Grafana：<http://127.0.0.1:3000>（本机部署时）
 - Tempo 已实测收到 `iot-protocol-expert-ops` 的 HTTP 与定时任务链路。
 - Loki 当前未返回标签，排障结果会把「集中日志不可用」作为待确认项，不影响业务帧流水与确定性解析。
 - 本地无 Grafana 时可查看 `/actuator/telemetry`（local profile）与 `/actuator/prometheus`。[本地调试说明](docs/observability.md)
@@ -131,8 +134,12 @@ $env:IPE_OTLP_ENDPOINT='http://100.101.91.38:4318'
 cd iot-protocol-expert-web
 npm install
 npm run dev          # 开发：http://localhost:5173，API 代理到 19082
-npm run build:ops    # 生产：产物直接写入 ops 模块 static/，随 jar 一起发布
+npm run build        # 生产：生成 dist/，交给静态服务器托管
 ```
+
+前端与后端分开部署：`dist/` 由 nginx 等静态服务器托管，同一站点把 `/api`、`/login`、`/logout`、
+`/actuator` 反向代理到 19082。ops 模块只提供 API，不再包含任何前端资源。
+部署示例见 `iot-protocol-expert-web/README.md`。
 
 ### 代码格式化
 
@@ -173,6 +180,8 @@ mvn -B package
 
 ## 文档索引
 
+- [多设备模拟与协议采集](docs/multi-device-java.md)：Java 模拟器、Modbus / MQTT 配置与本地启动
+- [多设备接入审查](docs/multi-device-review.md)：已验证范围和生产限制
 - [运维平台与排障](docs/ops-platform.md)：边界、数据模型、内部 API、页面、验收、迁移
 - [可观测性](docs/observability.md)：OTLP、Grafana、指标与日志
 - [OCPP 1.6J](docs/ocpp16.md)：动作、命令与模拟器

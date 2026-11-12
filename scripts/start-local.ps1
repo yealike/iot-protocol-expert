@@ -73,6 +73,7 @@ function Start-App($name, $jar, $port) {
 Start-App 'ops' $ops 19082
 Start-App 'protocol' $platform 19080
 Start-App 'simulator' $simulator 19081
-Write-Host '运维平台 http://localhost:19082/ops （admin/admin123、ops/ops123、viewer/viewer123）'
+Write-Host '运维平台 API http://localhost:19082 （admin/admin123、ops/ops123、viewer/viewer123）'
+Write-Host '运维平台前端 http://localhost:5173（在 iot-protocol-expert-web 下 npm run dev）'
 Write-Host '协议通道 19080（TCP 8768 / ws 8769）；模拟器 http://localhost:19081'
 Write-Host '最近链路 /actuator/telemetry ；指标 /actuator/prometheus ；OTLP 默认关闭'
