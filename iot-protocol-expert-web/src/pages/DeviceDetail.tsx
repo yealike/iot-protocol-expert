@@ -7,6 +7,7 @@ import {
   Col,
   Descriptions,
   Empty,
+  Popconfirm,
   Row,
   Segmented,
   Select,
@@ -22,11 +23,41 @@ import { AlarmLevelTag, AlarmStateTag, DeviceStateTag } from '../components/tags
 import Chart from '../components/Chart'
 import type { PropertyValue } from '../api/types'
 
+const SIM_ACTIONS: Record<string, { action: string; label: string }[]> = {
+  'SIM-PV-001': [
+    { action: 'start', label: '启动' },
+    { action: 'stop', label: '停止' }
+  ],
+  'SIM-WIND-001': [
+    { action: 'start', label: '启动' },
+    { action: 'stop', label: '停止' }
+  ],
+  'SIM-ESS-001': [
+    { action: 'charge', label: '充电' },
+    { action: 'discharge', label: '放电' },
+    { action: 'standby', label: '待机' }
+  ],
+  'SIM-METER-001': [{ action: 'sample', label: '采样' }],
+  'SIM-LOCK-001': [
+    { action: 'lower', label: '降锁' },
+    { action: 'raise', label: '升锁' }
+  ],
+  'SIM-GATE-001': [
+    { action: 'open', label: '开闸' },
+    { action: 'close', label: '关闸' }
+  ],
+  'SIM-CAM-001': [
+    { action: 'startRecord', label: '开始录像' },
+    { action: 'stopRecord', label: '停止录像' }
+  ]
+}
+
 export default function DeviceDetail() {
   const { id } = useParams()
   const deviceId = Number(id)
   const { message } = App.useApp()
   const queryClient = useQueryClient()
+  const me = useQuery({ queryKey: ['me'], queryFn: api.me })
 
   const detail = useQuery({
     queryKey: ['device', deviceId],
@@ -56,6 +87,21 @@ export default function DeviceDetail() {
       queryClient.invalidateQueries({ queryKey: ['device', deviceId] })
       queryClient.invalidateQueries({ queryKey: ['overview'] })
     },
+    onError: (error: Error) => message.error(error.message)
+  })
+
+  const simulationCommand = useMutation({
+    mutationFn: (action: string) => api.simulationCommand(deviceId, action),
+    onSuccess: (result) => {
+      if (result.status === 'SUCCESS') message.success('模拟器已执行，遥测稍后更新')
+      else message.warning(`模拟指令状态：${result.status}，请查看指令记录`)
+      queryClient.invalidateQueries({ queryKey: ['device', deviceId] })
+    },
+    onError: (error: Error) => message.error(error.message)
+  })
+  const workAllowance = useMutation({
+    mutationFn: (allow: boolean) => api.setDeviceWorkAllowance(deviceId, allow),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['device', deviceId] }),
     onError: (error: Error) => message.error(error.message)
   })
 
@@ -155,6 +201,39 @@ export default function DeviceDetail() {
 
       <Row gutter={[16, 16]}>
         <Col xs={24} xl={9}>
+          {SIM_ACTIONS[device.protocolDeviceId] &&
+            me.data?.roles?.some((role) => ['ADMIN', 'OPS'].includes(role)) && (
+              <Card title="模拟设备控制" size="small" bordered={false} style={{ marginBottom: 16 }}>
+                <p className="muted">仅作用于本机模拟器；状态以模拟遥测为准。</p>
+                <Space wrap>
+                  <Popconfirm
+                    title={
+                      device.allowWork ? '关闭此设备的远程操作？' : '允许此模拟设备接收远程操作？'
+                    }
+                    onConfirm={() => workAllowance.mutate(!device.allowWork)}
+                  >
+                    <Button loading={workAllowance.isPending}>
+                      {device.allowWork ? '关闭远程操作' : '允许远程操作'}
+                    </Button>
+                  </Popconfirm>
+                  {SIM_ACTIONS[device.protocolDeviceId].map(({ action, label }) => (
+                    <Popconfirm
+                      key={action}
+                      title={`确认对模拟设备执行“${label}”？`}
+                      onConfirm={() => simulationCommand.mutate(action)}
+                    >
+                      <Button
+                        disabled={!device.enabled || !device.allowSimulate || !device.allowWork}
+                        loading={simulationCommand.isPending}
+                      >
+                        {label}
+                      </Button>
+                    </Popconfirm>
+                  ))}
+                </Space>
+                {!device.allowWork && <p className="muted">该设备未启用远程操作。</p>}
+              </Card>
+            )}
           <Card title="档案" size="small" bordered={false}>
             <Descriptions column={1} size="small" colon={false}>
               <Descriptions.Item label="产品">{device.productName}</Descriptions.Item>

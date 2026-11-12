@@ -1,0 +1,11 @@
+{
+  "devices": [{
+    "host":"REPLACE_WITH_METER_IP", "port":502, "unitId":1,
+    "protocolDeviceId":"REPLACE_WITH_REGISTERED_DEVICE_ID", "intervalSeconds":10,
+    "points":[
+      {"address":12336,"function":3,"type":"int32","scale":0.001,"invalidRaw":[2147483647],"property":"activePower"},
+      {"address":12338,"function":3,"type":"uint16","scale":0.01,"invalidRaw":[65535],"property":"frequency"},
+      {"address":12346,"function":3,"type":"int16","scale":0.001,"invalidRaw":[32767],"property":"powerFactor"}
+    ]
+  }]
+}

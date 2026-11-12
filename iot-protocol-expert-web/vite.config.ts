@@ -2,8 +2,9 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
 /**
- * 开发期直接把 /api、/login、/logout、/internal 代理到运维平台 19082，
- * 免去 CORS 与额外的 mock 层。生产构建输出到 ops 模块的 static/app，由 Spring Boot 托管。
+ * 开发期直接把 /api、/login、/logout、/actuator 代理到运维平台 19082，
+ * 免去 CORS 与额外的 mock 层。生产构建输出到 dist，由独立静态服务器托管，
+ * 同一台反向代理把 /api、/login、/logout、/actuator 转发到 19082，保持与后端同源。
  */
 export default defineConfig({
   base: '/',

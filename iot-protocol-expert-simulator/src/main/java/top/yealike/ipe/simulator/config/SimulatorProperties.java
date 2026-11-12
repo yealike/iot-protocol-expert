@@ -25,6 +25,9 @@ public class SimulatorProperties {
     /** 运维平台内部 API 地址，用于查询可模拟设备。 */
     private String opsBaseUrl = "http://127.0.0.1:19082";
 
+    /** 前端站点地址；园区 3D 沙盘由独立前端托管，模拟器只负责内嵌。 */
+    private String webBaseUrl = "http://localhost:5173";
+
     /** 模拟器只读凭证。 */
     private String opsSimulatorToken = "local-simulator-token";
 
@@ -47,6 +50,14 @@ public class SimulatorProperties {
 
     public void setOpsBaseUrl(String opsBaseUrl) {
         this.opsBaseUrl = opsBaseUrl;
+    }
+
+    public String getWebBaseUrl() {
+        return webBaseUrl;
+    }
+
+    public void setWebBaseUrl(String webBaseUrl) {
+        this.webBaseUrl = webBaseUrl;
     }
 
     public String getOpsSimulatorToken() {

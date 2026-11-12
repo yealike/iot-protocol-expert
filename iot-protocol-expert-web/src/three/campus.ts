@@ -34,10 +34,10 @@ export interface DeviceFeed {
 
 export interface CampusHandle {
   setDevices(feeds: DeviceFeed[]): void
-  focus(model: string): void
+  focus(deviceId: number): void
   resetView(): void
   dispose(): void
-  onSelect(handler: (model: string | null) => void): void
+  onSelect(handler: (deviceId: number | null) => void): void
 }
 
 interface Options {
@@ -110,7 +110,7 @@ export async function createCampus(
     const width = container.clientWidth || 1
     const height = container.clientHeight || 1
     const aspect = width / height
-    const halfHeight = Math.max(10.8, 16.9 / aspect)
+    const halfHeight = Math.max(13.5, 23 / aspect)
     camera.left = -halfHeight * aspect
     camera.right = halfHeight * aspect
     camera.top = halfHeight
@@ -167,6 +167,103 @@ export async function createCampus(
   })
   scene.add(campus)
 
+  // Highlight the main vehicle only when its charger supplies real power and SOC.
+  const vehicle = campus.getObjectByName('EV')
+  const vehicleMaterials: {
+    material: THREE.Material
+    opacity: number
+    transparent: boolean
+    depthWrite: boolean
+  }[] = []
+  const battery = new THREE.Group()
+  const cells: THREE.Mesh[] = []
+  const socCanvas = document.createElement('canvas')
+  socCanvas.width = 512
+  socCanvas.height = 128
+  const socTexture = new THREE.CanvasTexture(socCanvas)
+  socTexture.colorSpace = THREE.SRGBColorSpace
+  if (vehicle) {
+    vehicle.traverse((object) => {
+      const mesh = object as THREE.Mesh
+      if (!mesh.isMesh) return
+      const materials = (Array.isArray(mesh.material) ? mesh.material : [mesh.material]).map(
+        (source) => {
+          const material = source.clone()
+          vehicleMaterials.push({
+            material,
+            opacity: material.opacity,
+            transparent: material.transparent,
+            depthWrite: material.depthWrite
+          })
+          return material
+        }
+      )
+      mesh.material = Array.isArray(mesh.material) ? materials : materials[0]
+    })
+    vehicle.add(battery)
+    const pack = new THREE.Mesh(
+      new THREE.BoxGeometry(1.45, 0.12, 2.45),
+      new THREE.MeshBasicMaterial({ color: 0x123e34 })
+    )
+    pack.position.y = 0.31
+    battery.add(pack)
+    for (let i = 0; i < 10; i++) {
+      const cell = new THREE.Mesh(
+        new THREE.BoxGeometry(1.26, 0.035, 0.19),
+        new THREE.MeshBasicMaterial({ color: 0x63efaf })
+      )
+      cell.position.set(0, 0.39, -1.04 + i * 0.23)
+      battery.add(cell)
+      cells.push(cell)
+    }
+    const label = new THREE.Sprite(
+      new THREE.SpriteMaterial({ map: socTexture, transparent: true, depthTest: false })
+    )
+    label.position.set(0, 1.9, 0)
+    label.scale.set(2.8, 0.7, 1)
+    label.renderOrder = 10
+    battery.add(label)
+    battery.visible = false
+  }
+  let batterySignature = ''
+  const updateBattery = (feed: DeviceFeed | null) => {
+    const soc = feed?.soc
+    const active = Boolean(
+      feed?.online &&
+      Number.isFinite(soc) &&
+      soc! >= 0 &&
+      soc! <= 100 &&
+      Number.isFinite(feed?.power) &&
+      Math.abs(feed!.power!) > 0.01
+    )
+    const signature = active ? String(Math.round(soc!)) : 'off'
+    if (signature === batterySignature) return
+    batterySignature = signature
+    battery.visible = active
+    for (const entry of vehicleMaterials) {
+      entry.material.transparent = active || entry.transparent
+      entry.material.opacity = active ? Math.min(entry.opacity, 0.16) : entry.opacity
+      entry.material.depthWrite = active ? false : entry.depthWrite
+      entry.material.needsUpdate = true
+    }
+    if (!active) return
+    const value = Math.round(soc!)
+    cells.forEach((cell, i) =>
+      (cell.material as THREE.MeshBasicMaterial).color.setHex(i < value / 10 ? 0x63efaf : 0x28584d)
+    )
+    const ctx = socCanvas.getContext('2d')!
+    ctx.clearRect(0, 0, 512, 128)
+    ctx.fillStyle = 'rgba(8,34,29,0.92)'
+    ctx.beginPath()
+    ctx.roundRect(2, 2, 508, 124, 22)
+    ctx.fill()
+    ctx.fillStyle = '#9bffcc'
+    ctx.font = 'bold 58px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(`电池 SOC  ${value}%`, 256, 82)
+    socTexture.needsUpdate = true
+  }
+
   // ---------------------------------------------------------------- 设备槽位
 
   const slots: Slot[] = []
@@ -199,13 +296,13 @@ export async function createCampus(
     button.className = 'campus-marker'
     button.dataset.model = model
     button.type = 'button'
-    button.addEventListener('click', () => (selected = model))
+    button.addEventListener('click', () => select(model))
     overlay.appendChild(button)
     return button
   }
 
   let selected: string | null = null
-  const selectionHandlers: ((model: string | null) => void)[] = []
+  const selectionHandlers: ((deviceId: number | null) => void)[] = []
 
   // 屏幕贴图：充电桩屏与道闸屏
   const screenSurface = (width: number, height: number): ScreenSurface => {
@@ -297,7 +394,8 @@ export async function createCampus(
 
   const select = (model: string | null) => {
     selected = model
-    selectionHandlers.forEach((handler) => handler(model))
+    const deviceId = slots.find((slot) => slot.model === model)?.feed?.deviceId ?? null
+    selectionHandlers.forEach((handler) => handler(deviceId))
   }
 
   // ---------------------------------------------------------------- 状态映射
@@ -305,9 +403,6 @@ export async function createCampus(
   const rotor = campus.getObjectByName('WindRotor')
   const gateInBar = campus.getObjectByName('GateIn_Bar')
   const gateOutBar = campus.getObjectByName('GateOut_Bar')
-  const cameraInHead = campus.getObjectByName('CameraIn_Head')
-  const cameraOutHead = campus.getObjectByName('CameraOut_Head')
-
   const smooth = new Map<string, number>()
   const approach = (key: string, target: number, dt: number, rate = 6) => {
     const current = smooth.get(key) ?? target
@@ -389,37 +484,39 @@ export async function createCampus(
 
     const wind = slots.find((slot) => slot.model.startsWith('Wind'))?.feed
     if (rotor) {
-      const speed = wind?.windSpeed ?? 6
-      rotor.rotation.z += dt * (0.6 + speed * 0.32)
+      const speed = wind?.online && !wind.alarm ? (wind.windSpeed ?? 0) : 0
+      rotor.rotation.z += dt * speed * 0.32
     }
 
     const gateIn = slots.find((slot) => slot.model.startsWith('GateIn'))?.feed
     const gateOut = slots.find((slot) => slot.model.startsWith('GateOut'))?.feed
-    if (gateInBar) gateInBar.rotation.z = approach('gateIn', gateIn?.open ? 1.35 : 0, dt)
-    if (gateOutBar) gateOutBar.rotation.z = approach('gateOut', gateOut?.open ? 1.35 : 0, dt)
+    if (gateInBar) gateInBar.rotation.x = approach('gateIn', gateIn?.open ? -1.38 : 0, dt)
+    if (gateOutBar) gateOutBar.rotation.x = approach('gateOut', gateOut?.open ? 1.38 : 0, dt)
 
-    const lock = slots.find((slot) => slot.model.startsWith('Lock'))?.feed
-    const lockTarget = lock?.lowered ? -0.1 : -1.25
     slots
       .filter((slot) => slot.model.startsWith('Lock'))
       .forEach((slot, index) => {
         let arm: THREE.Object3D | null = null
         slot.node.traverse((child) => {
-          if (!arm && child.name.startsWith(`${slot.node.name}_Arm`)) arm = child
+          if (!arm && child.name.startsWith('Lock_Arm')) arm = child
         })
         if (arm) {
-          ;(arm as THREE.Object3D).rotation.x = approach(`lock${index}`, lockTarget, dt, 4)
+          ;(arm as THREE.Object3D).rotation.x = approach(
+            `lock${index}`,
+            slot.feed?.lowered ? 0 : -1.25,
+            dt,
+            4
+          )
         }
       })
 
-    const scan = Math.sin(now / 1400) * 0.5
-    if (cameraInHead) cameraInHead.rotation.y = scan
-    if (cameraOutHead) cameraOutHead.rotation.y = -scan
+    // Cameras retain the model pose until actual PTZ telemetry is available.
 
     for (const slot of slots) {
       if (slot.screen) drawChargerScreen(slot.screen, slot.feed)
     }
     drawGateScreen(gateScreen, gateIn ?? gateOut ?? null)
+    updateBattery(slots.find((slot) => slot.node.name === 'Charger')?.feed ?? null)
 
     controls.update()
     renderer.render(scene, camera)
@@ -434,7 +531,13 @@ export async function createCampus(
       const x = (projected.x * 0.5 + 0.5) * width
       const y = (-projected.y * 0.5 + 0.5) * height
       const marker = slot.marker
-      marker.hidden = projected.z > 1 || x < 40 || x > width - 40 || y < 40 || y > height - 20
+      marker.hidden =
+        (battery.visible && slot.model.startsWith('Lock')) ||
+        projected.z > 1 ||
+        x < 40 ||
+        x > width - 40 ||
+        y < 40 ||
+        y > height - 20
       marker.style.transform = `translate(${x}px, ${y}px) translate(-50%, -100%)`
       marker.classList.toggle('alarm', Boolean(slot.feed?.alarm))
       marker.classList.toggle('offline', Boolean(slot.feed && !slot.feed.online))
@@ -487,6 +590,7 @@ export async function createCampus(
         else material?.dispose()
       }
     })
+    socTexture.dispose()
     renderer.dispose()
     if (renderer.domElement.parentElement) {
       renderer.domElement.parentElement.removeChild(renderer.domElement)
@@ -496,9 +600,10 @@ export async function createCampus(
 
   return {
     setDevices: applyFeeds,
-    focus: (model: string) => {
-      const slot = slots.find((item) => item.model === model)
+    focus: (deviceId: number) => {
+      const slot = slots.find((item) => item.feed?.deviceId === deviceId)
       if (!slot) return
+      select(slot.model)
       const position = slot.node.getWorldPosition(new THREE.Vector3())
       controls.target.set(position.x, Math.max(0.6, position.y), position.z)
       controls.update()

@@ -30,6 +30,27 @@ public class OpsClient {
         return post("/internal/devices/login", request, OpsDtos.DeviceView.class);
     }
 
+    public int properties(String protocol, String deviceId, String channelNo, java.util.Map<String, Object> values) {
+        Integer count = post(
+                "/internal/properties",
+                java.util.Map.of(
+                        "protocol",
+                        protocol,
+                        "protocolDeviceId",
+                        deviceId,
+                        "channelNo",
+                        channelNo,
+                        "values",
+                        values,
+                        "collectedAt",
+                        LocalDateTime.now().toString()),
+                Integer.class);
+        if (count == null || count != values.size()) {
+            throw new IllegalStateException("平台未接受全部属性");
+        }
+        return count;
+    }
+
     public OpsDtos.DeviceView resolve(String protocol, String code) {
         return client.get()
                 .uri(uri -> uri.path("/internal/devices/resolve")

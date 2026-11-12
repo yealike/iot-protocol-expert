@@ -4,11 +4,35 @@
 
 ## 与后端的关系
 
-- 开发：`npm run dev`（5173），`/api`、`/login`、`/logout` 由 Vite 代理到 19082，不需要 CORS。
-- 生产：`npm run build:ops` 直接把产物构建到 `../iot-protocol-expert-ops/src/main/resources/static/`，
-  由 Spring Boot 托管在根路径；`PageController` 负责 history 路由回落。
+- 开发：`npm run dev`（5173），`/api`、`/login`、`/logout`、`/actuator` 由 Vite 代理到 19082，不需要 CORS。
+- 生产：`npm run build` 生成 `dist/`，由静态服务器（nginx 等）托管；同一站点把
+  `/api`、`/login`、`/logout`、`/actuator` 反代到运维平台 19082，保持同源与 session cookie 可用。
+  后端不再托管任何前端资源，`iot-protocol-expert-ops` 只提供 API。
 - 会话：Spring Security 表单登录（`POST /login`，JSESSIONID）。前端不保存 token，
   只通过 `/api/ops/auth/me` 判断「我是谁」。
+
+### 生产部署示例（nginx）
+
+```nginx
+server {
+    listen 80;
+    root /usr/share/nginx/html;            # 指向 dist/ 内容
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;  # history 路由回落
+    }
+
+    location ~ ^/(api|login|logout|actuator)/? {
+        proxy_pass http://127.0.0.1:19082;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+模拟器内嵌的 `/campus` 沙盘同样指向本前端站点，地址由 `IPE_WEB_BASE_URL` 配置。
 
 ## 目录
 

@@ -1,0 +1,17 @@
+{
+  "devices": [
+    {
+      "host": "REPLACE_WITH_GX_IP",
+      "port": 502,
+      "unitId": 1,
+      "protocolDeviceId": "REPLACE_WITH_REGISTERED_DEVICE_ID",
+      "intervalSeconds": 10,
+      "points": [
+        {"address":259,"function":3,"type":"uint16","scale":0.01,"property":"dcVoltage"},
+        {"address":261,"function":3,"type":"int16","scale":0.1,"property":"dcCurrent"},
+        {"address":266,"function":3,"type":"uint16","scale":0.1,"property":"soc"},
+        {"address":304,"function":3,"type":"uint16","scale":0.1,"property":"soh"}
+      ]
+    }
+  ]
+}
