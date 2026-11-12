@@ -36,8 +36,7 @@ export default function Simulator() {
 
     let disposeTwin: (() => void) | undefined
     let disposed = false
-    const twinModule = '/simulator/twin.js'
-    import(/* @vite-ignore */ twinModule).then((module) => {
+    import('../simulator/twin.js').then((module) => {
       if (!disposed) disposeTwin = module.mountTwin()
     }).catch(() => {
       const message = container.querySelector('#twin-message')
