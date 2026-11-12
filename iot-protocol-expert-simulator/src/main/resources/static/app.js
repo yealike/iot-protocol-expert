@@ -52,7 +52,8 @@ async function loadDevices() {
             select.innerHTML = '<option value="">没有可模拟设备</option>';
             return;
         }
-        select.innerHTML = devices.map(d => `<option value="${d.id}">${esc(d.sn)} · ${esc(d.protocolLabel || d.protocol)} · ${esc(d.protocolDeviceId)}</option>`).join('');
+        select.innerHTML = '<option value="">请选择设备</option>' + devices.map(d => `<option value="${d.id}">${esc(d.sn)} · ${esc(d.protocolLabel || d.protocol)} · ${esc(d.protocolDeviceId)}</option>`).join('');
+        $('fleetDeviceSelect').innerHTML = select.innerHTML;
         if (live.deviceId) select.value = String(live.deviceId);
     } catch (e) {
         select.innerHTML = '<option value="">设备列表加载失败</option>';
@@ -64,7 +65,7 @@ async function selectDevice() {
     const deviceId = $('deviceSelect').value;
     if (!deviceId) return;
     const r = await post('/device/select', {deviceId: Number(deviceId)});
-    if (r) toast('已选择 ' + (r.state?.deviceSn || deviceId) + '，正在重建连接');
+    if (r) { selectedGun = '01'; rateDraft = null; await refresh(); toast('已选择 ' + (r.state?.deviceSn || deviceId) + '，正在重建连接'); }
 }
 
 async function gunAction(action) {
@@ -73,14 +74,12 @@ async function gunAction(action) {
         return
     }
     const commandGun = selectedGun;
-    if (['plug', 'unplug', 'start', 'vin-start', 'offline-start'].includes(action)) await window.chargingScene?.whenConnectorSettled();
     return post('/guns/' + commandGun + '/' + action)
 }
 
 async function remote(action, body) {
     if (!live.pileCode) return;
     const commandGun = selectedGun, pileCode = live.pileCode, physicalCard = $('card').value;
-    if (action === 'start' || action === 'parallel-start') await window.chargingScene?.whenConnectorSettled();
     const r = await post('/platform/devices/' + pileCode + '/' + action, body ?? (action === 'start' ? {
         gunNo: commandGun,
         physicalCard
@@ -131,8 +130,6 @@ function renderState() {
     const stages = ['已插枪', '鉴权中', '握手', '参数配置', '充电', '已结束'];
     let step = g.phase === '恒流充电' || g.phase === '恒压充电' ? 4 : stages.indexOf(g.phase);
     $('flow').innerHTML = stages.map((p, i) => `<span class="${i <= step ? 'done' : ''}">${p.replace('已插枪', '插枪').replace('鉴权中', '鉴权')}</span>`).join('');
-    $('scenePhase').textContent = 'GUN ' + g.gunNo + ' / ' + g.phase;
-    $('sceneSoc').textContent = 'SOC ' + g.soc + '%';
     window.dispatchEvent(new CustomEvent('simulator-state', {detail: {...s, selectedGun}}));
     $('billingModel').textContent = g.billingModelNo ? '订单模型 ' + g.billingModelNo : '等待启动';
     $('billingRows').innerHTML = g.billing.length ? g.billing.map(r => `<tr><td><span class="period-dot p${r.period}"></span>${r.name}</td><td>${num(r.energyPrice, 5)}</td><td>${num(r.servicePrice, 5)}</td><td>${num(r.energy)}</td><td>${num(r.lossEnergy)}</td><td>${num(r.electricityFee)}</td><td>${num(r.serviceFee)}</td><td><b>${num(r.amount)}</b></td></tr>`).join('') : '<tr><td colspan="8" class="empty">插枪并启动充电后，在这里查看尖峰平谷明细</td></tr>';
@@ -351,25 +348,40 @@ api('/api/stop-reasons').then(r => {
     $('stopReasonSelect').innerHTML = Object.entries(r).map(([c, n]) => `<option value="${c}">0x${Number(c).toString(16).toUpperCase()} ${esc(n)}</option>`).join('')
 }).catch(e => toast(e.message, true));
 
-/* 园区沙盘：由独立前端站点托管，嵌入其 /campus 路由，首次在框内登录即可 */
-(function campusEmbed() {
-    const toggle = document.getElementById('campusToggle');
-    const frame = document.getElementById('campusFrame');
-    if (!toggle || !frame) return;
-    let loaded = false;
-    toggle.addEventListener('click', async () => {
-        const visible = !frame.hidden;
-        frame.hidden = visible;
-        toggle.classList.toggle('active', !visible);
-        if (visible || loaded) return;
-        try {
-            const info = await api('/api/campus-url');
-            frame.src = info.url;
-            loaded = true;
-        } catch (e) {
-            toast('园区沙盘地址不可用：' + e.message, true);
-            frame.hidden = true;
-            toggle.classList.remove('active');
-        }
-    });
-})();
+
+async function refreshFleet() {
+    try {
+        const states = await api('/api/fleet');
+        if (document.activeElement?.tagName === 'SELECT' && $('fleetList').contains(document.activeElement)) return;
+        const selections = Object.fromEntries([...$('fleetList').querySelectorAll('select')].map(s => [s.id, s.value]));
+        $('fleetList').innerHTML = states.length ? states.map(d => `<div>${esc(d.deviceSn)} · ${esc(d.protocol)} · ${d.connected ? '已连接' : '未连接'} ${d.guns.map(g => `<span>枪${esc(g.gunNo)} ${esc(g.phase)} <button onclick="fleetAction(${Number(d.deviceId)},'${esc(g.gunNo)}','plug')">插枪</button><button onclick="fleetAction(${Number(d.deviceId)},'${esc(g.gunNo)}','start')">启动</button><button onclick="fleetAction(${Number(d.deviceId)},'${esc(g.gunNo)}','stop')">停充</button><button onclick="fleetAction(${Number(d.deviceId)},'${esc(g.gunNo)}','report')">上报</button><select id="fault-${Number(d.deviceId)}-${esc(g.gunNo)}">${faultOptions(d.protocol).map(c => `<option value="${c}">${c}</option>`).join('')}</select><button onclick="fleetAction(${Number(d.deviceId)},'${esc(g.gunNo)}','fault')">故障</button><button onclick="fleetAction(${Number(d.deviceId)},'${esc(g.gunNo)}','clear-fault')">恢复</button></span>`).join('')} <button onclick="stopFleet(${Number(d.deviceId)})">停止模拟</button></div>`).join('') : '暂无设备';
+        for (const [id, value] of Object.entries(selections)) if ($(id)) $(id).value = value;
+    } catch (e) { toast(e.message, true) }
+}
+async function startFleet() {
+    const id = Number($('fleetDeviceSelect').value);
+    if (!id) return toast('请选择设备', true);
+    try { await api('/api/fleet/' + id + '/start', {}); await refreshFleet(); } catch (e) { toast(e.message, true) }
+}
+async function stopFleet(id) {
+    try { await api('/api/fleet/' + id + '/stop', {}); await refreshFleet(); } catch (e) { toast(e.message, true) }
+}
+refreshFleet();
+setInterval(refreshFleet, 5000);
+
+function updateFaultCodes() {
+    const select = $('faultCode'), ocpp = live.protocol === 'ocpp16j';
+    const codes = faultOptions(live.protocol);
+    const key = ocpp ? 'ocpp' : 'ykc';
+    if (select.dataset.protocol !== key) { select.innerHTML = codes.map(c => `<option value="${c}">${c}</option>`).join(''); select.dataset.protocol = key; }
+}
+setInterval(updateFaultCodes, 1500);
+updateFaultCodes();
+
+async function fleetAction(id, gun, action) {
+    try { const code = action === 'fault' ? '?code=' + encodeURIComponent($('fault-' + id + '-' + gun).value) : ''; const result = await api(`/api/fleet/${id}/guns/${gun}/${action}${code}`, {}); toast(result.message); await refreshFleet(); } catch (e) { toast(e.message, true) }
+}
+
+function faultOptions(protocol) {
+    return protocol === 'ocpp16j' ? ['OtherError', 'ConnectorLockFailure', 'EVCommunicationError', 'GroundFailure', 'HighTemperature', 'InternalError', 'LocalListConflict', 'OverCurrentFailure', 'OverVoltage', 'PowerMeterFailure', 'PowerSwitchFailure', 'ReaderFailure', 'ResetFailure', 'UnderVoltage', 'WeakSignal'] : ['0x0001', '0x0002', '0x0004', '0x0008', '0x0010', '0x0020', '0x0040', '0x0080', '0x0100', '0x0200', '0x0400', '0x0800', '0x1000', '0x2000', '0x4000', '0x8000'];
+}

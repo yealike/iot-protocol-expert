@@ -14,14 +14,7 @@ import java.util.Optional;
  * 节点，属于代码契约；物模型属于业务数据。
  */
 public enum DeviceTypeCatalog {
-    CHARGER("充电桩", "charging", "Charger", "YKC16", "CONNECTOR", "⚡"),
-    PV("光伏逆变器", "generation", "PV", "MODBUS_TCP", "STRING", "☀"),
-    WIND("风力发电机", "generation", "Wind", "MODBUS_TCP", null, "🌬"),
-    STORAGE("储能系统", "storage", "Storage", "MODBUS_TCP", "PACK", "🔋"),
-    LOCK("智能地锁", "security", "Lock", "MQTT", null, "🔒"),
-    GATE("门禁道闸", "security", "GateIn", "MQTT", null, "🚧"),
-    CAMERA("网络摄像机", "security", "CameraIn", "ONVIF", "LENS", "📷"),
-    METER("智能电表", "metering", null, "MODBUS_TCP", "PHASE", "📊");
+    CHARGER("充电桩", "charging", null, "YKC16", "CONNECTOR", "⚡");
 
     private final String label;
     private final String categoryCode;

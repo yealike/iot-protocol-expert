@@ -5,15 +5,13 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>协议专家 · 充电实验室</title>
     <link rel="stylesheet" href="/styles.css">
-    <script type="importmap">
-        {"imports":{"three":"/vendor/three/three.module.js","three/addons/controls/OrbitControls.js":"/vendor/three/OrbitControls.js"}}
-    </script>
+
 </head>
 <body>
 <aside><a class="logo" href="/">P<span>•</span></a>
     <div class="side-title">PROTOCOL<br>EXPERT</div>
     <nav><a href="#lab" class="active">◈<span>充电实验室</span></a><a href="#tariff">▥<span>费率模型</span></a><a
-            href="#configuration">⚙<span>设备参数</span></a><a href="#messages">≋<span>报文调试</span></a><a href="/multi-device.html">▦<span>多设备模拟</span></a></nav>
+            href="#configuration">⚙<span>设备参数</span></a><a href="#messages">≋<span>报文调试</span></a></nav>
     <div class="side-bottom"><span id="sideProtocol">云快充 V1.6</span><br><small id="sideTransport">TCP 协议仿真</small></div>
 </aside>
 <main id="lab">
@@ -28,6 +26,7 @@
                     <option value="">加载设备中…</option>
                 </select>
             </label>
+            <select id="fleetDeviceSelect" aria-label="并发模拟设备"></select><button onclick="startFleet()">加入并发模拟</button>
             <span id="deviceProtocol" class="badge">—</span>
             <span id="connection" class="badge">正在连接</span>
             <button id="connectBtn" onclick="post('/connect')">连接平台</button>
@@ -44,54 +43,10 @@
             —</small></article>
     </section>
     <div id="error" role="alert"></div>
+    <section class="panel"><h2>并发模拟设备</h2><div id="fleetList">暂无设备</div></section>
     <div class="lab-grid">
-        <section class="panel scene-panel">
-            <div class="panel-title scene-heading">
-                <div><h2>能源流动 · 数字孪生</h2>
-                    <p>Model Y · 4797 × 1920 × 1624 mm</p></div>
-                <div class="scene-view-switch" role="group" aria-label="三维展示模式">
-                    <button class="active" data-scene-view="auto" aria-pressed="true">自动</button>
-                    <button data-scene-view="exterior" aria-pressed="false">整车</button>
-                    <button data-scene-view="battery" aria-pressed="false">电池透视</button>
-                    <button id="campusToggle" type="button" title="光储充放园区 3D 沙盘（由运维平台托管）">园区沙盘</button>
-                </div>
-            </div>
-            <div id="scene">
-                <iframe id="campusFrame" title="光储充放园区沙盘" hidden
-                        referrerpolicy="same-origin"></iframe>
-                <div id="sceneFallback" hidden>此设备无法启动 WebGL，仍可使用下方全部充电控制功能。</div>
-                <div class="scene-energy-flow" id="sceneEnergyFlow" role="img"
-                     aria-label="能量方向：交流电网，经充电桩AC/DC转换，再向车辆动力电池充入直流电">
-                    <div class="energy-node grid-source"><span class="energy-symbol">∿</span>
-                        <div><small>ENERGY SOURCE</small><b>交流电网</b></div>
-                    </div>
-                    <div class="energy-link ac-link"><i></i><span>AC</span></div>
-                    <div class="energy-node"><span class="energy-symbol convert-symbol">⇄</span>
-                        <div><small>POWER CONVERSION</small><b>充电桩 <em>AC / DC</em></b></div>
-                    </div>
-                    <div class="energy-link dc-link"><i></i><span>DC</span></div>
-                    <div class="energy-node battery-destination"><span class="energy-symbol battery-symbol">▥</span>
-                        <div><small>ENERGY STORAGE</small><b>动力电池</b></div>
-                    </div>
-                </div>
-                <div class="scene-label"><span class="live-dot"></span><span
-                        id="sceneFlowStatus">待机 · 无能量传输</span></div>
-                <span class="scene-motion" id="sceneMotion">连接器待机</span>
-                <div class="world-label grid-world" id="sceneGridLabel"><span></span>电网 · AC 输入</div>
-                <div class="world-label charger-world" id="sceneChargerLabel"><span></span>充电桩 · AC / DC 转换</div>
-                <div class="world-label battery-world" id="sceneBatteryLabel"><span></span><b id="scenePackSoc">底盘电池
-                    · SOC</b></div>
-                <div class="scene-battery-card" id="sceneBattery">
-                    <div><span class="battery-glyph">▥</span><small>动力电池 · SOC</small></div>
-                    <strong id="sceneBatteryValue">20%</strong>
-                    <p id="sceneBatteryEnergy">12.0 / 60 kWh</p>
-                    <div class="battery-card-rule"></div>
-                    <span>分组电芯按实际 SOC 点亮</span></div>
-                <div class="scene-power-card"><small>直流输出功率</small><strong id="scenePowerValue">0.0
-                    kW</strong><span>蓝色 · 交流输入<br>青绿 · 直流充电</span></div>
-                <div class="scene-meta"><b id="scenePhase">待机</b><span id="sceneSoc">SOC —</span><span
-                        class="scene-gesture">拖动旋转 · 滚轮缩放</span></div>
-            </div>
+        <section class="panel clock-panel">
+            <div class="panel-title"><h2>仿真时间</h2></div>
             <div class="timebar">
                 <div><small>仿真时间</small><b id="simTime">—</b></div>
                 <label>速度 <select id="speed" onchange="setSpeed()">
@@ -123,7 +78,7 @@
                 <button onclick="gunAction('stop')">本地停机</button>
                 <button onclick="gunAction('unplug')">拔出充电枪</button>
                 <button onclick="gunAction('offline-start')">离线卡启动</button>
-                <button class="quiet" onclick="gunAction('fault?enable=true')">注入急停故障</button>
+                <label>故障码 <select id="faultCode"></select></label><button class="quiet" onclick="gunAction('fault?enable=true&code='+encodeURIComponent($('faultCode').value))">注入故障</button>
                 <button class="quiet" onclick="gunAction('fault?enable=false')">恢复故障</button>
             </div>
             <details>
@@ -293,9 +248,7 @@
             <pre id="decodedWire"></pre>
         </details>
     </section>
-    <footer>PROTOCOL EXPERT <span>云快充 V1.6 · <a href="/assets/model-y/specification.json" target="_blank"
-                                                   rel="noopener">外观参数参考：Tesla Model Y</a> · 仿真结果以报文和账单为准</span>
-    </footer>
+    <footer>PROTOCOL EXPERT <span>仿真结果以报文和账单为准</span></footer>
 </main>
 <div id="toast" role="status"></div>
 <dialog id="detailDialog">
@@ -303,6 +256,6 @@
     <pre id="detailContent"></pre>
 </dialog>
 <script src="/app.js"></script>
-<script type="module" src="/scene.js"></script>
+
 </body>
 </html>

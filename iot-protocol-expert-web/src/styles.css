@@ -229,16 +229,6 @@ a {
   color: #52687e;
 }
 
-.campus-frame {
-  width: 100%;
-  height: calc(100vh - 150px);
-  min-height: 520px;
-  border: 1px solid rgba(38, 70, 102, 0.7);
-  border-radius: 14px;
-  overflow: hidden;
-  background: #050c14;
-}
-
 .login-wrap {
   min-height: 100vh;
   display: grid;
@@ -262,68 +252,4 @@ a {
 
 .muted {
   color: #7d93ac;
-}
-/* ---------------------------------------------------------------- 3D 沙盘 */
-
-.campus-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-.campus-layout {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 16px;
-}
-
-@media (max-width: 900px) {
-  .campus-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.campus-frame {
-  position: relative;
-}
-
-.campus-marker {
-  position: absolute;
-  top: 0;
-  left: 0;
-  transform: translate(-50%, -100%);
-  pointer-events: auto;
-  padding: 3px 9px;
-  border-radius: 999px;
-  border: 1px solid rgba(56, 211, 159, 0.42);
-  background: rgba(6, 18, 28, 0.82);
-  color: #b8f4dc;
-  font-size: 11px;
-  line-height: 1.4;
-  white-space: nowrap;
-  cursor: pointer;
-  backdrop-filter: blur(4px);
-  transition:
-    border-color 0.16s ease,
-    background 0.16s ease;
-}
-
-.campus-marker:hover,
-.campus-marker.active {
-  border-color: #38d39f;
-  background: rgba(16, 52, 42, 0.92);
-  color: #eafff7;
-}
-
-.campus-marker.alarm {
-  border-color: rgba(255, 93, 93, 0.7);
-  color: #ffc9c9;
-  background: rgba(46, 12, 14, 0.86);
-}
-
-.campus-marker.offline {
-  border-color: rgba(90, 116, 140, 0.5);
-  color: #8ea4ba;
-  background: rgba(10, 18, 26, 0.8);
 }

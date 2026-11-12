@@ -1,7 +1,6 @@
 import type {
   AlarmView,
   CurrentUser,
-  CommandView,
   DeviceDetail,
   DeviceRow,
   DeviceTypeDescriptor,
@@ -113,8 +112,6 @@ export const api = {
       method: 'POST'
     }),
   saveDevice: (body: unknown) => request<DeviceRow>('/api/ops/devices', json(body)),
-  simulationCommand: (deviceId: number, action: string) =>
-    request<CommandView>('/api/ops/simulation/commands', json({ deviceId, action })),
 
   // ---------------------------------------------------------------- 产品
 

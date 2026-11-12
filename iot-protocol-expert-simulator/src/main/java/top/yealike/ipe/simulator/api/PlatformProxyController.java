@@ -97,7 +97,8 @@ public class PlatformProxyController {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("deviceId", deviceId);
             payload.put("gunNo", text(body, "gunNo", "01"));
-            payload.put("idTag", text(body, "logicalCard", text(body, "physicalCard", "IPE-APP")));
+            boolean ocpp = "ocpp16j".equalsIgnoreCase(String.valueOf(state.get("protocol")));
+            payload.put("idTag", text(body, "logicalCard", ocpp ? text(body, "physicalCard", "IPE-APP") : "0"));
             payload.put("physicalCard", text(body, "physicalCard", null));
             payload.put("balance", text(body, "balance", "1000.00"));
             return forward(

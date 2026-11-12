@@ -138,6 +138,8 @@ public class SimulatorRuntime {
         private int waitingSequence;
         private long waitingUntil;
         private boolean fault;
+        private int faultBits;
+        private String ocppFaultCode = "NoError";
         private boolean allowWork = true;
         private GunState state = GunState.IDLE;
         private String transactionNo;
@@ -285,8 +287,16 @@ public class SimulatorRuntime {
         this.ocppClient = new OcppSimulatorClient(properties, this);
     }
 
+    void setOpsDevices(OpsDeviceClient opsDevices) {
+        this.opsDevices = opsDevices;
+    }
+
     @PostConstruct
     public void init() {
+        init(true);
+    }
+
+    void init(boolean restoreState) {
         if (!properties.getPileCode().matches("\\d{14}")
                 || properties.getGunCount() < 1
                 || properties.getGunCount() > 99) throw new IllegalArgumentException("桩号须14位数字，枪数1~99");
@@ -303,7 +313,7 @@ public class SimulatorRuntime {
         }
         // Hold reconnects until Spring's tracing and logging listeners are ready.
         manualDisconnect = true;
-        restore();
+        if (restoreState) restore();
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -331,6 +341,10 @@ public class SimulatorRuntime {
 
     /** 从运维平台选择一台设备：校验启用与允许模拟，按档案设置协议与编号，再重建连接。 同一实例同一时刻只运行一台选中设备。 */
     public synchronized Map<String, Object> selectDevice(Long deviceId) {
+        return selectDevice(deviceId, true);
+    }
+
+    synchronized Map<String, Object> selectDevice(Long deviceId, boolean saveCurrent) {
         if (opsDevices == null) {
             throw new IllegalStateException("未配置运维平台设备目录");
         }
@@ -350,6 +364,12 @@ public class SimulatorRuntime {
         } catch (RuntimeException e) {
             throw new IllegalArgumentException("不支持的协议: " + device.protocol());
         }
+        if (device.gunCount() < 1 || device.gunCount() > 99) {
+            throw new IllegalArgumentException("枪数必须为 1~99");
+        }
+        if (device.protocolDeviceId() == null || device.protocolDeviceId().isBlank()) {
+            throw new IllegalArgumentException("协议设备编号不能为空");
+        }
         if (next == Protocol.YKC16
                 && (device.protocolDeviceId() == null
                         || !device.protocolDeviceId().matches("\\d{14}"))) {
@@ -358,7 +378,7 @@ public class SimulatorRuntime {
         if (guns.values().stream().anyMatch(g -> g.state == GunState.CHARGING)) {
             throw new IllegalStateException("当前设备有在充订单，请先结束充电后再切换");
         }
-        persist();
+        if (saveCurrent) persist();
         disconnect();
         selectedDeviceId = device.id();
         selectedDeviceSn = device.sn();
@@ -366,7 +386,7 @@ public class SimulatorRuntime {
         properties.setProtocol(next.code());
         properties.setPileCode(device.protocolDeviceId());
         properties.setGunCount(Math.max(device.gunCount(), 1));
-        properties.setStateFile("./data/simulator-state-" + device.id() + ".properties");
+        properties.setStateFile(stateFileForDevice(properties.getStateFile(), device.id()));
         rateModel = defaultRateModel(
                 device.protocolDeviceId().matches("\\d{14}") ? device.protocolDeviceId() : "00000000000000");
         guns.clear();
@@ -387,6 +407,24 @@ public class SimulatorRuntime {
         restore();
         connect();
         return state();
+    }
+
+    static String stateFileForDevice(String currentFile, Long deviceId) {
+        java.nio.file.Path parent =
+                java.nio.file.Path.of(currentFile).toAbsolutePath().getParent();
+        return parent.resolve("simulator-state-" + deviceId + ".properties").toString();
+    }
+
+    public synchronized String gunFaultCode(String gunNo) {
+        Gun gun = guns.get(gunNo);
+        return gun != null && gun.fault ? gun.ocppFaultCode : "NoError";
+    }
+
+    synchronized void abort() {
+        manualDisconnect = true;
+        ocppClient.disconnect();
+        if (channel != null) channel.close();
+        group.shutdownGracefully();
     }
 
     @PreDestroy
@@ -633,7 +671,8 @@ public class SimulatorRuntime {
             }
         }
         persist();
-        guns.forEach((no, gun) -> ocppClient.statusNotification(Integer.parseInt(no), gunRuntimeStatus(no), "NoError"));
+        guns.forEach((no, gun) ->
+                ocppClient.statusNotification(Integer.parseInt(no), gunRuntimeStatus(no), gunFaultCode(no)));
     }
 
     public synchronized void ocppTrigger(String requestedMessage, Integer connectorId) {
@@ -645,10 +684,12 @@ public class SimulatorRuntime {
         } else if ("StatusNotification".equalsIgnoreCase(requestedMessage)) {
             if (connectorId != null && connectorId > 0) {
                 ocppClient.statusNotification(
-                        connectorId, gunRuntimeStatus(String.format("%02d", connectorId)), "NoError");
+                        connectorId,
+                        gunRuntimeStatus(String.format("%02d", connectorId)),
+                        gunFaultCode(String.format("%02d", connectorId)));
             } else {
                 guns.forEach((no, gun) ->
-                        ocppClient.statusNotification(Integer.parseInt(no), gunRuntimeStatus(no), "NoError"));
+                        ocppClient.statusNotification(Integer.parseInt(no), gunRuntimeStatus(no), gunFaultCode(no)));
             }
         } else if ("MeterValues".equalsIgnoreCase(requestedMessage)) {
             guns.values().stream().filter(g -> g.state == GunState.CHARGING).forEach(this::sendRealtime);
@@ -731,7 +772,7 @@ public class SimulatorRuntime {
                 gun.energy,
                 gun.ledger == null ? gun.energy : gun.ledger.lossEnergy(),
                 gun.amount,
-                gun.fault ? 0x0001 : 0,
+                gun.fault ? gun.faultBits : 0,
                 null);
     }
 
@@ -1230,7 +1271,7 @@ public class SimulatorRuntime {
             gun.ocppTransactionId = null;
             sendRealtime(gun);
             ocppClient.statusNotification(
-                    Integer.parseInt(gun.gunNo), gun.allowWork ? "Available" : "Unavailable", "NoError");
+                    Integer.parseInt(gun.gunNo), gunRuntimeStatus(gun.gunNo), gunFaultCode(gun.gunNo));
         } else {
             sendTransaction(tx);
             sendRealtime(gun);
@@ -1468,10 +1509,11 @@ public class SimulatorRuntime {
             return "充电中不能拔插枪";
         }
         gun.plugged = true;
-        gun.phase = "已插枪";
+        gun.phase = gun.fault ? "故障" : "已插枪";
         reportLock(gun);
         if (isOcpp()) {
-            ocppClient.statusNotification(Integer.parseInt(gun.gunNo), "Preparing", "NoError");
+            ocppClient.statusNotification(
+                    Integer.parseInt(gun.gunNo), gunRuntimeStatus(gun.gunNo), gunFaultCode(gun.gunNo));
         }
         if (gun.waitingStart != null && loggedIn && System.currentTimeMillis() <= gun.waitingUntil) {
             OperationFrames.RemoteStart cmd = gun.waitingStart;
@@ -1492,22 +1534,57 @@ public class SimulatorRuntime {
             return "充电中不能拔枪，请先停止充电";
         }
         gun.plugged = false;
-        gun.phase = "待机";
+        gun.phase = gun.fault ? "故障" : "待机";
         reportLock(gun);
         if (isOcpp()) {
             ocppClient.statusNotification(
-                    Integer.parseInt(gun.gunNo), gun.allowWork ? "Available" : "Unavailable", "NoError");
+                    Integer.parseInt(gun.gunNo), gunRuntimeStatus(gun.gunNo), gunFaultCode(gun.gunNo));
         }
         sendRealtime(gun);
         return "已拔枪";
     }
 
     public synchronized String fault(String gunNo, boolean enable) {
+        return fault(gunNo, enable, isOcpp() ? "OtherError" : "1");
+    }
+
+    public synchronized String fault(String gunNo, boolean enable, String code) {
         Gun gun = requireGun(gunNo);
+        int bits = 0;
+        String ocppCode = "NoError";
+        if (enable && isOcpp()) {
+            if (!List.of(
+                            "ConnectorLockFailure",
+                            "EVCommunicationError",
+                            "GroundFailure",
+                            "HighTemperature",
+                            "InternalError",
+                            "LocalListConflict",
+                            "OtherError",
+                            "OverCurrentFailure",
+                            "OverVoltage",
+                            "PowerMeterFailure",
+                            "PowerSwitchFailure",
+                            "ReaderFailure",
+                            "ResetFailure",
+                            "UnderVoltage",
+                            "WeakSignal")
+                    .contains(code)) throw new IllegalArgumentException("无效的 OCPP 故障码");
+            ocppCode = code;
+        } else if (enable) {
+            try {
+                bits = Integer.decode(code);
+            } catch (RuntimeException e) {
+                throw new IllegalArgumentException("故障位图须为整数或十六进制数");
+            }
+            if (bits < 1 || bits > 65535) throw new IllegalArgumentException("故障位图范围为 1~65535");
+        }
         if (!enable && !gun.fault) return "当前无故障";
         advanceClock();
         advanceCharge(gun);
         gun.fault = enable;
+        gun.faultBits = bits;
+        gun.ocppFaultCode = ocppCode;
         if (enable && gun.state == GunState.CHARGING) {
             stopCharge(gun, 0x72);
         }
@@ -1517,7 +1594,7 @@ public class SimulatorRuntime {
             ocppClient.statusNotification(
                     Integer.parseInt(gun.gunNo),
                     enable ? "Faulted" : (gun.allowWork ? "Available" : "Unavailable"),
-                    "NoError");
+                    gun.ocppFaultCode);
         }
         sendRealtime(gun);
         return enable ? "已注入故障" : "故障已恢复";
@@ -1585,7 +1662,8 @@ public class SimulatorRuntime {
                 sendRealtime(gun);
                 return "已上送 OCPP MeterValues";
             }
-            ocppClient.statusNotification(Integer.parseInt(gun.gunNo), gunRuntimeStatus(gun.gunNo), "NoError");
+            ocppClient.statusNotification(
+                    Integer.parseInt(gun.gunNo), gunRuntimeStatus(gun.gunNo), gunFaultCode(gun.gunNo));
             return "已上送 OCPP StatusNotification";
         }
         sendRealtime(gun);
@@ -1642,6 +1720,7 @@ public class SimulatorRuntime {
             view.put("stateCode", gun.state.code());
             view.put("plugged", gun.plugged);
             view.put("fault", gun.fault);
+            view.put("faultCode", isOcpp() ? gun.ocppFaultCode : gun.faultBits);
             view.put("allowWork", gun.allowWork);
             view.put("transactionNo", gun.transactionNo);
             view.put("startTime", gun.startTime);
