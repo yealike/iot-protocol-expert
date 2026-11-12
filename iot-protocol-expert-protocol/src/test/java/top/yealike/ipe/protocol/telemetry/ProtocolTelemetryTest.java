@@ -1,16 +1,22 @@
 package top.yealike.ipe.protocol.telemetry;
 
-import top.yealike.ipe.protocol.codec.Frame;
-import io.netty.channel.embedded.EmbeddedChannel;
+import static org.junit.jupiter.api.Assertions.*;
+
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import io.micrometer.tracing.test.simple.SimpleTracer;
-import org.junit.jupiter.api.Test;
+import io.netty.channel.embedded.EmbeddedChannel;
 import java.util.concurrent.TimeoutException;
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.Test;
+import top.yealike.ipe.protocol.codec.Frame;
 
 class ProtocolTelemetryTest {
     private final SimpleMeterRegistry meters = new SimpleMeterRegistry();
-    @org.junit.jupiter.api.AfterEach void closeRegistry() { meters.close(); }
+
+    @org.junit.jupiter.api.AfterEach
+    void closeRegistry() {
+        meters.close();
+    }
+
     @Test
     void caughtErrorsAndTimeoutsAreCountedWithoutLeakingThreadContext() {
         var tracer = new SimpleTracer();
@@ -22,21 +28,43 @@ class ProtocolTelemetryTest {
                     telemetry.failure(new IllegalArgumentException("invalid input"));
                 }
                 assertEquals(parent.context(), tracer.currentSpan().context());
-                try (var command = telemetry.start("platform", "request", new Frame(2, false, 0x50, null), telemetry.capture())) {
+                try (var command =
+                        telemetry.start("platform", "request", new Frame(2, false, 0x50, null), telemetry.capture())) {
                     command.fail(new TimeoutException());
                 }
                 assertEquals(parent.context(), tracer.currentSpan().context());
-            } finally { parent.end(); }
+            } finally {
+                parent.end();
+            }
             assertNull(tracer.currentSpan());
-            var received = tracer.getSpans().stream().filter(s -> s.getName().contains("receive")).findFirst().orElseThrow();
-            assertTrue(received.getParentId() == null || received.getParentId().isEmpty(), "TCP receives do not invent a remote parent");
+            var received = tracer.getSpans().stream()
+                    .filter(s -> s.getName().contains("receive"))
+                    .findFirst()
+                    .orElseThrow();
+            assertTrue(
+                    received.getParentId() == null || received.getParentId().isEmpty(),
+                    "TCP receives do not invent a remote parent");
             assertNotNull(received.getError());
-            var command = tracer.getSpans().stream().filter(s -> s.getName().contains("request")).findFirst().orElseThrow();
+            var command = tracer.getSpans().stream()
+                    .filter(s -> s.getName().contains("request"))
+                    .findFirst()
+                    .orElseThrow();
             assertEquals(parent.context().spanId(), command.getParentId());
             assertNotNull(command.getError());
-            assertEquals(1, meters.get("ipe.protocol.operations").tag("outcome", "error").counter().count());
-            assertEquals(1, meters.get("ipe.protocol.operations").tag("outcome", "timeout").counter().count());
-            assertTrue(meters.find("ipe.protocol.operations").counters().stream().allMatch(c -> c.getId().getTags().size() == 4));
+            assertEquals(
+                    1,
+                    meters.get("ipe.protocol.operations")
+                            .tag("outcome", "error")
+                            .counter()
+                            .count());
+            assertEquals(
+                    1,
+                    meters.get("ipe.protocol.operations")
+                            .tag("outcome", "timeout")
+                            .counter()
+                            .count());
+            assertTrue(meters.find("ipe.protocol.operations").counters().stream()
+                    .allMatch(c -> c.getId().getTags().size() == 4));
         }
     }
 
@@ -57,7 +85,12 @@ class ProtocolTelemetryTest {
             assertTrue(tracer.lastSpan().getEndTimestamp().isAfter(java.time.Instant.EPOCH));
             assertNotNull(tracer.lastSpan().getError());
             assertNull(tracer.currentSpan());
-            assertEquals(1, meters.get("ipe.protocol.operations").tag("outcome", "error").counter().count());
+            assertEquals(
+                    1,
+                    meters.get("ipe.protocol.operations")
+                            .tag("outcome", "error")
+                            .counter()
+                            .count());
             channel.finishAndReleaseAll();
         }
     }

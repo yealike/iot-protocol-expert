@@ -27,3 +27,11 @@ textarea{display:block;width:100%;font:12px Consolas,monospace;border:1px solid 
 footer a{color:inherit;text-decoration-color:#c5d1dd;text-underline-offset:3px}
 
 .battery-world b{font-weight:400}.battery-world::after{content:"";position:absolute;left:18px;top:100%;height:25px;border-left:1px dashed #68d5b777;transform:rotate(-20deg);transform-origin:top}
+
+/* 协议切换选择器 */
+.protocol-picker{font-size:10px;color:#7c8d9e;gap:6px;white-space:nowrap}
+.protocol-picker select{padding:6px 8px;font-size:11px;border-radius:6px}
+
+/* 园区沙盘：复用运维平台的 3D 场景，避免复制一份 three 引擎 */
+#campusFrame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#050c14;z-index:9;border-radius:inherit}
+.scene-view-switch button#campusToggle.active{background:#4be4b2;color:#062018}

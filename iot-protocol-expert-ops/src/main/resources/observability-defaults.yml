@@ -1,0 +1,59 @@
+spring:
+  profiles:
+    default: local
+
+ipe:
+  observability:
+    environment: ${IPE_ENVIRONMENT:local}
+
+management:
+  tracing:
+    sampling:
+      probability: 1.0
+    export:
+      otlp:
+        enabled: ${IPE_OTLP_ENABLED:true}
+  logging:
+    export:
+      otlp:
+        enabled: ${IPE_OTLP_ENABLED:true}
+  opentelemetry:
+    resource-attributes:
+      service.name: ${spring.application.name}
+      service.namespace: iot-protocol-expert
+      service.version: 1.0.0
+      service.instance.id: ${spring.application.name}:${server.port}
+      deployment.environment.name: ${ipe.observability.environment}
+      application_name: ${spring.application.name}
+      active_profile: ${ipe.observability.environment}
+    tracing:
+      export:
+        otlp:
+          endpoint: ${IPE_OTLP_ENDPOINT:http://127.0.0.1:4318}/v1/traces
+    logging:
+      export:
+        otlp:
+          endpoint: ${IPE_OTLP_ENDPOINT:http://127.0.0.1:4318}/v1/logs
+  otlp:
+    metrics:
+      export:
+        enabled: ${IPE_OTLP_ENABLED:true}
+        url: ${IPE_OTLP_ENDPOINT:http://127.0.0.1:4318}/v1/metrics
+        step: 15s
+  metrics:
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      minimum-expected-value:
+        http.server.requests: 1ms
+      maximum-expected-value:
+        http.server.requests: 30s
+
+jdbc:
+  includes: connection,query
+  datasource-proxy:
+    include-parameter-values: false
+    query:
+      enable-logging: false
+  resultset-operations:
+    enabled: false

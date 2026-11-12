@@ -1,118 +1,182 @@
 # iot-protocol-expert
 
-云快充 V1.6 协议平台与充电桩仿真实验室。Java 21 / Spring Boot 4.0.9 / Netty / H2，前端为静态 HTML、JavaScript 和 Three.js。
+多设备能源物联运维平台。覆盖充电桩、光伏、风机、储能、地锁、门禁、摄像头、电表八类设备，
+由**协议通道**负责连接与编解码，**运维平台**以「产品 + 物模型 + 设备实例」统一承载台账与实时数据，
+**前端**是独立的 React SPA，**模拟器**从运维平台选桩并按档案协议接入。
+Java 21 / Spring Boot 4.0.9 / Netty / PostgreSQL 16 / Flyway / React 19 + Vite + Ant Design 5。
 
-## 启动
+领域模型与表结构见 [物模型与设备域设计](docs/thing-model.md)。
 
-已接入 OpenTelemetry：Micrometer Tracing / Metrics、JDBC Observation、异步上下文与结构化日志通过 OTLP 发送到 OpenTelemetry Collector，再由 Grafana + Tempo / Loki / Prometheus 展示。默认开启导出，`.env-local` 中的 `IPE_OTLP_ENDPOINT` 指定 Collector 地址。[本地调试说明](docs/observability.md)。
+## 服务边界
+
+| 模块 | 端口 | 职责 | 持久化 |
+|---|---|---|---|
+| `iot-protocol-expert-codec` | — | 云快充与 OCPP 纯编解码库 | 无 |
+| `iot-protocol-expert-protocol` | 19080；TCP 8768；ws 8769 | 连接、校验、编解码、会话与下行发送 | **零业务持久化** |
+| `iot-protocol-expert-ops` | 19082 | 产品与物模型、设备、通道、属性/事件/告警、订单账单、报文、命令、排障、用户与审计 | PostgreSQL |
+| `iot-protocol-expert-web` | 5173（dev） | React SPA：总览、设备、产品与物模型、告警、园区 3D 沙盘 | 无 |
+| `iot-protocol-expert-simulator` | 19081 | 从平台选桩，模拟插枪、充电、上报与账单补传，内嵌园区沙盘 | 模拟器自身状态文件 |
+
+```text
+模拟器 --TCP/WS--> 协议通道 --内部 HTTP--> 运维平台(PostgreSQL)
+   |                    ^                    |
+   +---- 选桩/只读 -----+---- 下行命令 -------+
+```
+
+- 协议通道通过 `协议编码 + 协议侧设备编号` 查档；两台文本编号相同的设备可同时存在。
+- 业务应答由运维平台事务结果决定；平台拒绝或不可达时按协议返回失败/保留重试条件。
+- 通道只保留连接、会话、应答关联与短时发送缓冲；重启后由设备重连恢复。
+- 服务间使用 `X-Ops-Service-Token`；模拟器使用只读的 `X-Ops-Simulator-Token`。
+
+架构、接口与验收细节见 [运维平台与排障](docs/ops-platform.md)。
+
+## 启动（本地调试）
+
+需要 JDK 21、PostgreSQL 16。仓库不部署服务；中间件可放在个人服务器，本机运行应用。
 
 ```powershell
-# 将 JAVA_HOME 指向本机 JDK 21，或设置 IPE_JAVA_HOME
-$env:PATH="$env:JAVA_HOME\bin;$env:PATH"
+# 1) 准备 PostgreSQL（示例：服务器 100.101.91.38:55432）
+#    docker run -d --name ipe-postgres -e POSTGRES_DB=ipe_ops -e POSTGRES_USER=ipe \
+#      -e POSTGRES_PASSWORD=devpass -p 55432:5432 -v ipe_pg_data:/var/lib/postgresql/data postgres:16
+
+# 2) 编译
+$env:JAVA_HOME='D:\develop\jdk\jdk-21'; $env:PATH="$env:JAVA_HOME\bin;$env:PATH"
 mvn -B package
+
+# 3) 启动三端（默认使用本机 19080/19081/19082，数据库读取 application.yml 默认值）
+.\scripts\start-local.ps1 -DeviceId 1
+```
+
+- 运维平台：<http://localhost:19082/>（React SPA，未登录时显示登录页）。
+- 协议通道：<http://localhost:19080>，TCP `8768`，OCPP `ws://localhost:8769/ocpp/{编号}`。
+- 模拟器：<http://localhost:19081>，右上角从平台设备目录选择一台桩。
+- 停止：`.\scripts\stop-local.ps1`。
+- 数据库连接可用 `IPE_OPS_DB_URL / IPE_OPS_DB_USER / IPE_OPS_DB_PASSWORD` 覆盖；服务间地址用 `IPE_OPS_BASE_URL / IPE_PROTOCOL_BASE_URL` 覆盖。
+
+### 演示账号
+
+| 账号 | 密码 | 角色 | 能力 |
+|---|---|---|---|
+| `admin` | `admin123` | ADMIN | 电站、设备、用户、命令与排障 |
+| `ops` | `ops123` | OPS | 设备远程启停、排障、查询 |
+| `viewer` | `viewer123` | VIEWER | 只读查询 |
+
+## 多协议
+
+| 协议 | 地址 | 说明 |
+|---|---|---|
+| 云快充 1.6 | TCP `8768` | 登录帧绑定桩号，0x31/0x32 启动，0x3B/0x40 交易记录与确认 |
+| OCPP 1.6J | `ws://localhost:8769/ocpp/{chargePointId}` | BootNotification、StartTransaction、MeterValues、StopTransaction |
+
+协议通过 `ProtocolServer` SPI 注册，由 `ProtocolServerManager` 统一启停。协议细节见 [OCPP 1.6J 接入说明](docs/ocpp16.md)。
+
+## 运维平台功能
+
+- **电站**：列表、详情、运营概览；在线桩、可用/充电中/故障枪，按日期查询订单数、电量、金额（桩上报账单与平台估算分列）。
+- **设备**：按 SN / 协议侧编号 / 协议 / 站点 / 在线状态查找；登记、编辑、迁站、停用；枪状态、最近订单、最近报文与命令结果；人工远程启停。
+- **订单与账单**：按站点、设备、枪、协议、流水号、时间、状态查询；订单详情展示启停时间、电量、金额来源、停止原因、平台流水号与协议交易号；关联账单。
+- **智能排障**：输入 SN、订单号、HEX 或 OCPP JSON；输出协议判定、结构化字段、处理时间线、规范引用与待确认项；覆盖报文释义与停充后账单缺失。
+- **命令与审计**：命令先落记录再投递通道，区分发送、应答、成功、拒绝、超时与等待状态；写操作记录操作人、对象、时间与结果。
+
+## 充电实验室（模拟器）
+
+1. 在右上角选择平台设备；协议与设备编号由档案决定，只读展示。
+2. 等待「平台已登录」，确认桩已接收平台费率。
+3. 选择枪号，设置电池容量、SOC、VIN、物理卡号与停止条件，插枪后启动。
+4. 使用速度选择器或「+1分钟」「+30分钟」推进；真实 TCP 心跳与上报间隔仍按真实时间。
+5. 本地/APP 停止、满电、限电量/金额/时间、余额不足或故障都会生成账单；云快充等待 `0x40` 确认，OCPP 由平台结算。
+
+模拟器状态按平台设备 ID 分文件保存（`./data/simulator-state-{deviceId}.properties`），切换回原设备后继续补传旧账单。3D 场景与离线补传能力保留，详见 [3D视觉升级](docs/3d-visual-upgrade.md) 与下文。
+
+## 可观测性
+
+三端均通过 OTLP HTTP 发送 trace / log / metric 到共享 OpenTelemetry Collector，再由 Grafana + Tempo / Loki / Prometheus 展示。协议通道与运维平台不再写本地滚动日志，模拟器保留必要的本地运行日志。
+
+```powershell
+$env:IPE_OTLP_ENABLED='true'
+$env:IPE_OTLP_ENDPOINT='http://100.101.91.38:4318'
 .\scripts\start-local.ps1
 ```
 
-- 平台控制台：<http://localhost:19080>，TCP：8768。
-- 模拟器：<http://localhost:19081>，默认双枪；默认未插枪。
-- 停止：`.\scripts\stop-local.ps1`。
-- 可观测性：Grafana <http://100.101.91.38:3000>；链路 Tempo、日志 Loki、指标 Prometheus。
-- 指标：两端 `/actuator/metrics` 与 `/actuator/prometheus`；JSON 日志位于 `logs/`。
-- 启动脚本支持 JAVA_HOME / IPE_JAVA_HOME，也可使用 -JavaHome 指定 JDK 21；支持项目路径中包含空格。
-
-## 充电实验室
-
-1. 等待「平台已登录」，确认桩已接收平台费率。
-2. 选择枪号，设置电池容量、SOC、VIN、物理卡号和可选停止条件。
-3. 插枪，选择 APP 远程启动、刷卡启动或 VIN 启动。
-4. 经握手、参数配置进入恒流充电；80% SOC 后逐渐降流进入恒压阶段。
-5. 使用速度选择器或「+1分钟」「+30分钟」推进；实际 TCP 心跳和上报间隔仍使用真实时间。
-6. 本地/APP 停止、满电、限电量/金额/时间、余额不足或故障均生成账单，等待平台 `0x40` 确认。
-
-3D 场景使用本地化的 Car Concept 曲面车身（CC BY 4.0，保留署名并移除原贴图、标识、内饰和发动机）与独立生成的充电桩、底盘电池包。插拔枪使用约3.6秒缓动；充电展示“电网交流输入→桩内AC/DC转换→线缆直流输出→底盘电池储能”。默认充电时车身半透明，40组电芯按实际SOC点亮；支持自动、整车、电池透视三种视图。Three.js和模型随JAR打包，运行时无需CDN。无法使用WebGL时仍保留充电控制。详见 [3D视觉升级](docs/3d-visual-upgrade.md)。
-
-## 分时计费
-
-- 在模拟器的「费率模型」编辑八个电费/服务费单价、计损比例、48 个半小时时段。
-- 「保存到平台并下发」先保存平台模型，再走 `0x58` 下发及 `0x57` 应答。
-- 每笔订单保存费率快照；充电中收到的新模型用于下一笔订单。
-- 跨半小时、跨午夜逐段积分，以 BigDecimal 保留计算精度，输出电量/金额四位小数、单价五位小数。
-- 尖峰平谷分别累计电量、计损电量、电费和服务费；账单四段金额之和等于总金额。
-- 点击「跨时段演示」设为 09:59:50，启动后推进时间，即可看到默认平价到峰价的变化。
-
-## 完整协议与调试
-
-51 种帧都有编解码和结构化查看入口，包括所有 BMS 字段、状态位、并充、离线卡、地锁和维护命令。详见 [协议覆盖](docs/protocol-coverage.md)。
-
-- `GET /api/protocol/catalog`：平台协议目录、BMS 字段、倍率/偏移和状态位定义。
-- `POST /api/protocol/decode`：平台完整帧 HEX 校验、解密与解析；也支持 `{frameType,bodyHex}`。
-- 平台帧流水和模拟器报文详情可展开全部字段。
-- 并充：先插好全部枪，选择「双枪刷卡并充」或「APP并充」；每枪独立流水号、实时数据和账单。
-- 停止原因：模拟器支持附录 `0x40~0x90` 的全部原因标签与按指定原因结束订单。
-
-## 离线与恢复
-
-- 在线同步白名单，断开 TCP 后可用对应物理卡离线启动；本地使用已同步费率计费。
-- 断网中的已有充电持续推进，结束账单写入本地待传队列；重新登录后补传。
-- 收到成功 `0x40` 才删除待传账单；失败应答保留；三次重试用尽仍保留，重新登录后再重试。
-- 每秒保存活动订单检查点；进程意外退出后，下一次启动按最后保存的电表值生成 `0x83` 断电账单。
-- 历史账单最多保留100笔。白名单、费率、电表、工作参数和待传队列写入 `./data/simulator-state.properties`。
+- Grafana：<http://100.101.91.38:3000>
+- Tempo 已实测收到 `iot-protocol-expert-ops` 的 HTTP 与定时任务链路。
+- Loki 当前未返回标签，排障结果会把「集中日志不可用」作为待确认项，不影响业务帧流水与确定性解析。
+- 本地无 Grafana 时可查看 `/actuator/telemetry`（local profile）与 `/actuator/prometheus`。[本地调试说明](docs/observability.md)
 
 ## 配置
 
-平台配置位于 `iot-protocol-expert-protocol/src/main/resources/application.yml`，模拟器位于 `iot-protocol-expert-simulator/src/main/resources/application.yml`。可通过 Spring Boot 命令行参数覆盖：
+平台配置位于 `iot-protocol-expert-ops/src/main/resources/application.yml`，协议通道与模拟器各有自己的 `application.yml`。常用环境变量：
 
-| 模拟器参数 `ipe.simulator.*` | 默认值 | 作用 |
-|---|---|---|
-| platform-host / platform-port | 127.0.0.1 / 8768 | TCP 平台地址 |
-| platform-http-port | 19080 | 同源控制台桥接的平台 HTTP 端口 |
-| pile-code / gun-count | 32010600000001 / 2 | 14位桩号与枪数 |
-| rated-voltage / rated-current | 750 / 100 | 额定电压V、电流A |
-| encryption-enabled | false | 启用 3DES；平台按登录会话协商 |
-| heartbeat-seconds | 10 | 心跳，连续三周期未获回复则重连 |
-| idle-realtime-seconds / charging-realtime-seconds | 300 / 15 | 实时帧上报周期 |
-| state-file | ./data/simulator-state.properties | 每个模拟实例需使用不同文件 |
-| transaction-retry-seconds / transaction-max-retries | 30 / 3 | 待传账单重试 |
-
-平台 H2 文件为 `./data/protocol.mv.db`。模拟器「配置参数」查看实际运行参数、功率限制、白名单与升级状态；`0x52` 真正影响充电功率。规范没有参数查询帧，配置查看使用模拟器本地 REST。
-
-## 模拟器新增 API
-
-| 路径（POST，另行注明除外） | 请求体 / 含义 |
+| 变量 | 作用 |
 |---|---|
-| GET `/api/state`、`/api/config`、`/api/logs` | 状态、配置、报文及结构化字段 |
-| `/api/clock` | `{time?,speed?,advanceSeconds?}`，仅空闲允许直接修改时间，倍速0~3600 |
-| `/api/guns/{gun}/vehicle` | `{capacityKwh,soc,vin,physicalCard}` |
-| `/api/guns/{gun}/limits` | `{energy,amount,minutes}`，0表示不限制 |
-| `/api/guns/{gun}/{action}` | action为plug、unplug、start、vin-start、offline-start、stop、report |
-| `/api/guns/{gun}/fault?enable={boolean}` | 急停故障与恢复 |
-| `/api/guns/{gun}/terminate?reason=114` | 按附录原因终止并生成账单，参数为十进制 |
-| `/api/parallel-start` | 全部枪主动刷卡并充 |
-| GET `/api/stop-reasons` | 全部停止原因字典 |
-| `/api/upgrade-scenario` | `{result:0~3}` 固件更新模拟结果 |
-| `/api/platform/...` | 桥接固定配置的协议平台，用于控制台，非云快充协议扩展 |
+| `IPE_OPS_DB_URL / IPE_OPS_DB_USER / IPE_OPS_DB_PASSWORD` | 运维平台 PostgreSQL |
+| `IPE_OPS_BASE_URL` | 通道/模拟器访问运维平台 |
+| `IPE_PROTOCOL_BASE_URL` | 运维平台访问协议通道 |
+| `IPE_OPS_SERVICE_TOKEN` | 服务间身份 |
+| `IPE_OPS_SIMULATOR_TOKEN` | 模拟器只读设备目录 |
+| `IPE_SIMULATOR_DEVICE_ID` | 模拟器启动时自动选中的设备 |
+| `IPE_MODEL_ENABLED / IPE_MODEL_BASE_URL / IPE_MODEL_API_KEY / IPE_MODEL_NAME` | 可选模型摘要（OpenAI 兼容） |
+| `IPE_LOKI_URL` | 可选 Loki 查询地址 |
+| `IPE_OTLP_ENABLED / IPE_OTLP_ENDPOINT / IPE_ENVIRONMENT` | OTLP 导出 |
 
-原有平台设备、订单、交易、费率 REST 保留；新增 `POST /api/devices/{pileCode}/parallel-start`。
+数据库结构由 Flyway `V1__init.sql` 管理；启动时校验迁移版本，空库自动建表并写入演示站点、9 个产品（8 类设备 + 电表）、
+覆盖 3D 沙盘的 11 台演示设备、告警规则、费率与演示用户。
 
-## 验证与边界
+> **本次是 V1 重建**：`device` / `gun_state` 表已被 `device_instance` / `device_channel` / `device_property_latest` 取代。
+> 旧库需要清空 schema 后重新迁移（Flyway 会因校验和不一致拒绝启动）。
+
+### 前端构建
 
 ```powershell
-mvn -B test
-# 使用已经启动的隔离测试实例，脚本会执行充电、卡管理和参数修改：
-python scripts/smoke-test.py --base-url http://127.0.0.1:29081
+cd iot-protocol-expert-web
+npm install
+npm run dev          # 开发：http://localhost:5173，API 代理到 19082
+npm run build:ops    # 生产：产物直接写入 ops 模块 static/，随 jar 一起发布
 ```
 
-36项自动化测试通过；另完成明文/3DES真实TCP联调和桌面/移动页面浏览器检查。详见 [验收记录](docs/verification.md)。
+### 代码格式化
 
-本工程实现协议和仿真闭环，平台鉴权仍为参考演示逻辑，不接真实资金账户。BMS 为规范字段仿真，不连接真实 CAN 总线；物理电池模型为简化恒流/恒压模型。FTP 固件更新只模拟元数据校验、空闲执行与结果，不下载或执行固件。文档矛盾及取舍见 [协议决策](docs/protocol-decisions.md)。
+后端用 [Spotless](https://github.com/diffplug/spotless) + palantir-java-format（4 空格缩进、120 列），前端用 Prettier。
 
-3D 技术选择、模型替换方法和依赖许可见 [3D落地方案](docs/3d-options.md)。
+```powershell
+mvn spotless:apply          # 统一格式化全部 Java 源码与 yml/properties 的空白
+mvn spotless:check          # 只校验，不改写（verify 阶段已绑定，不合规会让构建失败）
 
-## 仓库与本地配置
+cd iot-protocol-expert-web
+npm run format              # 统一格式化前端源码
+npm run format:check        # 只校验
+```
 
-- Java 包名前缀与 Maven groupId：`top.yealike.ipe`。
-- 两端默认使用公开的3DES演示测试向量，且默认不启用加密。真实设备使用私有密钥时，通过 `IPE_CRYPTO_KEY_HEX` 为平台和模拟器同时设置相同的16/24字节十六进制值。
-- 可参考 `.env.example` 配置环境变量。Spring Boot 不会自动加载 `.env`，请在 shell 或 IDE 中导入。
-- `.idea`、运行数据、日志、临时目录、构建包、密钥文件、本地配置和生成的验收记录均不提交。源码、可复用脚本、文档预览图及必要的3D资源保留。
-- 可选浏览器验证脚本使用标准 `playwright` 包，需要先安装该依赖和 Chromium；不依赖特定用户的工具缓存路径。
-- Three.js 的 MIT 许可及车辆模型的 CC BY 4.0 许可、署名和修改说明随资源保留；详见 [3D落地方案](docs/3d-options.md)。
+编辑器另可读取仓库根目录的 `.editorconfig`；前端样式规则见 `iot-protocol-expert-web/.prettierrc.json`。
+
+## 验证
+
+```powershell
+mvn -B package
+# 三端启动后，用演示账号访问 /ops，或按 docs/ops-platform.md 的验收步骤执行。
+```
+
+已在本地完成：
+
+- 云快充：模拟器选桩 → 登录 → 插枪 → 0x31 启动 → 实时计量 → 停止 → 0x3B → 订单 `SETTLED` + 账单 `DEVICE_BILL`。
+- OCPP：同编号设备 → BootNotification → 平台远程启动 → StartTransaction → MeterValues → StopTransaction → 账单 `PLATFORM_ESTIMATE`。
+- 同站点两台同文本编号设备切换后，仅当前设备在线，历史订单与账单保留在原平台设备 ID。
+- 排障：按订单号定位设备、订单、0x3B/0x40 报文与账单，输出最后一个有证据环节。
+- OTLP：运维平台 trace 已进入 Tempo。
+
+## 已知边界
+
+- 首版不连接真实充电桩资金账户；模型摘要默认关闭，失败时返回确定性降级结果。
+- 云快充实现有验收样本的帧子集；3DES、扫描件 OCR、离线刷卡/双枪并充/远程升级的完整回归不在首版。
+- 集中日志（Loki）当前未形成可用标签，排障会明确标注日志证据不足。
+- 历史 H2 数据迁移需按 `docs/ops-platform.md` 的迁移原则执行，首版未自动搬迁旧库。
+
+## 文档索引
+
+- [运维平台与排障](docs/ops-platform.md)：边界、数据模型、内部 API、页面、验收、迁移
+- [可观测性](docs/observability.md)：OTLP、Grafana、指标与日志
+- [OCPP 1.6J](docs/ocpp16.md)：动作、命令与模拟器
+- [协议覆盖](docs/protocol-coverage.md)：云快充帧与解码入口
+- [协议决策](docs/protocol-decisions.md)：CRC、字段冲突、账单重试
+- [3D 方案](docs/3d-options.md)、[3D 视觉升级](docs/3d-visual-upgrade.md)
+- [验收记录](docs/verification.md)

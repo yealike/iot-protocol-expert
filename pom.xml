@@ -19,7 +19,9 @@
     <description>云快充 1.6 协议平台与充电桩模拟器</description>
 
     <modules>
+        <module>iot-protocol-expert-codec</module>
         <module>iot-protocol-expert-protocol</module>
+        <module>iot-protocol-expert-ops</module>
         <module>iot-protocol-expert-simulator</module>
     </modules>
 
@@ -28,6 +30,8 @@
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <spotless.version>2.46.1</spotless.version>
+        <palantir-java-format.version>2.103.0</palantir-java-format.version>
     </properties>
 
     <build>
@@ -42,5 +46,49 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <!-- 统一代码格式化：mvn spotless:apply 自动改写，mvn verify 时校验 -->
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>${spotless.version}</version>
+                <configuration>
+                    <java>
+                        <includes>
+                            <include>src/main/java/**/*.java</include>
+                            <include>src/test/java/**/*.java</include>
+                        </includes>
+                        <!-- Palantir 风格：4 空格缩进、120 列，与既有代码风格一致 -->
+                        <palantirJavaFormat>
+                            <version>${palantir-java-format.version}</version>
+                        </palantirJavaFormat>
+                        <removeUnusedImports/>
+                        <trimTrailingWhitespace/>
+                        <endWithNewline/>
+                    </java>
+                    <formats>
+                        <format>
+                            <includes>
+                                <include>*.xml</include>
+                                <include>src/**/*.yml</include>
+                                <include>src/**/*.yaml</include>
+                                <include>src/**/*.properties</include>
+                            </includes>
+                            <trimTrailingWhitespace/>
+                            <endWithNewline/>
+                        </format>
+                    </formats>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>spotless-check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 </project>

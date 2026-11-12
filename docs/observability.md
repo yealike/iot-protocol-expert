@@ -3,13 +3,15 @@
 当前方案：应用通过 **OTLP HTTP** 把 trace、log、metric 发送到服务器上的 **OpenTelemetry Collector**，Collector 再分发：
 
 ```text
-Protocol/Simulator --OTLP HTTP--> Collector :4318
+Protocol/Ops/Simulator --OTLP HTTP--> Collector :4318
                                       ├── traces  --> Tempo :3200  --> Grafana
                                       ├── logs    --> Loki :3100   --> Grafana
                                       └── metrics --> Prometheus (scrape :8889) --> Grafana
+
+Ops --JDBC--> PostgreSQL (设备/订单/账单/报文/命令/排障)
 ```
 
-服务端栈位于服务器 `/home/yehan/ipe-observability`，复用现有 Grafana / Prometheus 的 `prometheus-grafana_monitoring` 网络。
+服务端栈位于服务器 `/home/yehan/ipe-observability`，复用现有 Grafana / Prometheus 的 `prometheus-grafana_monitoring` 网络。运维平台数据库为服务器上的 `ipe-postgres`（端口 `55432`），应用仍在本机运行。
 
 ## 本地启动
 
@@ -21,12 +23,12 @@ mvn -B package
 
 启动脚本读取 `IPE_OTLP_ENDPOINT`（未设置时为 `http://127.0.0.1:4318`）；`IPE_OTLP_ENABLED=true` 时自动开启三类 OTLP 导出。
 
-| 入口 | 平台端 | 模拟器 |
-|---|---|---|
-| 业务控制台 | <http://localhost:19080> | <http://localhost:19081> |
-| 健康检查 | <http://localhost:19080/actuator/health> | <http://localhost:19081/actuator/health> |
-| 最近链路（本地缓存） | <http://localhost:19080/actuator/telemetry> | <http://localhost:19081/actuator/telemetry> |
-| Prometheus 文本指标 | <http://localhost:19080/actuator/prometheus> | <http://localhost:19081/actuator/prometheus> |
+| 入口 | 协议通道 | 运维平台 | 模拟器 |
+|---|---|---|---|
+| 业务控制台 | — | <http://localhost:19082/ops> | <http://localhost:19081> |
+| 健康检查 | <http://localhost:19080/actuator/health> | <http://localhost:19082/actuator/health> | <http://localhost:19081/actuator/health> |
+| 最近链路（本地缓存） | <http://localhost:19080/actuator/telemetry> | <http://localhost:19082/actuator/telemetry> | <http://localhost:19081/actuator/telemetry> |
+| Prometheus 文本指标 | <http://localhost:19080/actuator/prometheus> | <http://localhost:19082/actuator/prometheus> | <http://localhost:19081/actuator/prometheus> |
 
 `/actuator/telemetry` 仅 `local` profile 启用，缓存最近 1000 个 Span，供没有 Grafana 时快速排查；生产链路以 Tempo 为准。
 
@@ -83,10 +85,9 @@ traces_span_metrics_duration_milliseconds_bucket
 
 ## 日志
 
-日志文件：
+日志文件：协议通道与运维平台**不再写本地滚动日志**，仅输出结构化控制台并发送 OTLP；模拟器保留 `logs/iot-protocol-expert-simulator.json` 便于设备侧排查。
 
 ```text
-logs/iot-protocol-expert-protocol.json
 logs/iot-protocol-expert-simulator.json
 ```
 

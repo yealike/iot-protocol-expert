@@ -20,8 +20,14 @@ management:
 
 ipe:
   simulator:
+    protocol: ykc16
+    ops-base-url: ${IPE_OPS_BASE_URL:http://127.0.0.1:19082}
+    ops-simulator-token: ${IPE_OPS_SIMULATOR_TOKEN:local-simulator-token}
+    auto-select-device-id: ${IPE_SIMULATOR_DEVICE_ID:}
     platform-host: 127.0.0.1
     platform-port: 8768
+    ocpp-port: 8769
+    ocpp-path: /ocpp
     pile-code: "32010600000001"
     gun-count: 2
     protocol-version: 16
@@ -68,4 +74,8 @@ logging:
     root: INFO
     top.yealike.ipe.simulator: INFO
     org.springframework: WARN
+    org.springframework.boot: WARN
+    org.springframework.boot.autoconfigure: WARN
+    org.springframework.web: WARN
+    org.springframework.http: WARN
     io.netty: WARN

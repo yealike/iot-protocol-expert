@@ -1,0 +1,92 @@
+server:
+  port: 19082
+  shutdown: graceful
+
+spring:
+  config:
+    import: classpath:observability-defaults.yml
+  main:
+    banner-mode: "off"
+  application:
+    name: iot-protocol-expert-ops
+  datasource:
+    url: ${IPE_OPS_DB_URL:jdbc:postgresql://100.101.91.38:55432/ipe_ops}
+    username: ${IPE_OPS_DB_USER:ipe}
+    password: ${IPE_OPS_DB_PASSWORD:devpass}
+    hikari:
+      maximum-pool-size: 8
+      minimum-idle: 1
+      connection-timeout: 5000
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: Asia/Shanghai
+        format_sql: false
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+    # 迁移脚本里的物模型 JSON 含 ${...} 形态的字符，关掉占位符替换，避免 Flyway 误解析
+    placeholder-replacement: false
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+  mvc:
+    problemdetails:
+      enabled: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,telemetry
+
+ipe:
+  ops:
+    environment: ${IPE_ENVIRONMENT:local}
+    service-token: ${IPE_OPS_SERVICE_TOKEN:local-service-token}
+    simulator-token: ${IPE_OPS_SIMULATOR_TOKEN:local-simulator-token}
+    protocol-base-url: ${IPE_PROTOCOL_BASE_URL:http://127.0.0.1:19080}
+    protocol-timeout-ms: ${IPE_PROTOCOL_TIMEOUT_MS:5000}
+    model:
+      enabled: ${IPE_MODEL_ENABLED:false}
+      base-url: ${IPE_MODEL_BASE_URL:}
+      api-key: ${IPE_MODEL_API_KEY:}
+      name: ${IPE_MODEL_NAME:deepseek-chat}
+      timeout-ms: ${IPE_MODEL_TIMEOUT_MS:15000}
+    default-station-code: ${IPE_DEFAULT_STATION_CODE:ST-DEMO}
+    default-station-name: ${IPE_DEFAULT_STATION_NAME:演示充电站}
+    loki-url: ${IPE_LOKI_URL:}
+    auto-register: ${IPE_AUTO_REGISTER:true}
+
+logging:
+  structured:
+    format:
+      console: logstash
+    json:
+      add:
+        service.name: ${spring.application.name}
+        service.version: 1.0.0
+        deployment.environment.name: ${ipe.observability.environment}
+      rename:
+        traceId: trace_id
+        spanId: span_id
+      stacktrace:
+        max-length: 8192
+  level:
+    root: INFO
+    top.yealike.ipe.ops: INFO
+    org.springframework: WARN
+    org.springframework.boot: WARN
+    org.springframework.boot.autoconfigure: WARN
+    org.springframework.web: WARN
+    org.springframework.http: WARN
+    org.springframework.security: WARN
+    org.hibernate: WARN
+    org.hibernate.SQL: WARN
+    com.zaxxer.hikari: WARN
+    org.flywaydb: INFO

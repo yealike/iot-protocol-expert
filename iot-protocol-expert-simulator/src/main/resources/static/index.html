@@ -14,15 +14,22 @@
     <div class="side-title">PROTOCOL<br>EXPERT</div>
     <nav><a href="#lab" class="active">◈<span>充电实验室</span></a><a href="#tariff">▥<span>费率模型</span></a><a
             href="#configuration">⚙<span>设备参数</span></a><a href="#messages">≋<span>报文调试</span></a></nav>
-    <div class="side-bottom">云快充 V1.6<br><small>TCP 协议仿真</small></div>
+    <div class="side-bottom"><span id="sideProtocol">云快充 V1.6</span><br><small id="sideTransport">TCP 协议仿真</small></div>
 </aside>
 <main id="lab">
     <header>
         <div>
-            <div class="eyebrow">DEVICE SIMULATION / 云快充 1.6</div>
+            <div class="eyebrow" id="eyebrow">DEVICE SIMULATION / 云快充 1.6</div>
             <h1>充电实验室 <span class="tag">SIMULATOR</span></h1>
             <p>让协议、车辆与每一度电，在同一个场景中运行。</p></div>
-        <div class="connection"><span id="connection" class="badge">正在连接</span>
+        <div class="connection">
+            <label class="protocol-picker">设备
+                <select id="deviceSelect" onchange="selectDevice()">
+                    <option value="">加载设备中…</option>
+                </select>
+            </label>
+            <span id="deviceProtocol" class="badge">—</span>
+            <span id="connection" class="badge">正在连接</span>
             <button id="connectBtn" onclick="post('/connect')">连接平台</button>
             <button class="quiet" onclick="post('/disconnect')">断开</button>
         </div>
@@ -46,9 +53,12 @@
                     <button class="active" data-scene-view="auto" aria-pressed="true">自动</button>
                     <button data-scene-view="exterior" aria-pressed="false">整车</button>
                     <button data-scene-view="battery" aria-pressed="false">电池透视</button>
+                    <button id="campusToggle" type="button" title="光储充放园区 3D 沙盘（由运维平台托管）">园区沙盘</button>
                 </div>
             </div>
             <div id="scene">
+                <iframe id="campusFrame" title="光储充放园区沙盘" hidden
+                        referrerpolicy="same-origin"></iframe>
                 <div id="sceneFallback" hidden>此设备无法启动 WebGL，仍可使用下方全部充电控制功能。</div>
                 <div class="scene-energy-flow" id="sceneEnergyFlow" role="img"
                      aria-label="能量方向：交流电网，经充电桩AC/DC转换，再向车辆动力电池充入直流电">

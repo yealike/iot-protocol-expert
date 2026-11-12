@@ -1,5 +1,6 @@
 server:
   port: 19080
+  shutdown: graceful
 
 spring:
   config:
@@ -8,22 +9,6 @@ spring:
     banner-mode: "off"
   application:
     name: iot-protocol-expert-protocol
-  datasource:
-    url: jdbc:h2:file:./data/protocol;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE
-    username: sa
-    password:
-    driver-class-name: org.h2.Driver
-  jpa:
-    hibernate:
-      ddl-auto: update
-    open-in-view: false
-    properties:
-      hibernate:
-        format_sql: false
-  h2:
-    console:
-      enabled: true
-      path: /h2-console
   jackson:
     time-zone: Asia/Shanghai
     date-format: yyyy-MM-dd HH:mm:ss
@@ -36,21 +21,27 @@ management:
 
 ipe:
   protocol:
+    ykc-enabled: true
     tcp-port: 8768
+    ocpp-enabled: true
+    ocpp-port: 8769
+    ocpp-path: /ocpp
+    ocpp-default-connector-count: 2
+    ocpp-idle-timeout-seconds: 300
     boss-threads: 1
     worker-threads: 8
     crypto-key-hex: "${IPE_CRYPTO_KEY_HEX:0123456789ABCDEFFEDCBA9876543210}"
     encryption-enabled: false
-    auto-register: true
     heartbeat-timeout-seconds: 45
     pending-timeout-seconds: 10
-    default-rate-model-no: "0001"
+    ops-base-url: ${IPE_OPS_BASE_URL:http://127.0.0.1:19082}
+    ops-service-token: ${IPE_OPS_SERVICE_TOKEN:local-service-token}
+    ops-timeout-ms: ${IPE_OPS_TIMEOUT_MS:5000}
 
 logging:
   structured:
     format:
       console: logstash
-      file: logstash
     json:
       add:
         service.name: ${spring.application.name}
@@ -61,10 +52,12 @@ logging:
         spanId: span_id
       stacktrace:
         max-length: 8192
-  file:
-    name: ${IPE_LOG_DIR:./logs}/${spring.application.name}.json
-  logback:
-    rollingpolicy:
-      max-file-size: 20MB
-      max-history: 7
-      total-size-cap: 200MB
+  level:
+    root: INFO
+    top.yealike.ipe.protocol: INFO
+    org.springframework: WARN
+    org.springframework.boot: WARN
+    org.springframework.boot.autoconfigure: WARN
+    org.springframework.web: WARN
+    org.springframework.http: WARN
+    io.netty: WARN

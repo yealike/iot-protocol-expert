@@ -1,8 +1,6 @@
 package top.yealike.ipe.protocol.api;
 
-import top.yealike.ipe.protocol.netty.SessionRegistry;
-import top.yealike.ipe.protocol.service.DeviceService;
-import top.yealike.ipe.protocol.service.OrderService;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
@@ -10,51 +8,29 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.time.LocalDateTime;
-import java.util.LinkedHashMap;
-import java.util.Map;
-
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
-    @ExceptionHandler(DeviceService.DeviceRejectedException.class)
-    public ResponseEntity<Map<String, Object>> rejected(DeviceService.DeviceRejectedException e) {
-        return body(HttpStatus.NOT_FOUND, "DEVICE_NOT_FOUND", e.getMessage());
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<Map<String, Object>> badRequest(IllegalArgumentException e) {
+        return ResponseEntity.badRequest().body(Map.of("error", "BAD_REQUEST", "message", message(e)));
     }
 
-    @ExceptionHandler(DeviceService.DeviceOfflineException.class)
-    public ResponseEntity<Map<String, Object>> offline(DeviceService.DeviceOfflineException e) {
-        return body(HttpStatus.CONFLICT, "DEVICE_OFFLINE", e.getMessage());
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<Map<String, Object>> conflict(IllegalStateException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "CONFLICT", "message", message(e)));
     }
 
-    @ExceptionHandler(SessionRegistry.CommandTimeoutException.class)
-    public ResponseEntity<Map<String, Object>> timeout(SessionRegistry.CommandTimeoutException e) {
-        return body(HttpStatus.GATEWAY_TIMEOUT, "COMMAND_TIMEOUT", e.getMessage());
+    @ExceptionHandler(RuntimeException.class)
+    public ResponseEntity<Map<String, Object>> serverError(RuntimeException e) {
+        log.error("请求处理失败: {}", e.getMessage(), e);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(Map.of("error", "INTERNAL_ERROR", "message", message(e)));
     }
 
-    @ExceptionHandler({OrderService.OrderConflictException.class, IllegalStateException.class})
-    public ResponseEntity<Map<String, Object>> conflict(RuntimeException e) {
-        return body(HttpStatus.CONFLICT, "CONFLICT", e.getMessage());
-    }
-
-    @ExceptionHandler({IllegalArgumentException.class,top.yealike.ipe.protocol.codec.ProtocolException.class})
-    public ResponseEntity<Map<String, Object>> invalid(RuntimeException e) {
-        return body(HttpStatus.BAD_REQUEST, "INVALID_ARGUMENT", e.getMessage());
-    }
-
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> unexpected(Exception e) {
-        log.error("接口异常", e);
-        return body(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", e.getMessage());
-    }
-
-    private static ResponseEntity<Map<String, Object>> body(HttpStatus status, String code, String message) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("code", code);
-        body.put("message", message);
-        body.put("time", LocalDateTime.now());
-        return ResponseEntity.status(status).body(body);
+    private static String message(Throwable e) {
+        return e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage();
     }
 }

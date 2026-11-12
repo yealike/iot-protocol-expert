@@ -1,11 +1,11 @@
 package top.yealike.ipe.simulator.runtime;
 
-import top.yealike.ipe.protocol.codec.InboundFrame;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.timeout.IdleStateEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.yealike.ipe.protocol.codec.InboundFrame;
 
 /** 模拟器 TCP 通道处理器。 */
 public class SimulatorHandler extends SimpleChannelInboundHandler<InboundFrame> {
