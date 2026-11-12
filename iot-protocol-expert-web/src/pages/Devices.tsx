@@ -1,3 +1,4 @@
+import { productProtocol } from '../api/protocol'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -90,9 +91,9 @@ export default function Devices() {
         title: '协议',
         dataIndex: 'protocol',
         width: 110,
-        render: (value: string) => (
+        render: (_: string, row: DeviceRow) => (
           <span className="mono" style={{ fontSize: 12 }}>
-            {value}
+            {productProtocol(row)}
           </span>
         )
       },
@@ -117,6 +118,7 @@ export default function Devices() {
           </div>
         )
       },
+      { title: '产品', dataIndex: 'productName', width: 160 },
       { title: '站点', dataIndex: 'stationName', width: 160 },
       { title: '最近上报', dataIndex: 'lastSeen', width: 170 }
     ],
@@ -244,7 +246,7 @@ export default function Devices() {
               loading={products.isLoading}
               options={(products.data?.content ?? [])
                 .filter((item) => item.state === 'PUBLISHED')
-                .map((item) => ({ value: item.id, label: `${item.name} · ${item.protocol}` }))}
+                .map((item) => ({ value: item.id, label: `${item.name} · ${productProtocol(item)}` }))}
             />
           </Form.Item>
           <Form.Item

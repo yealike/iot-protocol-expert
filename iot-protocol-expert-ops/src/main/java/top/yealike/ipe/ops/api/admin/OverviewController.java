@@ -19,8 +19,10 @@ public class OverviewController {
 
     private final DeviceInstanceService devices;
     private final StationService stations;
+    private final top.yealike.ipe.ops.repository.ChargeOrderRepository orders;
 
-    public OverviewController(DeviceInstanceService devices, StationService stations) {
+    public OverviewController(DeviceInstanceService devices, StationService stations, top.yealike.ipe.ops.repository.ChargeOrderRepository orders) {
+        this.orders = orders;
         this.devices = devices;
         this.stations = stations;
     }
@@ -28,6 +30,31 @@ public class OverviewController {
     @GetMapping
     public DeviceDtos.Overview overview() {
         return devices.overview();
+    }
+
+    @GetMapping("/business")
+    public Map<String, Object> business() {
+        var today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"));
+        var result = orders.summarizeAll(top.yealike.ipe.ops.domain.ChargeOrder.Status.SETTLED,
+                today.atStartOfDay(), today.plusDays(1).atStartOfDay());
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put("date", today.toString());
+        response.put("timezone", "Asia/Shanghai");
+        response.put("settledOrderCount", result.getC());
+        response.put("settledEnergy", result.getE());
+        response.put("settledAmount", result.getA());
+        List<Map<String, Object>> daily = new ArrayList<>();
+        for (int days = 6; days >= 0; days--) {
+            var date = today.minusDays(days);
+            var day = orders.summarizeAll(top.yealike.ipe.ops.domain.ChargeOrder.Status.SETTLED,
+                    date.atStartOfDay(), date.plusDays(1).atStartOfDay());
+            daily.add(Map.of("date", date.toString(), "energy", day.getE(), "amount", day.getA(), "orders", day.getC()));
+        }
+        response.put("daily", daily);
+        response.put("activeOrderCount", orders.countByStatusIn(java.util.List.of(
+                top.yealike.ipe.ops.domain.ChargeOrder.Status.PENDING,
+                top.yealike.ipe.ops.domain.ChargeOrder.Status.CHARGING)));
+        return response;
     }
 
     /** 设备类型目录 + 在线/告警计数，供导航与筛选器使用。 */

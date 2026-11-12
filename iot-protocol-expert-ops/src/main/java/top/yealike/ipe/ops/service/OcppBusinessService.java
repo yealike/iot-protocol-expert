@@ -20,6 +20,7 @@ public class OcppBusinessService {
     private static final Logger log = LoggerFactory.getLogger(OcppBusinessService.class);
     private static final BigDecimal THOUSAND = new BigDecimal("1000");
 
+    private final top.yealike.ipe.ops.telemetry.OrderTelemetryService telemetry;
     private final DeviceService devices;
     private final OrderService orders;
     private final DevicePropertyService properties;
@@ -27,11 +28,13 @@ public class OcppBusinessService {
     private final RateModelService rateModels;
 
     public OcppBusinessService(
+            top.yealike.ipe.ops.telemetry.OrderTelemetryService telemetry,
             DeviceService devices,
             OrderService orders,
             DevicePropertyService properties,
             BillService bills,
             RateModelService rateModels) {
+        this.telemetry = telemetry;
         this.devices = devices;
         this.orders = orders;
         this.properties = properties;
@@ -118,13 +121,38 @@ public class OcppBusinessService {
     @Transactional
     public void meterValues(OpsDtos.MeterValuesRequest request) {
         DeviceInstance device = devices.resolve("OCPP16J", request.protocolDeviceId());
-        String gunNo = String.format("%02d", Math.max(request.connectorId(), 1));
+        if (request.connectorId() <= 0) return;
+        String gunNo = String.format("%02d", request.connectorId());
         ChargeOrder order = request.transactionId() == null
                 ? orders.active(device.id, gunNo)
                 : orders.byOcppTransactionId(request.transactionId());
         if (order == null) {
             return;
         }
+        if (!java.util.Objects.equals(order.deviceId, device.id)
+                || !java.util.Objects.equals(order.gunNo, gunNo)
+                || order.status != ChargeOrder.Status.CHARGING) return;
+        java.time.Instant sampleTime = java.time.Instant.now();
+        String timeSource = "RECEIVED";
+        if (request.sampleTime() != null) {
+            try {
+                sampleTime =
+                        java.time.OffsetDateTime.parse(request.sampleTime()).toInstant();
+                timeSource = "DEVICE";
+            } catch (java.time.format.DateTimeParseException ignored) {
+                // Missing or malformed timestamps use the explicitly labelled receive time.
+            }
+        }
+        telemetry.record(
+                order,
+                sampleTime,
+                timeSource,
+                request.voltage(),
+                request.current(),
+                request.powerKw(),
+                request.temperature(),
+                null,
+                request.soc() == null ? null : BigDecimal.valueOf(request.soc()));
         BigDecimal meterStart = order.meterStartWh == null ? BigDecimal.ZERO : order.meterStartWh;
         BigDecimal energyKwh = request.energyWh() == null
                 ? order.energy

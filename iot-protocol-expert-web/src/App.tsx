@@ -11,7 +11,11 @@ import DeviceDetail from './pages/DeviceDetail'
 import Products from './pages/Products'
 import ProductDetail from './pages/ProductDetail'
 import Alarms from './pages/Alarms'
+import Orders from './pages/Orders'
+import ProtocolDocuments from './pages/ProtocolDocuments'
+import OrderDetail from './pages/OrderDetail'
 import NotFound from './pages/NotFound'
+import Simulator from './pages/Simulator'
 
 /**
  * 会话守卫。
@@ -58,6 +62,10 @@ export default function App() {
           <Route path="/devices/:id" element={<DeviceDetail />} />
           <Route path="/products" element={<Products />} />
           <Route path="/products/:id" element={<ProductDetail />} />
+          <Route path="/protocol-documents" element={<ProtocolDocuments />} />
+          <Route path="/orders" element={<Orders />} />
+          <Route path="/orders/:orderNo" element={<OrderDetail />} />
+          <Route path="/simulator" element={<Simulator />} />
           <Route path="/alarms" element={<Alarms />} />
           <Route path="*" element={<NotFound path={location.pathname} />} />
         </Routes>

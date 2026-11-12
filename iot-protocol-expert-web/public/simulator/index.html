@@ -4,11 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>协议专家 · 充电实验室</title>
-    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="./styles.css">
+    <script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
 
 </head>
 <body>
-<aside><a class="logo" href="/">P<span>•</span></a>
+<aside><a class="logo" href="#lab">P<span>•</span></a>
     <div class="side-title">PROTOCOL<br>EXPERT</div>
     <nav><a href="#lab" class="active">◈<span>充电实验室</span></a><a href="#tariff">▥<span>费率模型</span></a><a
             href="#configuration">⚙<span>设备参数</span></a><a href="#messages">≋<span>报文调试</span></a></nav>
@@ -43,6 +44,11 @@
             —</small></article>
     </section>
     <div id="error" role="alert"></div>
+    <section class="twin-panel" aria-label="充电三维仿真">
+        <div class="twin-heading"><div><span class="twin-kicker">LIVE DIGITAL TWIN</span><h2>充电场景 <small>· 当前选择的枪</small></h2></div><span id="twin-status" class="twin-badge">等待状态</span></div>
+        <div id="twin-view"><div id="twin-message">正在加载三维场景…</div></div>
+        <div class="twin-caption"><span>拖动旋转 · 滚轮缩放</span><span>比例化示意 · Model Y / 120 kW 直流桩</span></div>
+    </section>
     <section class="panel"><h2>并发模拟设备</h2><div id="fleetList">暂无设备</div></section>
     <div class="lab-grid">
         <section class="panel clock-panel">
@@ -255,7 +261,8 @@
     <button onclick="$('detailDialog').close()">关闭</button>
     <pre id="detailContent"></pre>
 </dialog>
-<script src="/app.js"></script>
+<script src="./app.js"></script>
+<script type="module" src="./twin.js"></script>
 
 </body>
 </html>

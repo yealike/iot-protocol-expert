@@ -17,7 +17,7 @@ function toast(message, bad = false) {
 }
 
 async function api(path, body) {
-    const r = await fetch(path, {
+    const r = await fetch('/api/simulator-proxy' + path.substring('/api'.length), {
         method: body === undefined ? 'GET' : 'POST',
         headers: {'Content-Type': 'application/json'},
         body: body === undefined ? undefined : JSON.stringify(body)
@@ -106,6 +106,7 @@ function chooseGun(no) {
 
 function renderState() {
     const s = live, g = s.guns?.find(g => g.gunNo === selectedGun);
+    window.dispatchEvent(new CustomEvent('simulator-state', {detail: {...s, selectedGun}}));
     if (!g) return;
     $('connection').textContent = s.loggedIn ? '平台已登录' : s.connected ? (s.protocol === 'ocpp16j' ? 'WebSocket 已连接' : 'TCP 已连接') : '平台离线';
     $('connection').className = 'badge ' + (s.loggedIn ? 'ok' : 'bad');
@@ -130,7 +131,6 @@ function renderState() {
     const stages = ['已插枪', '鉴权中', '握手', '参数配置', '充电', '已结束'];
     let step = g.phase === '恒流充电' || g.phase === '恒压充电' ? 4 : stages.indexOf(g.phase);
     $('flow').innerHTML = stages.map((p, i) => `<span class="${i <= step ? 'done' : ''}">${p.replace('已插枪', '插枪').replace('鉴权中', '鉴权')}</span>`).join('');
-    window.dispatchEvent(new CustomEvent('simulator-state', {detail: {...s, selectedGun}}));
     $('billingModel').textContent = g.billingModelNo ? '订单模型 ' + g.billingModelNo : '等待启动';
     $('billingRows').innerHTML = g.billing.length ? g.billing.map(r => `<tr><td><span class="period-dot p${r.period}"></span>${r.name}</td><td>${num(r.energyPrice, 5)}</td><td>${num(r.servicePrice, 5)}</td><td>${num(r.energy)}</td><td>${num(r.lossEnergy)}</td><td>${num(r.electricityFee)}</td><td>${num(r.serviceFee)}</td><td><b>${num(r.amount)}</b></td></tr>`).join('') : '<tr><td colspan="8" class="empty">插枪并启动充电后，在这里查看尖峰平谷明细</td></tr>';
     $('offlineCards').textContent = '本地白名单 ' + s.offlineCards.length + ' 张';
@@ -180,7 +180,8 @@ async function refresh() {
         renderState();
         renderLogs()
     } catch (e) {
-        $('error').textContent = '读取模拟器失败：' + e.message
+        $('error').textContent = '读取模拟器失败：' + e.message;
+        window.dispatchEvent(new CustomEvent('simulator-state', {detail: {connected: false, guns: [], selectedGun}}))
     } finally {
         busy = false
     }

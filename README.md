@@ -14,7 +14,7 @@
 
 ## 本地运行
 
-需要 JDK 21、Maven 及 PostgreSQL。设置数据库密码等环境变量后运行：
+需要 JDK 21、Maven、PostgreSQL 和 TDengine 3.x。应用数据库账号需有创建 `ipe_ops` schema 的权限；业务表和 Flyway 历史表使用该 schema。订单时序使用 TDengine WebSocket 接口，通过 PostgreSQL 发件箱异步同步；配置 `IPE_TDENGINE_URL`（例如 `jdbc:TAOS-WS://服务器:6041`）、`IPE_TDENGINE_USER` 和 `IPE_TDENGINE_PASSWORD`。应用账号需有创建数据库和表的权限。设置数据库密码等环境变量后运行：
 
 ```powershell
 $env:JAVA_HOME='D:\develop\jdk\jdk-21'
@@ -25,9 +25,11 @@ $env:PATH="$env:JAVA_HOME\bin;$env:PATH"
 
 前端在 `iot-protocol-expert-web` 下执行 `npm ci`、`npm run dev`；生产构建使用 `npm run build`。设置 `IPE_OPS_DB_URL`、`IPE_OPS_DB_USER`、`IPE_OPS_DB_PASSWORD` 指定数据库，服务间地址与令牌见各模块的 `application.yml`。
 
-Flyway 会在已有迁移基础上执行 `V4__chargers_only.sql`：删除非充电桩设备、对应产品和关联遥测/告警；关联订单或账单的记录会受外键保护并使迁移失败。执行前应备份数据库并确认数据影响。空库会先运行历史迁移，再由 V4 清理非充电桩数据。
+首次运行将在独立 `ipe_ops` schema 初始化演示数据；不会清理已有 `public` 数据。现有 `public` 数据不会自动迁移。订单回放仅包含新接入的采样，显示的接收时间与设备时间分别标识。
 
 ## 模拟器
+
+登录运营平台后从「充电模拟器」进入。模拟器服务仍需启动，运营平台通过 `IPE_SIMULATOR_BASE_URL`（默认 `http://127.0.0.1:19081`）连接模拟器。
 
 设备列表由运营平台提供，选择设备后使用其协议和协议设备编号。主界面支持插枪、启动、停止、实时上报和故障模拟；云快充故障值为 16 位故障位图，OCPP 为标准 `StatusNotification.errorCode`。并发模拟区域可添加其他设备，分别控制枪和上报数据；同一设备不能同时出现在主模拟器和并发列表。状态与待补传账单按设备 ID 分文件保存。
 

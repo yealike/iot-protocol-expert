@@ -2,8 +2,6 @@ server:
   port: 19081
 
 spring:
-  config:
-    import: classpath:observability-defaults.yml
   main:
     banner-mode: "off"
   application:

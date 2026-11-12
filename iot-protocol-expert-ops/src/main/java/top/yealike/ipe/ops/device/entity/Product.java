@@ -34,6 +34,9 @@ public class Product {
     @Column(nullable = false, length = 32)
     public String protocol;
 
+    @Column(name = "protocol_document_id")
+    public Long protocolDocumentId;
+
     /** TCP / WS / MQTT / HTTP / NONE。 */
     @Column(nullable = false, length = 16)
     public String transport = "NONE";

@@ -25,6 +25,7 @@ $runDir = Join-Path $root 'run'
 New-Item -ItemType Directory -Force -Path $logDir, $runDir, (Join-Path $root 'data') | Out-Null
 
 # 服务间地址与身份。数据库地址默认在 ops 的 application.yml 中，可用 IPE_OPS_DB_* 覆盖。
+if (!$env:IPE_PROTOCOL_DOCUMENT_DIR) { $env:IPE_PROTOCOL_DOCUMENT_DIR = Join-Path $root 'data\protocol-documents' }
 if (!$env:IPE_OPS_BASE_URL) { $env:IPE_OPS_BASE_URL = 'http://127.0.0.1:19082' }
 if (!$env:IPE_PROTOCOL_BASE_URL) { $env:IPE_PROTOCOL_BASE_URL = 'http://127.0.0.1:19080' }
 if (!$env:IPE_OPS_SERVICE_TOKEN) { $env:IPE_OPS_SERVICE_TOKEN = 'local-service-token' }
@@ -75,5 +76,5 @@ Start-App 'protocol' $platform 19080
 Start-App 'simulator' $simulator 19081
 Write-Host '运维平台 API http://localhost:19082 （admin/admin123、ops/ops123、viewer/viewer123）'
 Write-Host '运维平台前端 http://localhost:5173（在 iot-protocol-expert-web 下 npm run dev）'
-Write-Host '协议通道 19080（TCP 8768 / ws 8769）；模拟器 http://localhost:19081'
+Write-Host '协议通道 19080（TCP 8768 / ws 8769）；模拟器 API 19081（页面位于运维平台）'
 Write-Host '最近链路 /actuator/telemetry ；指标 /actuator/prometheus ；OTLP 默认关闭'

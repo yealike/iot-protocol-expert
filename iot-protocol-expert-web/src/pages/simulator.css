@@ -1,0 +1,24 @@
+/* Simulator shares the platform shell and uses one page scroll. */
+.simulator-workspace{background:transparent;color:#24344a;font-family:inherit;font-size:13px}
+.simulator-workspace main{max-width:none;margin:0;padding:0;display:grid;grid-template-columns:minmax(0,1.3fr) minmax(360px,.7fr);gap:18px;align-items:start}
+.simulator-workspace main>header,.simulator-workspace main>.simulator-section-nav,.simulator-workspace main>.metrics,.simulator-workspace main>#error,.simulator-workspace main>footer,.simulator-workspace main>section.panel{grid-column:1/-1}
+.simulator-workspace main>header{margin:0;align-items:flex-start;gap:20px;flex-wrap:wrap}
+.simulator-workspace .eyebrow{font-size:10px;color:#73859a;letter-spacing:.14em;font-weight:700}
+.simulator-workspace h1{font-size:24px;margin:8px 0;color:#1d304b}.simulator-workspace h1 .tag{font-size:10px;color:#2858a5;background:#eaf1fc;border-color:#dce8f8}
+.simulator-workspace header p{font-size:13px;color:#8392a5}
+.simulator-workspace .connection{background:#fff;border:1px solid #e1e8f0;border-radius:10px;padding:10px;flex-wrap:wrap;box-shadow:0 2px 8px #18385808}
+.simulator-workspace .connection select{max-width:240px}.simulator-workspace .connection .protocol-picker{font-size:12px}
+.simulator-workspace .simulator-section-nav{display:flex;gap:4px;overflow:auto;border-bottom:1px solid #dce4ed;margin:0 0 2px}
+.simulator-workspace .simulator-section-nav a{white-space:nowrap;color:#6d7e92;padding:12px 15px;text-decoration:none;font-size:13px;border-bottom:2px solid transparent}
+.simulator-workspace .simulator-section-nav a:first-child{color:#2858a5;border-color:#2858a5;font-weight:600}.simulator-workspace .simulator-section-nav a:hover{color:#2858a5}
+.simulator-workspace .metrics{gap:14px;margin:0}.simulator-workspace .metrics article{border-radius:10px;padding:18px 20px;box-shadow:0 2px 8px #18385808}.simulator-workspace .metrics strong{font-size:25px;color:#203955;margin:10px 0 7px}.simulator-workspace .metrics strong#pileCode{font-size:19px;overflow-wrap:anywhere}
+.simulator-workspace .twin-panel{grid-column:1;margin:0;min-width:0;border-radius:10px;background:#0c1825}.simulator-workspace #twin-view{height:390px}
+.simulator-workspace .lab-grid{grid-column:2;grid-row:auto;display:flex;flex-direction:column;gap:14px;min-width:0}.simulator-workspace .lab-grid .panel{margin:0}.simulator-workspace .clock-panel .panel-title{padding:18px 20px 0}.simulator-workspace .timebar{padding:14px 20px;border:0}
+.simulator-workspace .panel{margin:0;padding:20px;border-color:#e0e7ef;border-radius:10px;box-shadow:0 2px 8px #18385808}.simulator-workspace .panel-title{margin-bottom:16px}.simulator-workspace h2{font-size:15px;color:#243c59}.simulator-workspace .twin-heading h2{color:#e8f7f3}
+.simulator-workspace button{border-radius:6px}.simulator-workspace button.primary{background:#2858a5;border-color:#2858a5}.simulator-workspace button.primary:hover{background:#1f4788}.simulator-workspace button:focus-visible,.simulator-workspace a:focus-visible{outline:2px solid #4481d3;outline-offset:2px}
+.simulator-workspace .button-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.simulator-workspace .button-grid label{min-width:0}.simulator-workspace .button-grid select{width:100%}
+.simulator-workspace #fleetList>div{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid #edf1f5}.simulator-workspace #fleetList span{display:flex;gap:5px;align-items:center;flex-wrap:wrap}.simulator-workspace #fleetList button{padding:6px 9px}
+.simulator-workspace footer{padding:4px 0;color:#9ba8b9}.simulator-workspace #toast{z-index:1000}
+@media(max-width:1250px){.simulator-workspace main{grid-template-columns:1fr}.simulator-workspace .twin-panel,.simulator-workspace .lab-grid{grid-column:1;grid-row:auto}.simulator-workspace .lab-grid{display:grid;grid-template-columns:1fr 1.5fr}.simulator-workspace .connection{width:100%}}
+@media(max-width:800px){.simulator-workspace main{gap:14px}.simulator-workspace .lab-grid{display:flex}.simulator-workspace .metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.simulator-workspace .button-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.simulator-workspace #twin-view{height:300px}.simulator-workspace .connection{max-width:none}.simulator-workspace .connection select{max-width:100%}}
+

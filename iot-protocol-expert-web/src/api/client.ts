@@ -1,12 +1,17 @@
 import type {
   AlarmView,
+  BusinessOverview,
   CurrentUser,
   DeviceDetail,
   DeviceRow,
   DeviceTypeDescriptor,
   Overview,
+  OrderView,
+  OrderDetail,
+  OrderTelemetry,
   PageResult,
   ProductDetail,
+  ProtocolDocument,
   ProductRow,
   SeriesView
 } from './types'
@@ -86,6 +91,7 @@ export const api = {
   // ---------------------------------------------------------------- 总览
 
   overview: () => request<Overview>('/api/ops/overview'),
+  businessOverview: () => request<BusinessOverview>('/api/ops/overview/business'),
   deviceTypes: () => request<DeviceTypeDescriptor[]>('/api/ops/overview/device-types'),
 
   // ---------------------------------------------------------------- 设备
@@ -130,6 +136,42 @@ export const api = {
           body: JSON.stringify(body)
         })
       : request<ProductRow>('/api/ops/products', json(body)),
+
+  deleteProduct: (id: number) =>
+    request<{ deleted: boolean }>(`/api/ops/products/${id}`, { method: 'DELETE' }),
+
+  protocolDocuments: (protocol = '') =>
+    request<ProtocolDocument[]>(
+      `/api/ops/protocol-documents?protocol=${encodeURIComponent(protocol)}`
+    ),
+  uploadProtocolDocument: async (body: FormData) => {
+    const response = await fetch('/api/ops/protocol-documents', {
+      method: 'POST',
+      credentials: 'include',
+      body
+    })
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}))
+      throw new ApiError(response.status, error.message ?? `上传失败 HTTP ${response.status}`)
+    }
+    return response.json() as Promise<{ id: number }>
+  },
+  archiveProtocolDocument: (id: number) =>
+    request<void>(`/api/ops/protocol-documents/${id}/archive`, { method: 'POST' }),
+
+  // ---------------------------------------------------------------- 订单
+
+  queryOrders: (params: Record<string, string | number | undefined> = {}) => {
+    const search = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== '') search.set(key, String(value))
+    })
+    return request<PageResult<OrderView>>(`/api/ops/orders/page?${search}`)
+  },
+  orderTelemetry: (orderNo: string) =>
+    request<OrderTelemetry>(`/api/ops/orders/${encodeURIComponent(orderNo)}/telemetry`),
+  order: (orderNo: string) =>
+    request<OrderDetail>(`/api/ops/orders/${encodeURIComponent(orderNo)}`),
 
   // ---------------------------------------------------------------- 告警
 

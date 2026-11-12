@@ -10,6 +10,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
@@ -38,11 +39,13 @@ public class ProductService {
 
     private final ProductRepository products;
     private final DeviceInstanceRepository devices;
+    private final JdbcTemplate jdbc;
     private final Map<Long, CachedModel> modelCache = new ConcurrentHashMap<>();
 
-    public ProductService(ProductRepository products, DeviceInstanceRepository devices) {
+    public ProductService(ProductRepository products, DeviceInstanceRepository devices, JdbcTemplate jdbc) {
         this.products = products;
         this.devices = devices;
+        this.jdbc = jdbc;
     }
 
     private record CachedModel(String raw, ThingModel model) {}
@@ -75,6 +78,17 @@ public class ProductService {
 
     public List<Product> findAllById(java.util.Collection<Long> ids) {
         return products.findAllById(ids);
+    }
+
+    /** 按产品批量读取所引用的协议展示信息。 */
+    public Map<Long, Map<String, Object>> protocolDocuments(java.util.Collection<Long> productIds) {
+        if (productIds.isEmpty()) return Map.of();
+        String placeholders = String.join(",", java.util.Collections.nCopies(productIds.size(), "?"));
+        Map<Long, Map<String, Object>> result = new LinkedHashMap<>();
+        for (var row : jdbc.queryForList("select p.id, d.protocol_code, d.protocol_name_en, d.document_version from ipe_ops.product p join ipe_ops.protocol_document d on d.id = p.protocol_document_id where p.id in (" + placeholders + ")", productIds.toArray())) {
+            result.put(((Number) row.get("id")).longValue(), row);
+        }
+        return result;
     }
 
     public long count() {
@@ -133,8 +147,34 @@ public class ProductService {
         Product product =
                 products.findByProductCode(requireCode(input.productCode())).orElseGet(Product::new);
 
+        String previousProtocol = product.protocol;
+        Long documentId = input.protocolDocumentId();
+        String resolvedProtocol = previousProtocol;
+        if (documentId != null) {
+            var docs = jdbc.queryForList("select protocol_name_en, document_version, status from ipe_ops.protocol_document where id = ? for update", documentId);
+            if (docs.isEmpty()) throw new IllegalArgumentException("协议文档不存在");
+            var doc = docs.get(0);
+            if (!"ACTIVE".equals(doc.get("status"))) throw new IllegalArgumentException("协议文档已归档");
+            String english = String.valueOf(doc.get("protocol_name_en"));
+            String version = String.valueOf(doc.get("document_version"));
+            if (english.equalsIgnoreCase("YKC") && version.equalsIgnoreCase("1.6")) resolvedProtocol = "YKC16";
+            else if (english.equalsIgnoreCase("OCPP") && version.equalsIgnoreCase("1.6j")) resolvedProtocol = "OCPP16J";
+            else throw new IllegalArgumentException("该协议版本尚未接入，当前支持 YKC 1.6 和 OCPP 1.6j");
+        } else if (product.id == null || product.protocolDocumentId != null) {
+            throw new IllegalArgumentException("请选择协议文档");
+        }
         if (product.id != null && !product.productCode.equals(input.productCode())) {
             throw new IllegalArgumentException("产品编码创建后不可修改");
+        }
+        if (product.id != null && devices.countByProductId(product.id) > 0) {
+            String requestedProtocol = resolvedProtocol;
+            String requestedTransport = input.transport() == null || input.transport().isBlank()
+                    ? "NONE" : input.transport().trim().toUpperCase(Locale.ROOT);
+            ThingModel requestedModel = ThingModelCodec.fromMap(input.metadata());
+            if (!product.protocol.equals(requestedProtocol) || !product.transport.equals(requestedTransport)
+                    || !ThingModelCodec.toMap(ThingModelCodec.parse(product.metadata)).equals(ThingModelCodec.toMap(requestedModel))) {
+                throw new IllegalArgumentException("产品已绑定设备，不能直接修改协议或物模型");
+            }
         }
         product.productCode = input.productCode().trim();
         product.name = input.name().trim();
@@ -143,12 +183,15 @@ public class ProductService {
                         ? type.categoryCode()
                         : input.categoryCode().trim();
         product.deviceType = type.name();
-        product.protocol = input.protocol() == null || input.protocol().isBlank()
-                ? type.defaultProtocol()
-                : input.protocol().trim();
+        product.protocol = resolvedProtocol;
+        product.protocolDocumentId = documentId;
         product.transport = input.transport() == null || input.transport().isBlank()
                 ? "NONE"
                 : input.transport().trim().toUpperCase(Locale.ROOT);
+        if (!("YKC16".equals(product.protocol) && "TCP".equals(product.transport))
+                && !("OCPP16J".equals(product.protocol) && "WS".equals(product.transport))) {
+            throw new IllegalArgumentException("不支持的协议和传输方式组合");
+        }
         product.vendor = input.vendor();
         product.model = input.model();
         ThingModel model = ThingModelCodec.fromMap(input.metadata());
@@ -230,6 +273,8 @@ public class ProductService {
 
     public DeviceDtos.ProductRow row(Product product) {
         ThingModel model = model(product.id);
+        var docs = product.protocolDocumentId == null ? List.<Map<String, Object>>of() : jdbc.queryForList("select protocol_code, protocol_name_en, document_version from ipe_ops.protocol_document where id = ?", product.protocolDocumentId);
+        Map<String, Object> doc = docs.isEmpty() ? Map.of() : docs.get(0);
         return new DeviceDtos.ProductRow(
                 product.id,
                 product.productCode,
@@ -240,6 +285,10 @@ public class ProductService {
                         .map(DeviceTypeCatalog::label)
                         .orElse(product.deviceType),
                 product.protocol,
+                product.protocolDocumentId,
+                (String) doc.get("protocol_code"),
+                (String) doc.get("protocol_name_en"),
+                (String) doc.get("document_version"),
                 product.transport,
                 product.vendor,
                 product.model,

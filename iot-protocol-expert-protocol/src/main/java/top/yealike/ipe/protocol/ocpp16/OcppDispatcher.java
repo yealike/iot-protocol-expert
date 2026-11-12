@@ -155,15 +155,23 @@ public class OcppDispatcher {
                 payload.has("transactionId") && !payload.get("transactionId").isNull()
                         ? payload.get("transactionId").asInt()
                         : null;
-        MeterSample sample = readMeterSample(payload);
-        ops.meterValues(new OpsDtos.MeterValuesRequest(
-                chargePointId,
-                connectorId,
-                transactionId,
-                sample.energyWh(),
-                sample.voltage(),
-                sample.current(),
-                sample.soc()));
+        JsonNode values = payload.get("meterValue");
+        if (values != null && values.isArray()) {
+            for (JsonNode meterValue : values) {
+                MeterSample sample = readMeterSample(meterValue);
+                ops.meterValues(new OpsDtos.MeterValuesRequest(
+                        chargePointId,
+                        connectorId,
+                        transactionId,
+                        sample.energyWh(),
+                        sample.voltage(),
+                        sample.current(),
+                        sample.soc(),
+                        sample.powerKw(),
+                        sample.temperature(),
+                        text(meterValue, "timestamp", null)));
+            }
+        }
         return OcppMessageCodec.object();
     }
 
@@ -195,36 +203,44 @@ public class OcppDispatcher {
         return response;
     }
 
-    private MeterSample readMeterSample(JsonNode payload) {
-        BigDecimal energyWh = null;
-        BigDecimal voltage = null;
-        BigDecimal current = null;
+    private MeterSample readMeterSample(JsonNode meterValue) {
+        BigDecimal energyWh = null, voltage = null, current = null, powerKw = null, temperature = null;
         Integer soc = null;
-        JsonNode meterValues = payload.get("meterValue");
-        if (meterValues != null && meterValues.isArray()) {
-            for (JsonNode meterValue : meterValues) {
-                JsonNode sampledValues = meterValue.get("sampledValue");
-                if (sampledValues == null || !sampledValues.isArray()) {
-                    continue;
-                }
-                for (JsonNode sampled : sampledValues) {
-                    String measurand = text(sampled, "measurand", "Energy.Active.Import.Register");
-                    BigDecimal value = decimal(sampled, "value", null);
-                    if (value == null) {
-                        continue;
+        JsonNode sampledValues = meterValue.get("sampledValue");
+        if (sampledValues != null && sampledValues.isArray()) {
+            for (JsonNode sampled : sampledValues) {
+                String measurand = text(sampled, "measurand", "Energy.Active.Import.Register");
+                BigDecimal value = decimal(sampled, "value", null);
+                if (value == null) continue;
+                String unit = text(sampled, "unit", "");
+                // A phase-specific value cannot represent the overall connector value.
+                if (sampled.has("phase") && !sampled.get("phase").isNull()) continue;
+                switch (measurand) {
+                    case "Energy.Active.Import.Register" -> {
+                        if (unit.isEmpty() || unit.equals("Wh") || unit.equals("kWh") || unit.equals("MWh"))
+                            energyWh = toWh(value, unit);
                     }
-                    String unit = text(sampled, "unit", "");
-                    switch (measurand) {
-                        case "Energy.Active.Import.Register" -> energyWh = toWh(value, unit);
-                        case "Voltage" -> voltage = value;
-                        case "Current.Import" -> current = value;
-                        case "SoC" -> soc = value.intValue();
-                        default -> {}
+                    case "Voltage" -> {
+                        if (unit.isEmpty() || unit.equals("V")) voltage = value;
                     }
+                    case "Current.Import" -> {
+                        if (unit.isEmpty() || unit.equals("A")) current = value;
+                    }
+                    case "Power.Active.Import" -> {
+                        if (unit.equals("kW")) powerKw = value;
+                        else if (unit.isEmpty() || unit.equals("W")) powerKw = value.divide(THOUSAND);
+                    }
+                    case "Temperature" -> {
+                        if (unit.equals("Celsius")) temperature = value;
+                    }
+                    case "SoC" -> {
+                        if (unit.isEmpty() || unit.equals("Percent")) soc = value.intValue();
+                    }
+                    default -> {}
                 }
             }
         }
-        return new MeterSample(energyWh, voltage, current, soc);
+        return new MeterSample(energyWh, voltage, current, soc, powerKw, temperature);
     }
 
     private static BigDecimal toWh(BigDecimal value, String unit) {
@@ -283,5 +299,11 @@ public class OcppDispatcher {
         }
     }
 
-    private record MeterSample(BigDecimal energyWh, BigDecimal voltage, BigDecimal current, Integer soc) {}
+    private record MeterSample(
+            BigDecimal energyWh,
+            BigDecimal voltage,
+            BigDecimal current,
+            Integer soc,
+            BigDecimal powerKw,
+            BigDecimal temperature) {}
 }
