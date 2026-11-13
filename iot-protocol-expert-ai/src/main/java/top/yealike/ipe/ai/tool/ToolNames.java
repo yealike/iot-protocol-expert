@@ -15,6 +15,24 @@ public final class ToolNames {
     public static final String ASK_PROTOCOL_AGENT = "ask_protocol_agent";
     public static final String ASK_ORDER_AGENT = "ask_order_agent";
 
+    /** 只在应用内部调用、不交给模型的远程能力。 */
+    public static final String RESOLVE_SESSION = "resolve_session";
+
+    public static final String RESOLVE_ACTOR = "resolve_actor";
+    public static final String LIST_DOCUMENTS = "list_documents";
+    public static final String READ_DOCUMENT = "read_document";
+
+    /** 必须出现在 Nacos MCP 目录里的工具；缺失说明目录与实际运维接口已漂移。 */
+    public static final List<String> REMOTE_TOOLS = List.of(
+            GET_ORDER_DETAIL,
+            GET_ORDER_BILLS,
+            GET_DEVICE_DETAIL,
+            GET_ORDER_TELEMETRY_SUMMARY,
+            RESOLVE_SESSION,
+            RESOLVE_ACTOR,
+            LIST_DOCUMENTS,
+            READ_DOCUMENT);
+
     public static final List<String> BUSINESS_TOOLS = List.of(
             GET_ORDER_DETAIL,
             GET_ORDER_BILLS,

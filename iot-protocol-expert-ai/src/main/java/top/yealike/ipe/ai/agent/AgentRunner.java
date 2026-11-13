@@ -17,13 +17,12 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 import top.yealike.ipe.ai.agent.AgentCatalog.Definition;
 import top.yealike.ipe.ai.config.AiProperties;
-import top.yealike.ipe.ai.gateway.OpsClient;
 import top.yealike.ipe.ai.knowledge.KnowledgeService;
 import top.yealike.ipe.ai.policy.PolicyService;
 import top.yealike.ipe.ai.support.AiExceptions;
 import top.yealike.ipe.ai.tool.DelegationTools;
-import top.yealike.ipe.ai.tool.OrderTools;
 import top.yealike.ipe.ai.tool.ProtocolTools;
+import top.yealike.ipe.ai.tool.RemoteTools;
 import top.yealike.ipe.ai.tool.ToolGuard;
 import top.yealike.ipe.ai.tool.ToolNames;
 import top.yealike.ipe.ai.tool.ToolSession;
@@ -44,7 +43,7 @@ public class AgentRunner {
     private final ToolGuard guard;
     private final PolicyService policy;
     private final KnowledgeService knowledge;
-    private final OpsClient ops;
+    private final RemoteTools remoteTools;
 
     public AgentRunner(
             AgentCatalog catalog,
@@ -52,13 +51,13 @@ public class AgentRunner {
             ToolGuard guard,
             PolicyService policy,
             KnowledgeService knowledge,
-            OpsClient ops) {
+            RemoteTools remoteTools) {
         this.catalog = catalog;
         this.properties = properties;
         this.guard = guard;
         this.policy = policy;
         this.knowledge = knowledge;
-        this.ops = ops;
+        this.remoteTools = remoteTools;
     }
 
     public Definition requireDefinition(String agentKey) {
@@ -150,7 +149,6 @@ public class AgentRunner {
     Toolkit buildToolkit(Definition definition, ToolSession session) {
         Toolkit toolkit = new Toolkit();
         toolkit.registration()
-                .tool(new OrderTools(session, guard, ops))
                 .tool(new ProtocolTools(session, guard, knowledge))
                 .tool(new DelegationTools(session, guard, this::delegate))
                 .apply();
@@ -166,6 +164,7 @@ public class AgentRunner {
         if (!removed.isEmpty()) {
             log.debug("tools disabled for run {}: {}", session.runId(), removed);
         }
+        remoteTools.register(toolkit, session, allowed);
         return toolkit;
     }
 

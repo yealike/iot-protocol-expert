@@ -4,9 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Service;
-import top.yealike.ipe.ai.config.AiProperties;
+import top.yealike.ipe.ai.gateway.McpGateway;
 import top.yealike.ipe.ai.support.AiExceptions;
-import top.yealike.ipe.ai.support.JsonSupport;
 
 /**
  * 身份校验：把浏览器的会话 cookie 转发给 ops 认证入口，用返回值建立本服务身份。
@@ -16,12 +15,10 @@ import top.yealike.ipe.ai.support.JsonSupport;
 @Service
 public class IdentityService {
 
-    private final AiProperties properties;
-    private final org.springframework.web.client.RestClient client;
+    private final McpGateway gateway;
 
-    public IdentityService(AiProperties properties, org.springframework.web.client.RestClient.Builder builder) {
-        this.properties = properties;
-        this.client = builder.baseUrl(properties.opsBaseUrl()).build();
+    public IdentityService(McpGateway gateway) {
+        this.gateway = gateway;
     }
 
     public UserIdentity resolve(String cookieHeader) {
@@ -34,12 +31,7 @@ public class IdentityService {
     /** 任务执行期间不保存用户 cookie，使用服务身份向 ops 读取最新账号状态。 */
     public UserIdentity resolveActor(String id) {
         try {
-            String body = client.get()
-                    .uri("/internal/ai/users/{id}/identity", id)
-                    .header("X-Ops-Service-Token", properties.serviceToken())
-                    .retrieve()
-                    .body(String.class);
-            Map<String, Object> user = JsonSupport.readMap(body);
+            Map<String, Object> user = gateway.call("resolve_actor", Map.of("id", Long.parseLong(id)), Map.of());
             if (!id.equals(String.valueOf(user.get("id")))) throw AiExceptions.unauthorized("账号不可用");
             var permissions = roles(user.get("permissions"));
             if (!permissions.contains("ai:use")) throw AiExceptions.unauthorized("账号无权使用 AI");
@@ -49,8 +41,8 @@ public class IdentityService {
                     roles(user.get("roles")),
                     permissions,
                     version(user.get("authVersion")));
-        } catch (org.springframework.web.client.RestClientResponseException exception) {
-            if (exception.getStatusCode().value() == 404) throw AiExceptions.unauthorized("账号不可用");
+        } catch (McpGateway.ToolFailure exception) {
+            if (exception.status() == 404) throw AiExceptions.unauthorized("账号不可用");
             throw AiExceptions.upstream("身份校验服务不可用");
         } catch (AiExceptions.AiException exception) {
             throw exception;
@@ -60,22 +52,17 @@ public class IdentityService {
     }
 
     private UserIdentity verify(String cookieHeader) {
-        String body;
+        Map<String, Object> me;
         try {
-            body = client.get()
-                    .uri("/api/ops/auth/me")
-                    .header("Cookie", cookieHeader)
-                    .retrieve()
-                    .body(String.class);
-        } catch (org.springframework.web.client.RestClientResponseException exception) {
-            if (exception.getStatusCode().value() == 401) {
+            me = gateway.call("resolve_session", Map.of(), Map.of("Cookie", cookieHeader));
+        } catch (McpGateway.ToolFailure exception) {
+            if (exception.status() == 401) {
                 throw AiExceptions.unauthorized("未登录或会话已过期");
             }
             throw AiExceptions.upstream("身份校验服务不可用");
         } catch (RuntimeException exception) {
             throw AiExceptions.upstream("身份校验服务不可用");
         }
-        Map<String, Object> me = JsonSupport.readMap(body);
         if (!Boolean.TRUE.equals(me.get("authenticated"))) {
             throw AiExceptions.unauthorized("未登录或会话已过期");
         }

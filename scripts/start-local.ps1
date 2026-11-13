@@ -6,13 +6,13 @@
 )
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$envFile = Join-Path $root '.env-local'
-if (!(Test-Path -LiteralPath $envFile)) { throw '缺少 .env-local，请从 .env.example 创建并填写本地配置' }
+$envFile = Join-Path $root '.env.local'
+if (!(Test-Path -LiteralPath $envFile)) { throw '缺少 .env.local，请从 .env.example 创建并填写本地配置' }
 # 只解析 KEY=VALUE，不执行文件内容；显式传入的脚本参数仍优先。
 foreach ($line in Get-Content -LiteralPath $envFile -Encoding UTF8) {
     $line = $line.Trim()
     if (!$line -or $line.StartsWith('#')) { continue }
-    if ($line -notmatch '^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$') { throw ' .env-local 中存在无效配置行' }
+    if ($line -notmatch '^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$') { throw ' .env.local 中存在无效配置行' }
     $key, $value = $matches[1], $matches[2].Trim()
     if ($value.Length -ge 2 -and (($value.StartsWith('"') -and $value.EndsWith('"')) -or ($value.StartsWith("'") -and $value.EndsWith("'")))) { $value = $value.Substring(1, $value.Length - 2) }
     [Environment]::SetEnvironmentVariable($key, $value, 'Process')
@@ -58,6 +58,9 @@ function Start-App($name, $jar, $port) {
         '--logging.level.org.springframework=WARN', '--logging.level.org.springframework.web=WARN', '--logging.level.org.springframework.boot=WARN',
         '--logging.level.org.springframework.boot.autoconfigure=WARN',
         '--logging.level.org.springframework.http=WARN', '--logging.level.org.hibernate=WARN')
+    if ($name -in @('ops', 'ai') -and $env:IPE_NACOS_DISCOVERY_ENABLED -eq 'true') {
+        $javaArgs = $javaArgs -replace '^--server.address=127.0.0.1$', '--server.address=0.0.0.0'
+    }
     if ($EnableOtlp) {
         $javaArgs += @('--management.tracing.export.otlp.enabled=true', '--management.logging.export.otlp.enabled=true',
             '--management.otlp.metrics.export.enabled=true',
@@ -82,7 +85,7 @@ function Start-App($name, $jar, $port) {
 }
 
 Start-App 'ops' $ops 19082
-# AI 服务复用 ops 数据库（独立 ipe_ai schema），身份校验转发到 ops 的会话入口
+# AI 服务复用 ops 数据库（独立 ipe_ai schema），身份校验通过 Higress MCP
 Start-App 'ai' $ai 19083
 Start-App 'protocol' $platform 19080
 Start-App 'simulator' $simulator 19081

@@ -1,16 +1,17 @@
 package top.yealike.ipe.ai.run;
 
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
 import top.yealike.ipe.ai.agent.AgentCatalog;
-import top.yealike.ipe.ai.gateway.OpsClient;
 import top.yealike.ipe.ai.knowledge.KnowledgeService;
 import top.yealike.ipe.ai.policy.PolicyService;
 import top.yealike.ipe.ai.support.JsonSupport;
-import top.yealike.ipe.ai.tool.OrderTools;
 import top.yealike.ipe.ai.tool.ProtocolTools;
+import top.yealike.ipe.ai.tool.RemoteTools;
 import top.yealike.ipe.ai.tool.ToolGuard;
+import top.yealike.ipe.ai.tool.ToolNames;
 import top.yealike.ipe.ai.tool.ToolSession;
 
 /**
@@ -25,13 +26,14 @@ public class FallbackAnswerService {
     private static final Pattern HEX = Pattern.compile("0x[0-9A-Fa-f]{1,4}");
 
     private final ToolGuard guard;
-    private final OpsClient ops;
+    private final RemoteTools remoteTools;
     private final KnowledgeService knowledge;
     private final PolicyService policy;
 
-    public FallbackAnswerService(ToolGuard guard, OpsClient ops, KnowledgeService knowledge, PolicyService policy) {
+    public FallbackAnswerService(
+            ToolGuard guard, RemoteTools remoteTools, KnowledgeService knowledge, PolicyService policy) {
         this.guard = guard;
-        this.ops = ops;
+        this.remoteTools = remoteTools;
         this.knowledge = knowledge;
         this.policy = policy;
     }
@@ -49,28 +51,34 @@ public class FallbackAnswerService {
         ToolSession orderSession = session.forAgent(AgentCatalog.ORDER_SERVICE);
         ToolSession protocolSession = session.forAgent(AgentCatalog.PROTOCOL_EXPERT);
         boolean canOrder = ((AgentCatalog.TEAM_LEADER.equals(definition.agentKey())
-                        && policy.canUseTool(session.identity(), AgentCatalog.TEAM_LEADER, "ask_order_agent").allowed())
+                                && policy.canUseTool(session.identity(), AgentCatalog.TEAM_LEADER, "ask_order_agent")
+                                        .allowed())
                         || AgentCatalog.ORDER_SERVICE.equals(definition.agentKey()))
-                && policy.canUseTool(orderSession.identity(), AgentCatalog.ORDER_SERVICE, "get_order_detail").allowed();
+                && policy.canUseTool(orderSession.identity(), AgentCatalog.ORDER_SERVICE, "get_order_detail")
+                        .allowed();
         boolean canProtocol = ((AgentCatalog.TEAM_LEADER.equals(definition.agentKey())
-                        && policy.canUseTool(session.identity(), AgentCatalog.TEAM_LEADER, "ask_protocol_agent").allowed())
-                        || AgentCatalog.PROTOCOL_EXPERT.equals(definition.agentKey())) && policy.canUseTool(
-                        protocolSession.identity(), AgentCatalog.PROTOCOL_EXPERT, "search_protocol_knowledge")
-                .allowed();
+                                && policy.canUseTool(session.identity(), AgentCatalog.TEAM_LEADER, "ask_protocol_agent")
+                                        .allowed())
+                        || AgentCatalog.PROTOCOL_EXPERT.equals(definition.agentKey()))
+                && policy.canUseTool(
+                                protocolSession.identity(), AgentCatalog.PROTOCOL_EXPERT, "search_protocol_knowledge")
+                        .allowed();
 
         if (orderNo != null && canOrder) {
             handled = true;
-            OrderTools tools = new OrderTools(orderSession, guard, ops);
+            var args = Map.<String, Object>of("order_no", orderNo);
             out.append("### 订单详情 `").append(orderNo).append("`\n\n");
-            out.append(codeBlock(tools.getOrderDetail(orderNo))).append('\n');
+            out.append(codeBlock(remoteTools.invoke(orderSession, ToolNames.GET_ORDER_DETAIL, args)))
+                    .append('\n');
             if (policy.canUseTool(orderSession.identity(), AgentCatalog.ORDER_SERVICE, "get_order_bills")
                     .allowed()) {
                 out.append("### 账单 `").append(orderNo).append("`\n\n");
-                out.append(codeBlock(tools.getOrderBills(orderNo))).append('\n');
+                out.append(codeBlock(remoteTools.invoke(orderSession, ToolNames.GET_ORDER_BILLS, args)))
+                        .append('\n');
             }
             if (question.contains("SOC") || question.contains("soc") || question.contains("遥测")) {
                 out.append("### 遥测摘要 `").append(orderNo).append("`\n\n");
-                out.append(codeBlock(tools.getOrderTelemetrySummary(orderNo, null)))
+                out.append(codeBlock(remoteTools.invoke(orderSession, ToolNames.GET_ORDER_TELEMETRY_SUMMARY, args)))
                         .append('\n');
             }
         }

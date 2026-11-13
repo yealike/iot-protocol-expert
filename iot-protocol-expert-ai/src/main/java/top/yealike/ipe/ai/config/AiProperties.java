@@ -6,13 +6,25 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "ipe.ai")
 public record AiProperties(
         String environment,
-        String serviceToken,
-        String opsBaseUrl,
+        Mcp mcp,
         int requestTimeoutMs,
         Model model,
         Embedding embedding,
         Run run,
         Knowledge knowledge) {
+
+    /** MCP 接入配置：地址可来自 Nacos 目录，密钥只从环境变量注入。 */
+    public record Mcp(String token, String url, String gatewayBaseUrl, Registry registry) {}
+
+    /**
+     * Nacos MCP Registry 目录。启用后由 {@code gateway-base-url} 与服务名拼出入口，并校验目录中的版本与工具清单。
+     */
+    public record Registry(boolean enabled, String serverName, String version, String namespace) {
+
+        public boolean usable() {
+            return enabled && serverName != null && !serverName.isBlank();
+        }
+    }
 
     public record Model(
             boolean enabled,

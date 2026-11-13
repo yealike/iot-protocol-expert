@@ -15,6 +15,12 @@
     <description>多协议充电桩运维与智能排障平台：电站、设备、订单账单、报文与排障</description>
 
     <dependencies>
+        <!-- Nacos 服务注册与发现：用 Spring Cloud Alibaba 官方 starter，不手写 NamingService -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+            <version>${spring-cloud-alibaba.version}</version>
+        </dependency>
         <dependency>
             <groupId>top.yealike.ipe</groupId>
             <artifactId>iot-protocol-expert-codec</artifactId>

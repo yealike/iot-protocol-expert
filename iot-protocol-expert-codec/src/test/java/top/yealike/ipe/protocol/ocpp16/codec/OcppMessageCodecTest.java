@@ -12,13 +12,13 @@ class OcppMessageCodecTest {
     @Test
     void decodesCallAndKeepsPayload() {
         OcppMessage message = OcppMessageCodec.decode(
-                "[2,\"abc-1\",\"BootNotification\",{\"chargePointVendor\":\"Keel\",\"chargePointModel\":\"SIM\"}]");
+                "[2,\"abc-1\",\"BootNotification\",{\"chargePointVendor\":\"IPE\",\"chargePointModel\":\"SIM\"}]");
         assertTrue(message.isCall());
         assertEquals("abc-1", message.uniqueId());
         assertEquals("BootNotification", message.action());
-        assertEquals("Keel", message.payload().get("chargePointVendor").asString());
+        assertEquals("IPE", message.payload().get("chargePointVendor").asString());
         assertEquals(
-                "[2,\"abc-1\",\"BootNotification\",{\"chargePointVendor\":\"Keel\",\"chargePointModel\":\"SIM\"}]",
+                "[2,\"abc-1\",\"BootNotification\",{\"chargePointVendor\":\"IPE\",\"chargePointModel\":\"SIM\"}]",
                 OcppMessageCodec.encode(message));
     }
 

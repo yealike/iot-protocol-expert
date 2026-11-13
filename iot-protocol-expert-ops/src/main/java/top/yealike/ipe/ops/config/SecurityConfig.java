@@ -148,7 +148,8 @@ public class SecurityConfig {
         @Override
         protected boolean shouldNotFilter(HttpServletRequest request) {
             String uri = request.getRequestURI();
-            return !uri.startsWith("/internal/") && !uri.startsWith("/api/ops/simulator/");
+            return uri.startsWith("/internal/ai/rest/")
+                    || (!uri.startsWith("/internal/") && !uri.startsWith("/api/ops/simulator/"));
         }
 
         @Override

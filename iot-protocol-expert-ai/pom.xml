@@ -21,6 +21,12 @@
     </properties>
 
     <dependencies>
+        <!-- Nacos：标准服务注册/发现 starter（内置 nacos-client 3.1.1，含 AI/MCP 目录 API） -->
+        <dependency>
+            <groupId>com.alibaba.cloud</groupId>
+            <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
+            <version>${spring-cloud-alibaba.version}</version>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-web</artifactId>

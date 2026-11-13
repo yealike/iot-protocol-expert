@@ -1,0 +1,277 @@
+{
+  "tools": [
+    {
+      "description": "查询订单详情",
+      "name": "get_order_detail",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "inputSchema": {
+        "required": [
+          "order_no",
+          "_ipe_context"
+        ],
+        "type": "object",
+        "properties": {
+          "order_no": {
+            "type": "string"
+          },
+          "_ipe_context": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "description": "查询订单账单",
+      "name": "get_order_bills",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "inputSchema": {
+        "required": [
+          "order_no",
+          "_ipe_context"
+        ],
+        "type": "object",
+        "properties": {
+          "order_no": {
+            "type": "string"
+          },
+          "_ipe_context": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "description": "查询设备详情",
+      "name": "get_device_detail",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "inputSchema": {
+        "required": [
+          "device_id",
+          "_ipe_context"
+        ],
+        "type": "object",
+        "properties": {
+          "device_id": {
+            "type": "integer"
+          },
+          "_ipe_context": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "description": "查询订单遥测摘要",
+      "name": "get_order_telemetry_summary",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "inputSchema": {
+        "required": [
+          "order_no",
+          "_ipe_context"
+        ],
+        "type": "object",
+        "properties": {
+          "window_hours": {
+            "type": "integer"
+          },
+          "order_no": {
+            "type": "string"
+          },
+          "_ipe_context": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "description": "校验浏览器会话",
+      "name": "resolve_session",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "inputSchema": {
+        "required": [
+          "_ipe_context"
+        ],
+        "type": "object",
+        "properties": {
+          "_ipe_context": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "description": "读取当前用户权限",
+      "name": "resolve_actor",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "inputSchema": {
+        "required": [
+          "id",
+          "_ipe_context"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "_ipe_context": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "description": "列出协议文档",
+      "name": "list_documents",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "inputSchema": {
+        "required": [
+          "_ipe_context"
+        ],
+        "type": "object",
+        "properties": {
+          "_ipe_context": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    {
+      "description": "分块读取协议文档",
+      "name": "read_document",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "inputSchema": {
+        "required": [
+          "id",
+          "offset",
+          "_ipe_context"
+        ],
+        "type": "object",
+        "properties": {
+          "offset": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "_ipe_context": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "toolsMeta": {
+    "get_order_detail": {
+      "enabled": true,
+      "templates": {
+        "json-go-template": {
+          "requestTemplate": {
+            "url": "/internal/ai/rest/get_order_detail",
+            "method": "POST",
+            "argsToJsonBody": true
+          }
+        }
+      }
+    },
+    "get_order_bills": {
+      "enabled": true,
+      "templates": {
+        "json-go-template": {
+          "requestTemplate": {
+            "url": "/internal/ai/rest/get_order_bills",
+            "method": "POST",
+            "argsToJsonBody": true
+          }
+        }
+      }
+    },
+    "get_device_detail": {
+      "enabled": true,
+      "templates": {
+        "json-go-template": {
+          "requestTemplate": {
+            "url": "/internal/ai/rest/get_device_detail",
+            "method": "POST",
+            "argsToJsonBody": true
+          }
+        }
+      }
+    },
+    "get_order_telemetry_summary": {
+      "enabled": true,
+      "templates": {
+        "json-go-template": {
+          "requestTemplate": {
+            "url": "/internal/ai/rest/get_order_telemetry_summary",
+            "method": "POST",
+            "argsToJsonBody": true
+          }
+        }
+      }
+    },
+    "resolve_session": {
+      "enabled": true,
+      "templates": {
+        "json-go-template": {
+          "requestTemplate": {
+            "url": "/internal/ai/rest/resolve_session",
+            "method": "POST",
+            "argsToJsonBody": true
+          }
+        }
+      }
+    },
+    "resolve_actor": {
+      "enabled": true,
+      "templates": {
+        "json-go-template": {
+          "requestTemplate": {
+            "url": "/internal/ai/rest/resolve_actor",
+            "method": "POST",
+            "argsToJsonBody": true
+          }
+        }
+      }
+    },
+    "list_documents": {
+      "enabled": true,
+      "templates": {
+        "json-go-template": {
+          "requestTemplate": {
+            "url": "/internal/ai/rest/list_documents",
+            "method": "POST",
+            "argsToJsonBody": true
+          }
+        }
+      }
+    },
+    "read_document": {
+      "enabled": true,
+      "templates": {
+        "json-go-template": {
+          "requestTemplate": {
+            "url": "/internal/ai/rest/read_document",
+            "method": "POST",
+            "argsToJsonBody": true
+          }
+        }
+      }
+    }
+  }
+}
