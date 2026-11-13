@@ -22,7 +22,7 @@ public class DiagnosticController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('OPS','ADMIN')")
+    @PreAuthorize("hasAuthority('ops:operate')")
     public DiagnosticService.Result diagnose(@RequestBody DiagnosticService.Request request, Principal principal) {
         return diagnostics.diagnose(new DiagnosticService.Request(
                 request.deviceId(),

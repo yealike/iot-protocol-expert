@@ -16,6 +16,9 @@ import ProtocolDocuments from './pages/ProtocolDocuments'
 import OrderDetail from './pages/OrderDetail'
 import NotFound from './pages/NotFound'
 import Simulator from './pages/Simulator'
+import Assistant from './pages/Assistant'
+import AiKnowledge from './pages/AiKnowledge'
+import Users from './pages/Users'
 
 /**
  * 会话守卫。
@@ -56,7 +59,7 @@ export default function App() {
         }
       >
         <Routes>
-          <Route path="/" element={<Navigate to="/overview" replace />} />
+          <Route path="/" element={<Navigate to={user.allStations === false ? "/assistant" : "/overview"} replace />} />
           <Route path="/overview" element={<Overview />} />
           <Route path="/devices" element={<Devices />} />
           <Route path="/devices/:id" element={<DeviceDetail />} />
@@ -67,6 +70,9 @@ export default function App() {
           <Route path="/orders/:orderNo" element={<OrderDetail />} />
           <Route path="/simulator" element={<Simulator />} />
           <Route path="/alarms" element={<Alarms />} />
+          <Route path="/assistant" element={<Assistant />} />
+          <Route path="/users" element={<Users />} />
+          <Route path="/ai-knowledge" element={<AiKnowledge user={user} />} />
           <Route path="*" element={<NotFound path={location.pathname} />} />
         </Routes>
       </Suspense>

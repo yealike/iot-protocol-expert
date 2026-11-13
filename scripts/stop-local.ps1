@@ -1,7 +1,7 @@
 ﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $runDir = Join-Path $root 'run'
-foreach ($name in @('simulator', 'protocol', 'ops')) {
+foreach ($name in @('simulator', 'protocol', 'ai', 'ops')) {
     $pidFile = Join-Path $runDir "$name.pid"
     if (Test-Path $pidFile) {
         $appPid = Get-Content $pidFile
@@ -10,6 +10,7 @@ foreach ($name in @('simulator', 'protocol', 'ops')) {
             $jarName = switch ($name) {
                 'ops' { 'iot-protocol-expert-ops-1.0.0.jar' }
                 'protocol' { 'iot-protocol-expert-protocol-1.0.0-exec.jar' }
+                'ai' { 'iot-protocol-expert-ai-1.0.0.jar' }
                 default { 'iot-protocol-expert-simulator-1.0.0.jar' }
             }
             if (!$proc.CommandLine -or !$proc.CommandLine.Contains($root) -or !$proc.CommandLine.Contains($jarName)) {

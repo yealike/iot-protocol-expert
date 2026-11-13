@@ -18,6 +18,11 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 @RequestMapping("/api/ops/auth")
 public class AuthController {
+    private final top.yealike.ipe.ops.security.IdentityService identities;
+
+    public AuthController(top.yealike.ipe.ops.security.IdentityService identities) {
+        this.identities = identities;
+    }
 
     @GetMapping("/me")
     public Map<String, Object> me(Authentication authentication, HttpServletRequest request) {
@@ -31,14 +36,17 @@ public class AuthController {
                 .filter(authority -> authority.startsWith("ROLE_"))
                 .map(authority -> authority.substring(5))
                 .toList();
+        var identity = identities
+                .byUsername(authentication.getName())
+                .filter(top.yealike.ipe.ops.security.IdentityService.Identity::enabled)
+                .orElseThrow();
         result.put("authenticated", true);
+        result.put("id", String.valueOf(identity.id()));
+        result.put("permissions", identity.permissions());
+        result.put("authVersion", identity.authVersion());
+        result.put("allStations", identity.allStations());
         result.put("username", authentication.getName());
         result.put("roles", roles);
-        result.put(
-                "sessionId",
-                request.getSession(false) == null
-                        ? null
-                        : request.getSession(false).getId());
         return result;
     }
 }

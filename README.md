@@ -7,14 +7,17 @@
 | `iot-protocol-expert-ops` | 充电桩、订单、账单、报文、设备命令及运营管理 | HTTP 19082 |
 | `iot-protocol-expert-protocol` | 连接、编解码、协议适配和上下行转发，不持久化业务数据 | HTTP 19080；云快充 TCP 8768；OCPP WS 8769 |
 | `iot-protocol-expert-simulator` | 从运营平台选择设备，按绑定协议模拟上报，支持多桩并发 | HTTP 19081 |
+| `iot-protocol-expert-ai` | AI 助手与 Agent 能力平台：会话、Run 调度、受控工具、协议知识检索 | HTTP 19083 |
 | `iot-protocol-expert-codec` | 协议通道与模拟器共用的纯编解码库 | 无 |
 | `iot-protocol-expert-web` | 运营平台独立前端 | 开发端口 5173 |
 
 协议通道通过 `ProtocolServer` SPI 管理云快充 1.6 和 OCPP 1.6J。设备数据与账单通过内部接口提交运营平台；业务数据由运营平台保存。
 
+AI 服务复用运营平台的数据库实例（独立 `ipe_ai` schema），身份校验转发到运营平台会话入口，业务数据一律经 `/internal/ai/**` 只读接口获取。模型默认关闭，关闭时执行确定性工具降级。实现范围、接口与限制见 `docs/ai-assistant.md`。
+
 ## 本地运行
 
-需要 JDK 21、Maven、PostgreSQL 和 TDengine 3.x。应用数据库账号需有创建 `ipe_ops` schema 的权限；业务表和 Flyway 历史表使用该 schema。订单时序使用 TDengine WebSocket 接口，通过 PostgreSQL 发件箱异步同步；配置 `IPE_TDENGINE_URL`（例如 `jdbc:TAOS-WS://服务器:6041`）、`IPE_TDENGINE_USER` 和 `IPE_TDENGINE_PASSWORD`。应用账号需有创建数据库和表的权限。设置数据库密码等环境变量后运行：
+需要 JDK 21、Maven、PostgreSQL 和 TDengine 3.x。应用数据库账号需有创建 `ipe_ops` 和 `ipe_ai` schema 的权限。将 `.env.example` 复制为 `.env-local` 并填写本地连接、令牌和 JDK 路径；启动脚本会读取它，IDE 启动时需自行加载。订单时序使用 TDengine WebSocket 接口，应用账号需有创建数据库和表的权限。然后运行：
 
 ```powershell
 $env:JAVA_HOME='D:\develop\jdk\jdk-21'
@@ -23,7 +26,9 @@ $env:PATH="$env:JAVA_HOME\bin;$env:PATH"
 .\scripts\start-local.ps1 -DeviceId 1
 ```
 
-前端在 `iot-protocol-expert-web` 下执行 `npm ci`、`npm run dev`；生产构建使用 `npm run build`。设置 `IPE_OPS_DB_URL`、`IPE_OPS_DB_USER`、`IPE_OPS_DB_PASSWORD` 指定数据库，服务间地址与令牌见各模块的 `application.yml`。
+前端在 `iot-protocol-expert-web` 下执行 `npm ci`、`npm run dev`；生产构建使用 `npm run build`。本地数据库、服务地址和令牌在 `.env-local` 中配置；启动参数可覆盖相应配置。
+
+AI 服务应用账号需要创建 `ipe_ai` schema 的权限；可用 `IPE_AI_DB_*` 单独指定连接。启用大模型时设置 `IPE_MODEL_ENABLED=true` 与 `IPE_MODEL_BASE_URL`、`IPE_MODEL_API_KEY`、`IPE_MODEL_NAME`（OpenAI 兼容），密钥只放本机环境变量。首次使用协议问答前，以 ADMIN 身份调用 `POST /api/ai/knowledge/index` 建立索引。
 
 首次运行将在独立 `ipe_ops` schema 初始化演示数据；不会清理已有 `public` 数据。现有 `public` 数据不会自动迁移。订单回放仅包含新接入的采样，显示的接收时间与设备时间分别标识。
 

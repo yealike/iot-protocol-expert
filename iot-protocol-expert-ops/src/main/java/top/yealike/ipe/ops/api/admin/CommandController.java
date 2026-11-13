@@ -19,13 +19,13 @@ public class CommandController {
     }
 
     @PostMapping
-    @PreAuthorize("hasAnyRole('OPS','ADMIN')")
+    @PreAuthorize("hasAuthority('ops:operate')")
     public CommandRecord submit(@RequestBody Submit request, Principal principal) {
         return commands.submit(request.deviceId(), request.type(), request.params(), principal.getName());
     }
 
     @PostMapping("/start")
-    @PreAuthorize("hasAnyRole('OPS','ADMIN')")
+    @PreAuthorize("hasAuthority('ops:operate')")
     public Map<String, Object> start(@RequestBody Start request, Principal principal) {
         return commands.remoteStart(
                 request.deviceId(),
@@ -37,7 +37,7 @@ public class CommandController {
     }
 
     @PostMapping("/stop")
-    @PreAuthorize("hasAnyRole('OPS','ADMIN')")
+    @PreAuthorize("hasAuthority('ops:operate')")
     public Map<String, Object> stop(@RequestBody Stop request, Principal principal) {
         return commands.remoteStop(request.deviceId(), request.gunNo(), principal.getName());
     }

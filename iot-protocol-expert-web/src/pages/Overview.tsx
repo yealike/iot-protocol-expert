@@ -1,3 +1,4 @@
+import { formatDateTime } from '../utils/dateTime'
 import { useQuery } from '@tanstack/react-query'
 import { Card, Col, Empty, Progress, Row, Skeleton, Table, Tag } from 'antd'
 import { Link } from 'react-router-dom'
@@ -186,7 +187,7 @@ export default function Overview() {
                   dataIndex: 'state',
                   render: (v: AlarmView['state']) => <AlarmStateTag state={v} />
                 },
-                { title: '最近发生', dataIndex: 'lastAt' }
+                { title: '最近发生', dataIndex: 'lastAt', render: (value: string | null) => formatDateTime(value) }
               ]}
             />
           </Card>

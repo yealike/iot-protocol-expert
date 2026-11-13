@@ -1,3 +1,4 @@
+import { formatDateTime } from '../utils/dateTime'
 import { productProtocol } from '../api/protocol'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
@@ -120,7 +121,7 @@ export default function Devices() {
       },
       { title: '产品', dataIndex: 'productName', width: 160 },
       { title: '站点', dataIndex: 'stationName', width: 160 },
-      { title: '最近上报', dataIndex: 'lastSeen', width: 170 }
+      { title: '最近上报', dataIndex: 'lastSeen', width: 170, render: (value: string | null) => formatDateTime(value) }
     ],
     []
   )
@@ -134,7 +135,7 @@ export default function Devices() {
           <p>充电桩设备台账</p>
         </div>
         <Space>
-          {me.data?.roles?.includes('ADMIN') && (
+          {me.data?.permissions?.includes('ops:manage') && (
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreating(true)}>
               创建设备
             </Button>

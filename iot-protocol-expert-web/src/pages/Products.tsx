@@ -24,7 +24,7 @@ export default function Products() {
           <h1>产品与物模型</h1>
           <p>产品是一类设备的模板：物模型决定它能上报什么、能接受什么指令</p>
         </div>
-        {me.data?.roles?.includes('ADMIN') && (
+        {me.data?.permissions?.includes('ops:manage') && (
           <Button type="primary" onClick={() => setCreating(true)}>
             新建产品
           </Button>
@@ -112,7 +112,7 @@ export default function Products() {
                 render: (_: unknown, row: ProductRow) => (
                   <Space>
                     <Link to={`/products/${row.id}`}>查看 / 编辑</Link>
-                    {me.data?.roles?.includes('ADMIN') && (
+                    {me.data?.permissions?.includes('ops:manage') && (
                       <Popconfirm
                         title="确定删除该产品？"
                         description="已绑定设备的产品不能删除"

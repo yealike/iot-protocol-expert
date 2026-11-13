@@ -1,3 +1,4 @@
+import { formatDateTime } from '../utils/dateTime'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { App, Button, Card, Form, Input, Modal, Popconfirm, Space, Table, Tag, Upload } from 'antd'
@@ -50,7 +51,7 @@ export default function ProtocolDocuments() {
           <h1>协议文档</h1>
           <p>按协议管理规范文件，支持在线查看和下载</p>
         </div>
-        {me.data?.roles?.includes('ADMIN') && (
+        {me.data?.permissions?.includes('ops:manage') && (
           <Button type="primary" icon={<UploadOutlined />} onClick={() => setOpen(true)}>
             上传文档
           </Button>
@@ -85,14 +86,14 @@ export default function ProtocolDocuments() {
               render: (v: number) => `${(v / 1024 / 1024).toFixed(2)} MB`
             },
             { title: '上传人', dataIndex: 'uploadedBy' },
-            { title: '上传时间', dataIndex: 'createdAt' },
+            { title: '上传时间', dataIndex: 'createdAt', render: (value: string | null) => formatDateTime(value) },
             {
               title: '操作',
               render: (_, row) => (
                 <Space>
                   <a href={`/api/ops/protocol-documents/${row.id}/view`} target="_blank" rel="noopener noreferrer">查看</a>
                   <a href={`/api/ops/protocol-documents/${row.id}/download`}>下载</a>
-                  {me.data?.roles?.includes('ADMIN') && (
+                  {me.data?.permissions?.includes('ops:manage') && (
                     <Popconfirm
                       title="归档后将从列表隐藏，确定归档？"
                       onConfirm={async () => {
