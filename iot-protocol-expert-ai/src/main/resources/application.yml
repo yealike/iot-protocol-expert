@@ -7,6 +7,24 @@ spring:
     banner-mode: "off"
   application:
     name: iot-protocol-expert-ai
+  cloud:
+    nacos:
+      # 与 ops 共用同一套 Nacos 接入方式：地址与凭据只在这里维护
+      server-addr: ${IPE_NACOS_SERVER_ADDR:127.0.0.1:8848}
+      username: ${IPE_NACOS_USERNAME:}
+      password: ${IPE_NACOS_PASSWORD:}
+      discovery:
+        enabled: ${IPE_NACOS_DISCOVERY_ENABLED:false}
+        namespace: ${IPE_NACOS_NAMESPACE:public}
+        group: ${IPE_NACOS_GROUP:DEFAULT_GROUP}
+        ip: ${IPE_AI_ADVERTISE_IP:}
+        fail-fast: ${IPE_NACOS_FAIL_FAST:true}
+        graceful-shutdown-wait-time: ${IPE_NACOS_DEREGISTER_WAIT_MS:3000}
+        metadata:
+          ipe-role: ai
+          ipe-environment: ${IPE_ENVIRONMENT:local}
+          ipe-version: 1.0.0
+          ipe-mcp-server: ${IPE_AI_MCP_SERVER_NAME:ipe-ops-rest}
   datasource:
     url: ${IPE_AI_DB_URL:${IPE_OPS_DB_URL:jdbc:postgresql://127.0.0.1:55432/ipe_ops}}
     username: ${IPE_AI_DB_USER:${IPE_OPS_DB_USER:ipe}}
@@ -43,9 +61,20 @@ management:
 ipe:
   ai:
     environment: ${IPE_ENVIRONMENT:local}
-    service-token: ${IPE_OPS_SERVICE_TOKEN:local-service-token}
-    ops-base-url: ${IPE_OPS_BASE_URL:http://127.0.0.1:19082}
     request-timeout-ms: ${IPE_AI_REQUEST_TIMEOUT_MS:8000}
+    mcp:
+      # 与 ops 共享的请求签名密钥，只放环境变量
+      token: ${IPE_AI_MCP_TOKEN:}
+      # 兜底地址：Nacos MCP 目录不可用时直接使用；生产必须显式注入，避免落入开发环境地址
+      url: ${IPE_AI_MCP_URL:}
+      # 目录未提供前端入口时，用网关根地址与服务名拼出入口
+      gateway-base-url: ${IPE_AI_MCP_GATEWAY_BASE:}
+      registry:
+        # 从 Nacos MCP Registry 订阅服务目录，校验版本与工具清单
+        enabled: ${IPE_AI_MCP_REGISTRY_ENABLED:true}
+        server-name: ${IPE_AI_MCP_SERVER_NAME:ipe-ops-rest}
+        version: ${IPE_AI_MCP_SERVER_VERSION:}
+        namespace: ${IPE_NACOS_NAMESPACE:public}
     model:
       # 未配置模型时，Run 仍执行确定性工具流程，但明确标注「未启用模型，仅返回工具事实」
       enabled: ${IPE_MODEL_ENABLED:false}

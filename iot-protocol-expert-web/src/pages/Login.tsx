@@ -23,10 +23,10 @@ export default function Login({ onSuccess }: { onSuccess: () => void }) {
     <div className="login-wrap">
       <div className="login-card">
         <div className="app-logo" style={{ padding: '0 0 18px' }}>
-          <span className="mark">K</span>
+          <span className="mark">I</span>
           <span>
-            慧舟 · 能源物联
-            <small>KEEL ENERGY OPS</small>
+            充电桩协议平台
+            <small>PROTOCOL OPERATIONS</small>
           </span>
         </div>
         <Typography.Title level={4} style={{ marginTop: 0 }}>

@@ -13,7 +13,7 @@
 
 协议通道通过 `ProtocolServer` SPI 管理云快充 1.6 和 OCPP 1.6J。设备数据与账单通过内部接口提交运营平台；业务数据由运营平台保存。
 
-AI 服务复用运营平台的数据库实例（独立 `ipe_ai` schema），身份校验转发到运营平台会话入口，业务数据一律经 `/internal/ai/**` 只读接口获取。模型默认关闭，关闭时执行确定性工具降级。实现范围、接口与限制见 `docs/ai-assistant.md`。
+AI 服务复用运营平台的数据库实例（独立 `ipe_ai` schema），身份校验与业务数据读取统一通过 Higress MCP。运维与 AI 都使用 Spring Cloud Alibaba 官方 starter 注册到 Nacos，AI 再从 Nacos MCP Registry 订阅 `ipe-ops-rest` 得到入口与工具清单（`IPE_NACOS_DISCOVERY_ENABLED` 控制本地是否连接）。模型默认关闭，关闭时执行确定性工具降级。实现范围、接口与限制见 `docs/ai-assistant.md`。
 
 ## 本地运行
 

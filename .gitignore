@@ -71,5 +71,5 @@ node_modules/
 /docs/*-verification.json
 /docs/*-browser-checks.json
 /observability-verification.json
-/.env-local*
+/.env.local
 /sw-verify/

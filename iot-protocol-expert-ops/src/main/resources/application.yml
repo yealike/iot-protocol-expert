@@ -9,6 +9,27 @@ spring:
     banner-mode: "off"
   application:
     name: iot-protocol-expert-ops
+  cloud:
+    nacos:
+      # Spring Cloud Alibaba 官方发现客户端：地址与凭据只在这里维护，discovery.enabled=false 时不建立任何连接
+      server-addr: ${IPE_NACOS_SERVER_ADDR:127.0.0.1:8848}
+      username: ${IPE_NACOS_USERNAME:}
+      password: ${IPE_NACOS_PASSWORD:}
+      discovery:
+        enabled: ${IPE_NACOS_DISCOVERY_ENABLED:false}
+        namespace: ${IPE_NACOS_NAMESPACE:public}
+        group: ${IPE_NACOS_GROUP:DEFAULT_GROUP}
+        # 留空时按 spring.cloud.inetutils 自动选非回环地址；多网卡或网关侧可达地址不同时显式指定
+        ip: ${IPE_OPS_ADVERTISE_IP:}
+        # 生产保持 fail-fast：注册不上就启动失败，避免实例起来了却不在目录中
+        fail-fast: ${IPE_NACOS_FAIL_FAST:true}
+        # 注销发生在 Web 优雅停机之前，等待网关刷新上游
+        graceful-shutdown-wait-time: ${IPE_NACOS_DEREGISTER_WAIT_MS:3000}
+        metadata:
+          ipe-role: ops
+          ipe-environment: ${IPE_ENVIRONMENT:local}
+          ipe-version: 1.0.0
+          ipe-protocols: cuokc16,ocpp16j
   datasource:
     url: ${IPE_OPS_DB_URL:jdbc:postgresql://127.0.0.1:55432/ipe_ops}
     username: ${IPE_OPS_DB_USER:ipe}
@@ -56,6 +77,7 @@ management:
 
 ipe:
   ops:
+    ai-mcp-token: ${IPE_AI_MCP_TOKEN:}
     tdengine:
       url: ${IPE_TDENGINE_URL:jdbc:TAOS-WS://127.0.0.1:6041}
       username: ${IPE_TDENGINE_USER:root}
@@ -63,8 +85,9 @@ ipe:
       flush-delay-ms: ${IPE_TDENGINE_FLUSH_DELAY_MS:1000}
     environment: ${IPE_ENVIRONMENT:local}
     protocol-document-dir: ${IPE_PROTOCOL_DOCUMENT_DIR:./data/protocol-documents}
-    service-token: ${IPE_OPS_SERVICE_TOKEN:local-service-token}
-    simulator-token: ${IPE_OPS_SIMULATOR_TOKEN:local-simulator-token}
+    # 生产必须显式注入；留空会让对应内部入口在启动后拒绝服务
+    service-token: ${IPE_OPS_SERVICE_TOKEN:}
+    simulator-token: ${IPE_OPS_SIMULATOR_TOKEN:}
     simulator-base-url: ${IPE_SIMULATOR_BASE_URL:http://127.0.0.1:19081}
     protocol-base-url: ${IPE_PROTOCOL_BASE_URL:http://127.0.0.1:19080}
     protocol-timeout-ms: ${IPE_PROTOCOL_TIMEOUT_MS:5000}

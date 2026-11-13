@@ -1,23 +1,16 @@
 import { formatDateTime } from '../utils/dateTime'
 import { useEffect, useRef, useState } from 'react'
+import { Alert, Button, Checkbox, Input, Select, Space, Tag, Typography, message } from 'antd'
 import {
-  Alert,
-  Button,
-  Card,
-  Checkbox,
-  Col,
-  Empty,
-  Input,
-  List,
-  Row,
-  Select,
-  Space,
-  Tag,
-  Typography,
-  message
-} from 'antd'
-import { PlusOutlined, ReloadOutlined, SendOutlined, StopOutlined } from '@ant-design/icons'
+  PlusOutlined,
+  ReloadOutlined,
+  RobotOutlined,
+  SendOutlined,
+  StopOutlined
+} from '@ant-design/icons'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { api, openAiEventStream } from '../api/client'
 import type { AiMessage, AiStreamEvent } from '../api/types'
 
@@ -51,6 +44,7 @@ export default function Assistant() {
   const [progress, setProgress] = useState<string[]>([])
   const [notice, setNotice] = useState<string | null>(null)
   const cursorRef = useRef(0)
+  const messagesRef = useRef<HTMLDivElement | null>(null)
 
   const agents = useQuery({ queryKey: ['ai-agents'], queryFn: api.aiAgents })
   const conversations = useQuery({
@@ -70,7 +64,11 @@ export default function Assistant() {
   })
 
   const currentRun = detail.data?.currentRun ?? null
-  const busy = streaming || currentRun?.status === 'RUNNING' || currentRun?.status === 'PAUSE_REQUESTED' || currentRun?.status === 'CANCEL_REQUESTED'
+  const busy =
+    streaming ||
+    currentRun?.status === 'RUNNING' ||
+    currentRun?.status === 'PAUSE_REQUESTED' ||
+    currentRun?.status === 'CANCEL_REQUESTED'
 
   const refreshConversation = () => {
     if (selectedId) {
@@ -208,144 +206,180 @@ export default function Assistant() {
   }
 
   const messages = detail.data?.messages ?? []
+
+  useEffect(() => {
+    const element = messagesRef.current
+    if (element) {
+      element.scrollTop = element.scrollHeight
+    }
+  }, [messages, streamText, progress, selectedId])
+
   return (
-    <Row gutter={16} style={{ minHeight: 'calc(100vh - 160px)' }}>
-      <Col xs={24} lg={7}>
-        <Card
-          size="small"
-          title="会话"
-          extra={
-            <Space>
-              <Select
-                size="small"
-                value={agentKey}
-                style={{ width: 130 }}
-                onChange={setAgentKey}
-                options={(agents.data ?? []).map((agent) => ({
-                  value: agent.agentKey,
-                  label: agent.name
-                }))}
-              />
-              <Button size="small" icon={<PlusOutlined />} onClick={createConversation}>
-                新建
-              </Button>
-            </Space>
-          }
-          styles={{ body: { maxHeight: 'calc(100vh - 250px)', overflow: 'auto' } }}
-        >
-          <List
-            size="small"
-            dataSource={conversations.data?.content ?? []}
-            locale={{ emptyText: <Empty description="还没有会话" /> }}
-            renderItem={(item) => (
-              <List.Item
+    <div className="assistant-shell">
+      <aside className="assistant-sidebar">
+        <div className="assistant-panel-head">
+          <h2>会话历史</h2>
+          <Space size={8}>
+            <Select
+              size="small"
+              value={agentKey}
+              style={{ width: 138 }}
+              onChange={setAgentKey}
+              popupMatchSelectWidth={false}
+              options={(agents.data ?? []).map((agent) => ({
+                value: agent.agentKey,
+                label: agent.name
+              }))}
+            />
+            <Button
+              size="small"
+              type="primary"
+              icon={<PlusOutlined />}
+              onClick={createConversation}
+            >
+              新建
+            </Button>
+          </Space>
+        </div>
+        <div className="assistant-history">
+          {conversations.isLoading ? (
+            <div className="assistant-empty">正在加载会话…</div>
+          ) : conversations.data?.content?.length ? (
+            conversations.data.content.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={`assistant-history-item${item.id === selectedId ? ' active' : ''}`}
                 onClick={() => setSelectedId(item.id)}
-                style={{
-                  cursor: 'pointer',
-                  background: item.id === selectedId ? 'rgba(40,88,165,0.12)' : undefined,
-                  borderRadius: 6,
-                  paddingInline: 8
-                }}
               >
-                <List.Item.Meta
-                  title={<Text ellipsis>{item.title}</Text>}
-                  description={
-                    <Text type="secondary" style={{ fontSize: 12 }}>
-                      {item.agentKey} · {formatDateTime(item.updatedAt)}
-                    </Text>
-                  }
-                />
-              </List.Item>
-            )}
-          />
-        </Card>
-      </Col>
+                <span className="title">{item.title}</span>
+                <span className="meta">
+                  <span className="agent">{item.agentKey}</span>
+                  <span>{formatDateTime(item.updatedAt)}</span>
+                </span>
+              </button>
+            ))
+          ) : (
+            <div className="assistant-empty">
+              <RobotOutlined style={{ fontSize: 34, color: '#9bb0c5' }} />
+              <strong>开始你的第一次对话</strong>
+              <span>选择智能体后点击“新建”，即可向运维助手提出订单、设备或协议问题。</span>
+            </div>
+          )}
+        </div>
+      </aside>
 
-      <Col xs={24} lg={17}>
-        <Card
-          size="small"
-          title={detail.data?.conversation.title ?? 'AI 助手'}
-          extra={
-            <Space>
-              {currentRun ? <Tag>{STATUS_LABEL[currentRun.status] ?? currentRun.status}</Tag> : null}
-              <Button
-                size="small"
-                icon={<ReloadOutlined />}
-                onClick={refreshConversation}
-                disabled={!selectedId}
-              >
-                刷新
-              </Button>
-              <Button
-                size="small"
-                onClick={() => runAction('pause')}
-                disabled={currentRun?.status !== 'RUNNING'}
-              >
-                暂停
-              </Button>
-              <Button
-                size="small"
-                onClick={() => runAction('resume')}
-                disabled={currentRun?.status !== 'PAUSED'}
-              >
-                继续
-              </Button>
-              <Button
-                size="small"
-                danger
-                icon={<StopOutlined />}
-                onClick={() => runAction('cancel')}
-                disabled={!currentRun || currentRun.status === 'CANCEL_REQUESTED'}
-              >
-                停止
-              </Button>
-            </Space>
-          }
-          styles={{ body: { display: 'flex', flexDirection: 'column', gap: 12 } }}
-        >
-          {notice ? <Alert type="warning" showIcon message={notice} closable onClose={() => setNotice(null)} /> : null}
+      <section className="assistant-main">
+        <div className="assistant-panel-head">
+          <h3>{detail.data?.conversation.title ?? 'AI 助手'}</h3>
+          <Space size={6} wrap>
+            {currentRun ? <Tag>{STATUS_LABEL[currentRun.status] ?? currentRun.status}</Tag> : null}
+            <Button
+              size="small"
+              icon={<ReloadOutlined />}
+              onClick={refreshConversation}
+              disabled={!selectedId}
+            >
+              刷新
+            </Button>
+            <Button
+              size="small"
+              onClick={() => runAction('pause')}
+              disabled={currentRun?.status !== 'RUNNING'}
+            >
+              暂停
+            </Button>
+            <Button
+              size="small"
+              onClick={() => runAction('resume')}
+              disabled={currentRun?.status !== 'PAUSED'}
+            >
+              继续
+            </Button>
+            <Button
+              size="small"
+              danger
+              icon={<StopOutlined />}
+              onClick={() => runAction('cancel')}
+              disabled={!currentRun || currentRun.status === 'CANCEL_REQUESTED'}
+            >
+              停止
+            </Button>
+          </Space>
+        </div>
 
-          <div style={{ minHeight: 320, maxHeight: 'calc(100vh - 420px)', overflow: 'auto' }}>
+        <div className="assistant-body">
+          {notice ? (
+            <Alert
+              className="assistant-alert"
+              type="warning"
+              showIcon
+              message={notice}
+              closable
+              onClose={() => setNotice(null)}
+            />
+          ) : null}
+
+          <div className="assistant-messages" ref={messagesRef}>
             {messages.length === 0 ? (
-              <Empty description="选择或新建会话后开始提问" />
+              <div className="assistant-empty">
+                <RobotOutlined style={{ fontSize: 42, color: '#9bb0c5' }} />
+                <strong>选择或新建会话</strong>
+                <span>助手会基于服务端工具返回的事实与引用作答，缺失数据会明确标注。</span>
+              </div>
             ) : (
               messages.map((item) => <MessageBubble key={item.id} message={item} />)
             )}
-            {streamText ? <MessageBubble message={streamPreview(selectedId, streamText)} streaming /> : null}
+            {streamText ? (
+              <MessageBubble message={streamPreview(selectedId, streamText)} streaming />
+            ) : null}
             {progress.length > 0 && busy ? (
-              <Space size={4} wrap style={{ marginTop: 8 }}>
+              <div className="assistant-progress">
                 {progress.slice(-6).map((step, index) => (
                   <Tag key={`${step}-${index}`} color="blue">
                     {step}
                   </Tag>
                 ))}
-              </Space>
+              </div>
             ) : null}
           </div>
 
-          <Input.TextArea
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder="例如：订单 X 为什么停止？结束 SOC 多少？协议如何定义该停止原因？（Ctrl/⌘ + Enter 发送）"
-            autoSize={{ minRows: 2, maxRows: 5 }}
-            onKeyDown={(event) => {
-              if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
-                void send()
-              }
-            }}
-          />
-          <Space>
-            <Button type="primary" icon={<SendOutlined />} loading={submitting} onClick={send}>
-              发送
-            </Button>
-            <Checkbox checked={priority} onChange={(event) => setPriority(event.target.checked)}>优先处理（请求暂停当前任务）</Checkbox>
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              回答只包含服务端工具返回的事实与引用；缺失数据会明确标注。
-            </Text>
-          </Space>
-        </Card>
-      </Col>
-    </Row>
+          <div className="assistant-composer">
+            <div className="assistant-input-row">
+              <Input.TextArea
+                value={input}
+                onChange={(event) => setInput(event.target.value)}
+                placeholder="例如：订单 X 为什么停止？结束 SOC 多少？协议如何定义该停止原因？（Enter 发送，Shift + Enter 换行）"
+                autoSize={{ minRows: 2, maxRows: 5 }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+                    event.preventDefault()
+                    void send()
+                  }
+                }}
+              />
+              <Button
+                className="assistant-send"
+                type="primary"
+                icon={<SendOutlined />}
+                loading={submitting}
+                onClick={send}
+              >
+                发送
+              </Button>
+            </div>
+            <div className="assistant-composer-footer">
+              <Checkbox checked={priority} onChange={(event) => setPriority(event.target.checked)}>
+                优先处理（请求暂停当前任务）
+              </Checkbox>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Enter 发送 · Shift + Enter 换行
+              </Text>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
   )
 }
 
@@ -365,32 +399,51 @@ function streamPreview(conversationId: string | null, text: string): AiMessage {
 function MessageBubble({ message, streaming }: { message: AiMessage; streaming?: boolean }) {
   const isUser = message.role === 'user'
   return (
-    <div style={{ display: 'flex', justifyContent: isUser ? 'flex-end' : 'flex-start', marginBottom: 12 }}>
-      <div
-        style={{
-          maxWidth: '86%',
-          background: isUser ? 'rgba(40,88,165,0.14)' : 'rgba(255,255,255,0.05)',
-          border: '1px solid rgba(255,255,255,0.08)',
-          borderRadius: 8,
-          padding: '10px 12px'
-        }}
-      >
-        <div style={{ fontSize: 11, opacity: 0.6, marginBottom: 4 }}>
+    <div className={`assistant-message${isUser ? ' user' : ''}`}>
+      <div className="assistant-message-bubble">
+        <div className="assistant-message-author">
           {isUser ? '我' : '助手'}
           {streaming ? ' · 生成中' : ''}
         </div>
-        <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>{message.content}</Paragraph>
+        {isUser ? (
+          <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>
+            {message.content}
+          </Paragraph>
+        ) : (
+          <div className="assistant-markdown">
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                a: ({ children, href }) => (
+                  <a href={href} target="_blank" rel="noreferrer">
+                    {children}
+                  </a>
+                )
+              }}
+            >
+              {message.content}
+            </ReactMarkdown>
+          </div>
+        )}
         {message.citations.length > 0 ? (
-          <div style={{ marginTop: 8, borderTop: '1px dashed rgba(255,255,255,0.12)', paddingTop: 6 }}>
+          <div className="assistant-citations">
             <Text type="secondary" style={{ fontSize: 12 }}>
               引用
             </Text>
-            <ul style={{ margin: '4px 0 0 0', paddingLeft: 18, fontSize: 12 }}>
+            <ul>
               {message.citations.map((citation, index) => (
                 <li key={`${citation.documentId}-${index}`}>
                   {citation.sourceDocumentId && /^\d+$/.test(citation.sourceDocumentId) ? (
-                    <a href={`/api/ops/protocol-documents/${citation.sourceDocumentId}/view${citation.pageNo ? `#page=${citation.pageNo}` : ''}`} target="_blank" rel="noreferrer">{citation.title}</a>
-                  ) : citation.title}
+                    <a
+                      href={`/api/ops/protocol-documents/${citation.sourceDocumentId}/view${citation.pageNo ? `#page=${citation.pageNo}` : ''}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {citation.title}
+                    </a>
+                  ) : (
+                    citation.title
+                  )}
                   {citation.protocolVersion ? ` · ${citation.protocolVersion}` : ''}
                   {citation.sectionPath ? ` · ${citation.sectionPath}` : ''}
                   {citation.pageNo ? ` · 第 ${citation.pageNo} 页` : ' · 页码不可用'}

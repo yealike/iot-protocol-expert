@@ -10,10 +10,10 @@ import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import top.yealike.ipe.ai.agent.AgentCatalog;
-import top.yealike.ipe.ai.gateway.OpsClient;
 import top.yealike.ipe.ai.identity.UserIdentity;
 import top.yealike.ipe.ai.knowledge.KnowledgeService;
 import top.yealike.ipe.ai.policy.PolicyService;
+import top.yealike.ipe.ai.tool.RemoteTools;
 import top.yealike.ipe.ai.tool.ToolGuard;
 import top.yealike.ipe.ai.tool.ToolSession;
 
@@ -25,7 +25,7 @@ class FallbackAnswerServiceTest {
         when(policy.canUseTool(any(), anyString(), anyString()))
                 .thenReturn(new PolicyService.Decision(true, "OK", "v1"));
         var service = new FallbackAnswerService(
-                mock(ToolGuard.class), mock(OpsClient.class), mock(KnowledgeService.class), policy);
+                mock(ToolGuard.class), mock(RemoteTools.class), mock(KnowledgeService.class), policy);
         var definition =
                 new AgentCatalog.Definition("protocol-expert", "v1", "协议", "AGENT", "", "", "", Set.of(), "PUBLISHED");
         var session = new ToolSession(

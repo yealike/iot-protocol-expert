@@ -5,6 +5,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "ipe.ops")
 public class OpsProperties {
 
+    private String aiMcpToken = "";
     private String environment = "local";
     private String serviceToken = "local-service-token";
     private String simulatorToken = "local-simulator-token";
@@ -70,6 +71,14 @@ public class OpsProperties {
 
     public void setEnvironment(String environment) {
         this.environment = environment;
+    }
+
+    public String getAiMcpToken() {
+        return aiMcpToken;
+    }
+
+    public void setAiMcpToken(String aiMcpToken) {
+        this.aiMcpToken = aiMcpToken;
     }
 
     public String getServiceToken() {

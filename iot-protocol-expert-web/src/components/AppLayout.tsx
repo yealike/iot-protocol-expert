@@ -32,11 +32,19 @@ const items = [
     icon: <FileTextOutlined />,
     label: <Link to="/protocol-documents">协议文档</Link>
   },
-  { key: '/simulator', icon: <ExperimentOutlined />, label: <Link to="/simulator">充电模拟器</Link> },
+  {
+    key: '/simulator',
+    icon: <ExperimentOutlined />,
+    label: <Link to="/simulator">充电模拟器</Link>
+  },
   { key: '/alarms', icon: <AlertOutlined />, label: <Link to="/alarms">告警</Link> },
-  { key: '/assistant', icon: <RobotOutlined />, label: <Link to="/assistant">AI 助手</Link> }
-  ,{ key: '/users', icon: <UserOutlined />, label: <Link to="/users">用户管理</Link> }
-  ,{ key: '/ai-knowledge', icon: <FileTextOutlined />, label: <Link to="/ai-knowledge">AI 知识管理</Link> }
+  { key: '/assistant', icon: <RobotOutlined />, label: <Link to="/assistant">AI 助手</Link> },
+  { key: '/users', icon: <UserOutlined />, label: <Link to="/users">用户管理</Link> },
+  {
+    key: '/ai-knowledge',
+    icon: <FileTextOutlined />,
+    label: <Link to="/ai-knowledge">AI 知识管理</Link>
+  }
 ]
 
 export default function AppLayout({ user, children }: Props) {
@@ -59,17 +67,27 @@ export default function AppLayout({ user, children }: Props) {
     <Layout className="app-shell">
       <Sider breakpoint="lg" collapsedWidth={0} width={214}>
         <div className="app-logo">
-          <span className="mark">K</span>
+          <span className="mark">I</span>
           <span>
-            慧舟 · 能源物联
-            <small>KEEL ENERGY OPS</small>
+            充电桩协议平台
+            <small>PROTOCOL OPERATIONS</small>
           </span>
         </div>
         <Menu
           theme="dark"
           mode="inline"
           selectedKeys={selected}
-          items={items.filter((item) => user.allStations === false && !['/assistant', '/ai-knowledge'].includes(item.key) ? false : item.key === '/users' ? user.permissions?.includes('iam:user:manage') : item.key === '/ai-knowledge' ? user.permissions?.includes('ai:admin') : item.key === '/assistant' ? user.permissions?.includes('ai:use') : true)}
+          items={items.filter((item) =>
+            user.allStations === false && !['/assistant', '/ai-knowledge'].includes(item.key)
+              ? false
+              : item.key === '/users'
+                ? user.permissions?.includes('iam:user:manage')
+                : item.key === '/ai-knowledge'
+                  ? user.permissions?.includes('ai:admin')
+                  : item.key === '/assistant'
+                    ? user.permissions?.includes('ai:use')
+                    : true
+          )}
           style={{ background: 'transparent' }}
         />
       </Sider>
@@ -108,7 +126,7 @@ export default function AppLayout({ user, children }: Props) {
             </Button>
           </Dropdown>
         </Header>
-        <Content style={{ padding: '22px 24px 40px' }}>{children}</Content>
+        <Content className="app-content">{children}</Content>
       </Layout>
     </Layout>
   )

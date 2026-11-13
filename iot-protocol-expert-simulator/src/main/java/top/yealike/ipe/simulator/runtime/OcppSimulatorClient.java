@@ -115,7 +115,7 @@ public class OcppSimulatorClient {
 
     public void sendBootNotification() {
         Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("chargePointVendor", "Keel");
+        payload.put("chargePointVendor", "IPE");
         payload.put("chargePointModel", "IPE-SIM");
         payload.put("chargePointSerialNumber", properties.getPileCode());
         payload.put("firmwareVersion", properties.getProgramVersion());

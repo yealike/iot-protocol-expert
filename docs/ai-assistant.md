@@ -14,30 +14,25 @@
 | 用户身份与数据范围 | ⚠️ 部分实现 | 执行前及工具调用前重新检查账号与策略；业务侧独立校验用户站点范围并与 AI 策略取交集 |
 | Agent / Tool / Skill 授权 | ✅ Agent 与 Tool 授权；Skill 仅预留表结构 | 一期不加载 Skill |
 | 协议知识检索（RAG） | ✅ 解析 → 分块 → 关键字索引 → 引用 | pgvector 为可选迁移，未安装自动降级 |
-| 订单 / 账单 / 设备 / 遥测工具 | ✅ 经 ops 内部只读接口 | 业务侧再次校验站点范围 |
+| 订单 / 账单 / 设备 / 遥测工具 | ✅ 经 Higress MCP | 业务侧再次校验站点范围 |
 | Team 协作 | ✅ Leader + 协议 Agent + 订单 Agent | 通过受控分派工具，非自由组队 |
-| MCP / Nacos / Higress | ⚠️ 测试环境已有中间件，代码未接入 | 工具按统一拦截器实现，可替换为 MCP Client |
+| MCP / Nacos / Higress | ✅ 运维 MCP 已接入 | 两服务用 Spring Cloud Alibaba starter 注册与发现；AI 订阅 Nacos MCP Registry 校验入口、版本与工具清单，Higress 将 Streamable HTTP MCP 转换为运维 HTTP |
 | 可视化编排 / 写操作 | ❌ 未实现 | 属二期 |
 
 ## 2. 运行架构
 
 ```text
-浏览器 /assistant
-   │  fetch + cookie（JSESSIONID）
-   ▼
-iot-protocol-expert-web  ──/api/ai/*──▶  iot-protocol-expert-ai :19083
-                                              │         │
-                                   cookie 转发 │         │ X-Ops-Service-Token
-                                              ▼         ▼
-                                    ops /api/ops/auth/me   ops /internal/ai/* :19082
-                                              │                    │
-                                              └── ipe_ops（业务库）◀┘
-AI 自身状态 ── ipe_ai schema（同实例，独立 schema）
+浏览器 → AI :19083 → Higress /ipe-mcp/ipe-ops-rest → 运维 HTTP :19082
+                             ↑
+                   Nacos 服务注册与能力目录
+
+AI 自身状态 → ipe_ai schema
 ```
 
-- AI 服务**不直接读写业务表**；订单、账单、设备、遥测、协议文档都经 ops 内部只读接口获取。
-- ops 侧 `InternalAiController` 用 `X-Ai-Station-Scope` 再做一次站点范围校验，不依赖 AI 侧过滤。
-- AI 服务不签发身份，也不解析前端传入的角色、站点或内部用户头。
+- AI 的订单、账单、设备、遥测、协议文档与身份校验均通过 Higress MCP。
+- 运维 HTTP 校验 AI 生成的短时加密凭据，并根据当前账号权限和 AI 策略校验站点范围。
+- 模型可见的远程工具由 MCP 工具目录与 AI 授权策略取交集。身份校验和文档导入能力仅供应用使用。
+- 服务注册、路由和本地启动配置见 [AI 跨服务调用](ai-cross-service-migration.md)。
 
 ## 3. 技术选型验证结论（切片 0）
 
@@ -233,8 +228,7 @@ $env:PATH="$env:JAVA_HOME\bin;$env:PATH"
 
 ## 13. 已知限制
 
-1. 未接入 Nacos Skill Registry、Higress 与独立 MCP Server；工具为进程内实现，接口已按拦截器/白名单方式组织，后续可替换为 MCP Client。
-   测试环境使用 Nacos 3.3.0 + Higress 2.2.6；已有测试记录显示 Higress 的 `nacos2` 动态发现未生效，使用 `static` 服务来源可转发。后续接入应在目标环境重新验证版本、发现、路由与认证。
+1. Nacos Skill Registry 属于独立能力，当前运维 MCP 由 Nacos 注册并通过 Higress 路由。
 2. SSE 按数据库游标轮询以支持跨实例事件，尚需连接数、延迟和数据库负载压测；跨实例 fencing 写入校验尚未实现。
 3. 上下文压缩（`ai_context_summary`）只建表，当前按最近 N 条消息截断。
 4. 检索为关键字方案；pgvector 迁移已就绪但未参与排序，需在有扩展的环境做评测后启用。
@@ -251,5 +245,5 @@ $env:PATH="$env:JAVA_HOME\bin;$env:PATH"
 
 1. 在目标环境执行 `ipe_ai` 迁移，跑通第 11 节验收。
 2. 用真实协议文档评测检索召回与引用正确性，确定 chunk 参数与最低分。
-3. 接入 Nacos（Skill 版本与受控读取）与 Higress（MCP 路由），将 `ToolGuard` 前置到 MCP Client。
+3. 接入 Nacos Skill 版本与受控读取。
 4. 补 fencing token 和检查点恢复，做多实例抢占与恢复演练。
