@@ -41,7 +41,7 @@ public class AlarmController {
     public record HandleRequest(String note) {}
 
     @PostMapping("/{id}/ack")
-    @PreAuthorize("hasAnyRole('ADMIN','OPS')")
+    @PreAuthorize("hasAuthority('ops:operate')")
     public Map<String, Object> ack(
             @PathVariable Long id, @RequestBody(required = false) HandleRequest body, Principal principal) {
         AlarmRecord record = alarms.ack(id, name(principal), body == null ? null : body.note());
@@ -50,7 +50,7 @@ public class AlarmController {
     }
 
     @PostMapping("/{id}/close")
-    @PreAuthorize("hasAnyRole('ADMIN','OPS')")
+    @PreAuthorize("hasAuthority('ops:operate')")
     public Map<String, Object> close(
             @PathVariable Long id, @RequestBody(required = false) HandleRequest body, Principal principal) {
         AlarmRecord record = alarms.close(id, name(principal), body == null ? null : body.note());
@@ -66,7 +66,7 @@ public class AlarmController {
     }
 
     @PostMapping("/rules")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ops:manage')")
     public AlarmRule saveRule(@RequestBody AlarmRule rule, Principal principal) {
         AlarmRule saved = alarms.saveRule(rule);
         audits.record(
@@ -75,7 +75,7 @@ public class AlarmController {
     }
 
     @DeleteMapping("/rules/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ops:manage')")
     public Map<String, Object> deleteRule(@PathVariable Long id, Principal principal) {
         alarms.deleteRule(id);
         audits.record(name(principal), "alarm.rule.delete", "alarm-rule", String.valueOf(id), "SUCCESS", null);

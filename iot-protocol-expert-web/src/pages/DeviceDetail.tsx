@@ -1,3 +1,4 @@
+import { formatDateTime } from '../utils/dateTime'
 import { productProtocol } from '../api/protocol'
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -97,7 +98,7 @@ export default function DeviceDetail() {
     tooltip: { trigger: 'axis' },
     xAxis: {
       type: 'category',
-      data: (series.data?.points ?? []).map((point) => point.time.slice(11)),
+      data: (series.data?.points ?? []).map((point) => formatDateTime(point.time)),
       axisLabel: { color: '#7d93ac' }
     },
     yAxis: {
@@ -130,7 +131,7 @@ export default function DeviceDetail() {
             {property.display ?? '—'}
             {property.unit ? <small>{property.unit}</small> : null}
           </div>
-          <div className="time">{property.updatedAt ?? '尚无数据'}</div>
+          <div className="time">{formatDateTime(property.updatedAt, '尚无数据')}</div>
         </div>
       ))}
     </div>
@@ -184,7 +185,7 @@ export default function DeviceDetail() {
         </div>
         <div>
           <span>最近上报</span>
-          <strong>{device.lastSeen ?? '暂无数据'}</strong>
+          <strong>{formatDateTime(device.lastSeen, '暂无数据')}</strong>
         </div>
         <div>
           <span>设备开关</span>
@@ -265,9 +266,9 @@ export default function DeviceDetail() {
               <Descriptions.Item label="允许模拟">
                 {device.allowSimulate ? '是' : '否'}
               </Descriptions.Item>
-              <Descriptions.Item label="最近上报">{device.lastSeen ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label="上线时间">{device.onlineAt ?? '—'}</Descriptions.Item>
-              <Descriptions.Item label="激活时间">{device.registryTime ?? '—'}</Descriptions.Item>
+              <Descriptions.Item label="最近上报">{formatDateTime(device.lastSeen)}</Descriptions.Item>
+              <Descriptions.Item label="上线时间">{formatDateTime(device.onlineAt)}</Descriptions.Item>
+              <Descriptions.Item label="激活时间">{formatDateTime(device.registryTime)}</Descriptions.Item>
             </Descriptions>
           </Card>
           <Card title="标签" size="small" bordered={false} style={{ marginTop: 16 }}>
@@ -392,7 +393,7 @@ export default function DeviceDetail() {
                   dataSource={events}
                   pagination={{ pageSize: 10 }}
                   columns={[
-                    { title: '时间', dataIndex: 'occurredAt', width: 170 },
+                    { title: '时间', dataIndex: 'occurredAt', width: 170, render: (value: string | null) => formatDateTime(value) },
                     { title: '事件', dataIndex: 'eventName' },
                     {
                       title: '级别',
@@ -437,7 +438,7 @@ export default function DeviceDetail() {
                       width: 100,
                       render: (state) => <AlarmStateTag state={state} />
                     },
-                    { title: '最近发生', dataIndex: 'lastAt', width: 170 }
+                    { title: '最近发生', dataIndex: 'lastAt', width: 170, render: (value: string | null) => formatDateTime(value) }
                   ]}
                 />
               )
@@ -452,7 +453,7 @@ export default function DeviceDetail() {
                   dataSource={commands}
                   pagination={false}
                   columns={[
-                    { title: '时间', dataIndex: 'createdAt', width: 170 },
+                    { title: '时间', dataIndex: 'createdAt', width: 170, render: (value: string | null) => formatDateTime(value) },
                     { title: '指令', dataIndex: 'commandType' },
                     { title: '状态', dataIndex: 'status', width: 130 },
                     { title: '操作人', dataIndex: 'operator', width: 110 },

@@ -1,7 +1,5 @@
 package top.yealike.ipe.ops.security;
 
-import java.util.List;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -14,9 +12,11 @@ import top.yealike.ipe.ops.repository.OpsUserRepository;
 public class OpsUserDetailsService implements UserDetailsService {
 
     private final OpsUserRepository users;
+    private final IdentityService identities;
 
-    public OpsUserDetailsService(OpsUserRepository users) {
+    public OpsUserDetailsService(OpsUserRepository users, IdentityService identities) {
         this.users = users;
+        this.identities = identities;
     }
 
     @Override
@@ -30,6 +30,6 @@ public class OpsUserDetailsService implements UserDetailsService {
                 true,
                 true,
                 true,
-                List.of(new SimpleGrantedAuthority("ROLE_" + user.role)));
+                identities.byUsername(username).orElseThrow().authorities());
     }
 }

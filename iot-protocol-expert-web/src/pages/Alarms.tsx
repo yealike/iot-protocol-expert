@@ -1,3 +1,4 @@
+import { formatDateTime } from '../utils/dateTime'
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { App, Button, Card, Empty, Input, Select, Space, Table } from 'antd'
@@ -114,8 +115,8 @@ export default function Alarms() {
                 width: 100,
                 render: (value: AlarmState) => <AlarmStateTag state={value} />
               },
-              { title: '首次发生', dataIndex: 'firstAt', width: 170 },
-              { title: '最近发生', dataIndex: 'lastAt', width: 170 },
+              { title: '首次发生', dataIndex: 'firstAt', width: 170, render: (value: string | null) => formatDateTime(value) },
+              { title: '最近发生', dataIndex: 'lastAt', width: 170, render: (value: string | null) => formatDateTime(value) },
               {
                 title: '操作',
                 width: 160,

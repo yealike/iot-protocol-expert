@@ -16,9 +16,6 @@ public class OpsUser {
     @Column(name = "password_hash", nullable = false, length = 128)
     public String passwordHash;
 
-    @Column(nullable = false, length = 24)
-    public String role;
-
     public boolean enabled = true;
     public LocalDateTime createdAt;
 }

@@ -42,7 +42,7 @@ public class StationController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ops:manage')")
     public Station save(@RequestBody Station station, Principal principal) {
         Station saved = stations.save(station);
         audits.record(principal.getName(), "station.save", "station", String.valueOf(saved.id), "SUCCESS", saved.name);
@@ -63,7 +63,7 @@ public class StationController {
     }
 
     @PostMapping("/{id}/devices/{deviceId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ops:manage')")
     public Map<String, Object> bind(@PathVariable Long id, @PathVariable Long deviceId, Principal principal) {
         DeviceInstance device = instances.move(deviceId, id);
         audits.record(

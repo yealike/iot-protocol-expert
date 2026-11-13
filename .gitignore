@@ -23,7 +23,7 @@ Desktop.ini
 # Runtime state, databases, logs and work directories (at any module depth)
 data/
 logs/
-run/
+/run/
 tmp/
 temp/
 backups/

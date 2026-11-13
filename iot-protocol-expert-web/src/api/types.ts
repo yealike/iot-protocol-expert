@@ -259,6 +259,9 @@ export interface SeriesView {
 }
 
 export interface CurrentUser {
+  id?: string
+  permissions?: string[]
+  allStations?: boolean
   authenticated: boolean
   username?: string
   roles?: string[]
@@ -336,3 +339,105 @@ export interface ProtocolDocument {
   uploadedBy: string
   createdAt: string
 }
+
+// ---------------------------------------------------------------- AI 助手
+
+export interface AiAgent {
+  agentKey: string
+  version: string
+  name: string
+  kind: string
+  description: string
+  tools: string[]
+}
+
+export interface AiCitation {
+  documentId: string
+  sourceDocumentId?: string | null
+  title: string
+  protocolVersion?: string
+  sectionPath?: string
+  pageNo?: number | string
+}
+
+export interface AiConversation {
+  id: string
+  userId: string
+  title: string
+  agentKey: string
+  agentVersion: string
+  status: string
+  eventCursor: number
+  createdAt: string
+  updatedAt: string
+  lastMessageAt?: string
+}
+
+export interface AiMessage {
+  id: string
+  conversationId: string
+  runId?: string
+  role: 'user' | 'assistant'
+  content: string
+  citations: AiCitation[]
+  status: string
+  seq: number
+  createdAt: string
+}
+
+export interface AiToolCall {
+  id: string
+  toolName: string
+  status: string
+  decision: string
+  denyReason?: string
+  durationMs?: number
+  createdAt: string
+}
+
+export interface AiRun {
+  id: string
+  conversationId: string
+  question: string
+  agentKey: string
+  status: string
+  priority: number
+  errorCode?: string
+  errorMessage?: string
+  startedAt?: string
+  finishedAt?: string
+  createdAt: string
+  toolCalls?: AiToolCall[]
+}
+
+export interface AiConversationDetail {
+  conversation: AiConversation
+  messages: AiMessage[]
+  currentRun: AiRun | null
+}
+
+export interface AiStreamEvent {
+  cursor: number
+  type: string
+  data: Record<string, unknown>
+}
+
+export interface ManagedUser {
+  id: number
+  username: string
+  enabled: boolean
+  allStations: boolean
+  roles: string[]
+  permissions: string[]
+  stationIds: number[]
+}
+export interface UserChange {
+  username: string
+  password?: string
+  enabled: boolean
+  allStations: boolean
+  roles: string[]
+  stationIds: number[]
+}
+
+export interface ManagedRole { code: string; name: string; permissions: string[] }

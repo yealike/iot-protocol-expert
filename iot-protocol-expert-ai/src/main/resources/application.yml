@@ -1,0 +1,86 @@
+server:
+  port: 19083
+  shutdown: graceful
+
+spring:
+  main:
+    banner-mode: "off"
+  application:
+    name: iot-protocol-expert-ai
+  datasource:
+    url: ${IPE_AI_DB_URL:${IPE_OPS_DB_URL:jdbc:postgresql://127.0.0.1:55432/ipe_ops}}
+    username: ${IPE_AI_DB_USER:${IPE_OPS_DB_USER:ipe}}
+    password: ${IPE_AI_DB_PASSWORD:${IPE_OPS_DB_PASSWORD:}}
+    hikari:
+      maximum-pool-size: 8
+      minimum-idle: 1
+      connection-timeout: 5000
+      connection-init-sql: SET search_path TO ipe_ai
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+    default-schema: ipe_ai
+    schemas: ipe_ai
+    create-schemas: true
+    locations: classpath:db/migration
+    placeholder-replacement: false
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+  mvc:
+    problemdetails:
+      enabled: true
+    async:
+      # SSE 长连接：单次订阅上限，超时后客户端按 cursor 重连
+      request-timeout: 600000
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+
+ipe:
+  ai:
+    environment: ${IPE_ENVIRONMENT:local}
+    service-token: ${IPE_OPS_SERVICE_TOKEN:local-service-token}
+    ops-base-url: ${IPE_OPS_BASE_URL:http://127.0.0.1:19082}
+    request-timeout-ms: ${IPE_AI_REQUEST_TIMEOUT_MS:8000}
+    model:
+      # 未配置模型时，Run 仍执行确定性工具流程，但明确标注「未启用模型，仅返回工具事实」
+      enabled: ${IPE_MODEL_ENABLED:false}
+      base-url: ${IPE_MODEL_BASE_URL:}
+      api-key: ${IPE_MODEL_API_KEY:}
+      name: ${IPE_MODEL_NAME:deepseek-chat}
+      timeout-ms: ${IPE_MODEL_TIMEOUT_MS:60000}
+      max-tokens: ${IPE_MODEL_MAX_TOKENS:2048}
+      temperature: ${IPE_MODEL_TEMPERATURE:0.1}
+    embedding:
+      enabled: ${IPE_EMBEDDING_ENABLED:false}
+      base-url: ${IPE_EMBEDDING_BASE_URL:}
+      api-key: ${IPE_EMBEDDING_API_KEY:}
+      name: ${IPE_EMBEDDING_NAME:text-embedding-3-small}
+      dimensions: ${IPE_EMBEDDING_DIMENSIONS:1024}
+      timeout-ms: ${IPE_EMBEDDING_TIMEOUT_MS:20000}
+    run:
+      max-concurrent: ${IPE_AI_RUN_MAX_CONCURRENT:4}
+      max-iters: ${IPE_AI_RUN_MAX_ITERS:6}
+      max-tool-calls: ${IPE_AI_RUN_MAX_TOOL_CALLS:12}
+      timeout-ms: ${IPE_AI_RUN_TIMEOUT_MS:120000}
+      max-context-messages: ${IPE_AI_RUN_MAX_CONTEXT_MESSAGES:20}
+    knowledge:
+      chunk-size: ${IPE_AI_CHUNK_SIZE:800}
+      chunk-overlap: ${IPE_AI_CHUNK_OVERLAP:100}
+      top-k: ${IPE_AI_TOP_K:6}
+      min-score: ${IPE_AI_MIN_SCORE:1}
+      max-document-bytes: ${IPE_AI_MAX_DOCUMENT_BYTES:20971520}
+
+logging:
+  structured:
+    format:
+      console: logstash
+    json:
+      add:
+        service.name: ${spring.application.name}
+        service.version: 1.0.0
+        deployment.environment.name: ${ipe.ai.environment}

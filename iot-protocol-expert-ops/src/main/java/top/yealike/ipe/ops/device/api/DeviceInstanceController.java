@@ -77,7 +77,7 @@ public class DeviceInstanceController {
     // ------------------------------------------------------------------ 写入
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ops:manage')")
     public DeviceDtos.DeviceRow create(@RequestBody DeviceDtos.DeviceSave input, Principal principal) {
         if (input.deviceCode() != null
                 && devices.findByCode(input.deviceCode().trim()).isPresent()) {
@@ -90,7 +90,7 @@ public class DeviceInstanceController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ops:manage')")
     public DeviceDtos.DeviceRow update(
             @PathVariable Long id, @RequestBody DeviceDtos.DeviceSave input, Principal principal) {
         DeviceInstance existing = devices.get(id);
@@ -115,7 +115,7 @@ public class DeviceInstanceController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ops:manage')")
     public Map<String, Object> delete(@PathVariable Long id, Principal principal) {
         devices.delete(id);
         audits.record(name(principal), "device.delete", "device", String.valueOf(id), "SUCCESS", null);
@@ -123,7 +123,7 @@ public class DeviceInstanceController {
     }
 
     @PostMapping("/{id}/deploy")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ops:manage')")
     public DeviceDtos.DeviceRow deploy(@PathVariable Long id, Principal principal) {
         DeviceInstance saved = devices.deploy(id);
         audits.record(name(principal), "device.deploy", "device", String.valueOf(id), "SUCCESS", saved.deviceCode);
@@ -131,7 +131,7 @@ public class DeviceInstanceController {
     }
 
     @PostMapping("/{id}/undeploy")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ops:manage')")
     public DeviceDtos.DeviceRow undeploy(@PathVariable Long id, Principal principal) {
         DeviceInstance saved = devices.undeploy(id);
         audits.record(name(principal), "device.undeploy", "device", String.valueOf(id), "SUCCESS", saved.deviceCode);
@@ -139,7 +139,7 @@ public class DeviceInstanceController {
     }
 
     @PostMapping("/{id}/enabled")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ops:manage')")
     public DeviceDtos.DeviceRow enabled(@PathVariable Long id, @RequestParam boolean value, Principal principal) {
         DeviceInstance saved = devices.setEnabled(id, value);
         audits.record(name(principal), "device.enabled", "device", String.valueOf(id), "SUCCESS", "value=" + value);
@@ -147,7 +147,7 @@ public class DeviceInstanceController {
     }
 
     @PostMapping("/{id}/move")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ops:manage')")
     public DeviceDtos.DeviceRow move(
             @PathVariable Long id, @RequestParam(required = false) Long stationId, Principal principal) {
         DeviceInstance saved = devices.move(id, stationId);
@@ -156,7 +156,7 @@ public class DeviceInstanceController {
     }
 
     @PostMapping("/{id}/work-allowance")
-    @PreAuthorize("hasAnyRole('ADMIN','OPS')")
+    @PreAuthorize("hasAuthority('ops:operate')")
     public DeviceDtos.DeviceRow workAllowance(
             @PathVariable Long id,
             @RequestParam boolean allowWork,
@@ -199,7 +199,7 @@ public class DeviceInstanceController {
 
     /** 手工写入属性（联调用）。生产环境由协议通道调用 /internal/**。 */
     @PostMapping("/{id}/properties")
-    @PreAuthorize("hasAnyRole('ADMIN','OPS')")
+    @PreAuthorize("hasAuthority('ops:operate')")
     public Map<String, Object> write(
             @PathVariable Long id, @RequestBody DeviceDtos.PropertyWrite input, Principal principal) {
         DevicePropertyLatest row = properties.write(id, input.channelNo(), input.propertyId(), input.value());

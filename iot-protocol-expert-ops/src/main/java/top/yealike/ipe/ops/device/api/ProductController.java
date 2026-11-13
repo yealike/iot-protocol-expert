@@ -57,9 +57,10 @@ public class ProductController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ops:manage')")
     public DeviceDtos.ProductRow save(@RequestBody DeviceDtos.ProductSave input, Principal principal) {
-        if (input.productCode() != null && products.findByCode(input.productCode().trim()).isPresent()) {
+        if (input.productCode() != null
+                && products.findByCode(input.productCode().trim()).isPresent()) {
             throw new IllegalArgumentException("产品编码已存在");
         }
         Product saved = products.save(input);
@@ -69,7 +70,7 @@ public class ProductController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ops:manage')")
     public DeviceDtos.ProductRow update(
             @PathVariable Long id, @RequestBody DeviceDtos.ProductSave input, Principal principal) {
         Product existing = products.get(id);
@@ -94,7 +95,7 @@ public class ProductController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAuthority('ops:manage')")
     public Map<String, Object> delete(@PathVariable Long id, Principal principal) {
         products.delete(id);
         audits.record(name(principal), "product.delete", "product", String.valueOf(id), "SUCCESS", null);

@@ -12,6 +12,8 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
+      // AI 服务独立端口：必须排在 /api 之前，否则会被 19082 抢先匹配
+      '/api/ai': { target: 'http://127.0.0.1:19083', changeOrigin: true },
       '/api': { target: 'http://127.0.0.1:19082', changeOrigin: true },
       '/login': { target: 'http://127.0.0.1:19082', changeOrigin: true },
       '/logout': { target: 'http://127.0.0.1:19082', changeOrigin: true },

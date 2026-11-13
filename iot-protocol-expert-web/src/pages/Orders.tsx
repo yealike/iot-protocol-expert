@@ -1,3 +1,4 @@
+import { formatDateTime } from '../utils/dateTime'
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Button, Card, Input, Select, Space, Table, Tag } from 'antd'
@@ -99,8 +100,8 @@ export default function Orders() {
                 </Tag>
               )
             },
-            { title: '开始时间', dataIndex: 'startTime', render: (v) => v ?? '—' },
-            { title: '结束时间', dataIndex: 'endTime', render: (v) => v ?? '—' },
+            { title: '开始时间', dataIndex: 'startTime', render: (value: string | null) => formatDateTime(value) },
+            { title: '结束时间', dataIndex: 'endTime', render: (value: string | null) => formatDateTime(value) },
             { title: '电量 (kWh)', dataIndex: 'energy', render: (v) => v ?? '—' },
             {
               title: '金额',

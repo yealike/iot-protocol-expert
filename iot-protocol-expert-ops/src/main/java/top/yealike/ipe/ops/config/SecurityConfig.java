@@ -27,7 +27,9 @@ public class SecurityConfig {
     }
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, OpsProperties properties) throws Exception {
+    SecurityFilterChain securityFilterChain(
+            HttpSecurity http, OpsProperties properties, top.yealike.ipe.ops.security.IdentityService identities)
+            throws Exception {
         http
                 // 前端用 fetch 提交登录表单，不带 CSRF token；登录本身是凭据校验，不依赖 token
                 .csrf(csrf -> csrf.ignoringRequestMatchers("/internal/**", "/api/**", "/login", "/logout"))
@@ -36,6 +38,12 @@ public class SecurityConfig {
                         // 后端只提供 API：登录/登出/健康检查与错误页匿名可取，其余一律要求认证
                         .requestMatchers("/actuator/**", "/login", "/logout", "/error", "/favicon.ico")
                         .permitAll()
+                        .requestMatchers("/api/ops/auth/**")
+                        .authenticated()
+                        .requestMatchers("/api/ops/users", "/api/ops/users/**")
+                        .hasAuthority("iam:user:manage")
+                        .requestMatchers("/api/ops/**")
+                        .hasAuthority("ops:read")
                         .requestMatchers("/api/**")
                         .authenticated()
                         .anyRequest()
@@ -45,6 +53,13 @@ public class SecurityConfig {
                         (request, response, authException) -> response.sendError(HttpStatus.UNAUTHORIZED.value())))
                 // 登录成功/失败都以 JSON 响应，前端只关心状态码，不再由后端转发 SPA 路由
                 .formLogin(form -> form.successHandler((request, response, authentication) -> {
+                            request.getSession()
+                                    .setAttribute(
+                                            "iam.authVersion",
+                                            identities
+                                                    .byUsername(authentication.getName())
+                                                    .orElseThrow()
+                                                    .authVersion());
                             writeJson(response, HttpStatus.OK, "{\"authenticated\":true}");
                         })
                         .failureHandler((request, response, exception) -> writeJson(
@@ -53,9 +68,11 @@ public class SecurityConfig {
                                 "{\"error\":\"BAD_CREDENTIALS\",\"message\":\"账号或密码不正确\"}")))
                 .logout(logout -> logout.logoutSuccessHandler(
                         (request, response, authentication) -> response.setStatus(HttpStatus.NO_CONTENT.value())))
-                .httpBasic(basic -> {})
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
-                .addFilterBefore(new ServiceTokenFilter(properties), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(new ServiceTokenFilter(properties), UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(
+                        new CurrentIdentityFilter(identities),
+                        org.springframework.security.web.context.SecurityContextHolderFilter.class);
         return http.build();
     }
 
@@ -63,6 +80,60 @@ public class SecurityConfig {
         response.setStatus(status.value());
         response.setContentType("application/json;charset=UTF-8");
         response.getWriter().write(body);
+    }
+
+    /** Refresh authorization on every request; disabled users lose their session immediately. */
+    static final class CurrentIdentityFilter extends OncePerRequestFilter {
+        private final top.yealike.ipe.ops.security.IdentityService identities;
+
+        CurrentIdentityFilter(top.yealike.ipe.ops.security.IdentityService identities) {
+            this.identities = identities;
+        }
+
+        @Override
+        protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+                throws ServletException, IOException {
+            if (request.getRequestURI().startsWith("/api/ops/users")
+                    && !"GET".equals(request.getMethod())
+                    && !"HEAD".equals(request.getMethod())
+                    && !"1".equals(request.getHeader("X-OPS-Client"))) {
+                response.sendError(HttpStatus.FORBIDDEN.value());
+                return;
+            }
+            var context = org.springframework.security.core.context.SecurityContextHolder.getContext();
+            var auth = context.getAuthentication();
+            if (auth != null
+                    && auth.isAuthenticated()
+                    && !(auth instanceof org.springframework.security.authentication.AnonymousAuthenticationToken)) {
+                var identity = identities
+                        .byUsername(auth.getName())
+                        .filter(top.yealike.ipe.ops.security.IdentityService.Identity::enabled);
+                var currentSession = request.getSession(false);
+                Object version = currentSession == null ? null : currentSession.getAttribute("iam.authVersion");
+                if (identity.isEmpty()
+                        || !java.util.Objects.equals(version, identity.get().authVersion())) {
+                    context.setAuthentication(null);
+                    var session = request.getSession(false);
+                    if (session != null) session.invalidate();
+                    response.sendError(HttpStatus.UNAUTHORIZED.value());
+                    return;
+                }
+                var updated = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
+                        auth.getPrincipal(),
+                        auth.getCredentials(),
+                        identity.get().authorities());
+                updated.setDetails(auth.getDetails());
+                context.setAuthentication(updated);
+                // OPS queries do not yet apply row-level station filters. Fail closed for restricted users.
+                if (!identity.get().allStations()
+                        && request.getRequestURI().startsWith("/api/ops/")
+                        && !request.getRequestURI().startsWith("/api/ops/auth/")) {
+                    response.sendError(HttpStatus.FORBIDDEN.value(), "受限站点账号暂不支持访问运营数据");
+                    return;
+                }
+            }
+            chain.doFilter(request, response);
+        }
     }
 
     /** 内部调用与模拟器只读接口使用服务令牌，不建立用户会话。 */

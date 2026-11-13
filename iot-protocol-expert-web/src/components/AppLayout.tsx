@@ -7,6 +7,7 @@ import {
   DashboardOutlined,
   ExperimentOutlined,
   LogoutOutlined,
+  RobotOutlined,
   FileTextOutlined,
   UserOutlined
 } from '@ant-design/icons'
@@ -32,7 +33,10 @@ const items = [
     label: <Link to="/protocol-documents">协议文档</Link>
   },
   { key: '/simulator', icon: <ExperimentOutlined />, label: <Link to="/simulator">充电模拟器</Link> },
-  { key: '/alarms', icon: <AlertOutlined />, label: <Link to="/alarms">告警</Link> }
+  { key: '/alarms', icon: <AlertOutlined />, label: <Link to="/alarms">告警</Link> },
+  { key: '/assistant', icon: <RobotOutlined />, label: <Link to="/assistant">AI 助手</Link> }
+  ,{ key: '/users', icon: <UserOutlined />, label: <Link to="/users">用户管理</Link> }
+  ,{ key: '/ai-knowledge', icon: <FileTextOutlined />, label: <Link to="/ai-knowledge">AI 知识管理</Link> }
 ]
 
 export default function AppLayout({ user, children }: Props) {
@@ -65,7 +69,7 @@ export default function AppLayout({ user, children }: Props) {
           theme="dark"
           mode="inline"
           selectedKeys={selected}
-          items={items}
+          items={items.filter((item) => user.allStations === false && !['/assistant', '/ai-knowledge'].includes(item.key) ? false : item.key === '/users' ? user.permissions?.includes('iam:user:manage') : item.key === '/ai-knowledge' ? user.permissions?.includes('ai:admin') : item.key === '/assistant' ? user.permissions?.includes('ai:use') : true)}
           style={{ background: 'transparent' }}
         />
       </Sider>

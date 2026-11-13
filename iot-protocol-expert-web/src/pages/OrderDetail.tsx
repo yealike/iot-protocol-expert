@@ -1,3 +1,4 @@
+import { formatDateTime } from '../utils/dateTime'
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -62,8 +63,14 @@ function Replay({ orderNo }: { orderNo: string }) {
   const visible = points.slice(0, cursor)
   const option = {
     grid: { left: 60, right: 30, top: 28, bottom: 45 },
-    tooltip: { trigger: 'axis' },
-    xAxis: { type: 'time' },
+    tooltip: {
+      trigger: 'axis',
+      formatter: (items: Array<{ value: [string, number | null] }>) => {
+        const point = items[0]?.value
+        return point ? `${formatDateTime(point[0])}<br/>${selected.label}: ${point[1] ?? '—'} ${selected.unit}` : ''
+      }
+    },
+    xAxis: { type: 'time', axisLabel: { formatter: (value: number) => formatDateTime(value) } },
     yAxis: { type: 'value', name: selected.unit, scale: true },
     series: [
       {
@@ -173,9 +180,9 @@ export default function OrderDetail() {
           </Descriptions.Item>
           <Descriptions.Item label="枪口">{order.gunNo}</Descriptions.Item>
           <Descriptions.Item label="协议">{order.protocol}</Descriptions.Item>
-          <Descriptions.Item label="创建时间">{order.createdAt ?? '—'}</Descriptions.Item>
-          <Descriptions.Item label="开始时间">{order.startTime ?? '—'}</Descriptions.Item>
-          <Descriptions.Item label="结束时间">{order.endTime ?? '—'}</Descriptions.Item>
+          <Descriptions.Item label="创建时间">{formatDateTime(order.createdAt)}</Descriptions.Item>
+          <Descriptions.Item label="开始时间">{formatDateTime(order.startTime)}</Descriptions.Item>
+          <Descriptions.Item label="结束时间">{formatDateTime(order.endTime)}</Descriptions.Item>
           <Descriptions.Item label="电量">
             {order.energy == null ? '—' : `${order.energy} kWh`}
           </Descriptions.Item>
@@ -204,7 +211,7 @@ export default function OrderDetail() {
             { title: '金额', dataIndex: 'amount', render: (v) => v ?? '—' },
             { title: '币种', dataIndex: 'currency' },
             { title: '校验', render: (_, r) => (r.accepted ? '通过' : r.rejectReason || '未通过') },
-            { title: '接收时间', dataIndex: 'receivedAt', render: (v) => v ?? '—' }
+            { title: '接收时间', dataIndex: 'receivedAt', render: (value: string | null) => formatDateTime(value) }
           ]}
         />
       </Card>

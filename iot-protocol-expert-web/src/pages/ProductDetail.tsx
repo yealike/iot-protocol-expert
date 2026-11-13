@@ -36,7 +36,7 @@ export default function ProductDetail() {
             {productProtocol(product)} / {product.transport}
           </p>
         </div>
-        {me.data?.roles?.includes('ADMIN') && (
+        {me.data?.permissions?.includes('ops:manage') && (
           <Button type="primary" onClick={() => setEditing(true)}>
             编辑产品与物模型
           </Button>
