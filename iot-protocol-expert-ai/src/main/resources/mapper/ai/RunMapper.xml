@@ -1,0 +1,217 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.ipe.ai.mapper.RunMapper">
+
+    <resultMap id="RunMap" type="top.yealike.ipe.ai.run.RunRecords$Run">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.ipe.ai.mybatis.UuidTypeHandler"/>
+            <arg column="conversation_id" javaType="java.util.UUID" typeHandler="top.yealike.ipe.ai.mybatis.UuidTypeHandler"/>
+            <arg column="user_message_id" javaType="java.util.UUID" typeHandler="top.yealike.ipe.ai.mybatis.UuidTypeHandler"/>
+            <arg column="actor" javaType="java.lang.String"/>
+            <arg column="actor_roles" javaType="java.util.List" typeHandler="top.yealike.ipe.ai.mybatis.JsonStringListTypeHandler"/>
+            <arg column="actor_auth_version" javaType="java.lang.Long"/>
+            <arg column="question" javaType="java.lang.String"/>
+            <arg column="agent_key" javaType="java.lang.String"/>
+            <arg column="agent_version" javaType="java.lang.String"/>
+            <arg column="model_key" javaType="java.lang.String"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="priority" javaType="_int"/>
+            <arg column="queue_seq" javaType="_long"/>
+            <arg column="idempotency_key" javaType="java.lang.String"/>
+            <arg column="policy_version" javaType="java.lang.String"/>
+            <arg column="trace_context" javaType="java.lang.String"/>
+            <arg column="lease_owner" javaType="java.lang.String"/>
+            <arg column="lease_until" javaType="java.time.Instant"/>
+            <arg column="budget_json" javaType="java.util.Map" typeHandler="top.yealike.ipe.ai.mybatis.JsonMapTypeHandler"/>
+            <arg column="usage_json" javaType="java.util.Map" typeHandler="top.yealike.ipe.ai.mybatis.JsonMapTypeHandler"/>
+            <arg column="error_code" javaType="java.lang.String"/>
+            <arg column="error_message" javaType="java.lang.String"/>
+            <arg column="started_at" javaType="java.time.Instant"/>
+            <arg column="finished_at" javaType="java.time.Instant"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+            <arg column="updated_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="RunEventMap" type="top.yealike.ipe.ai.run.RunRecords$RunEvent">
+        <constructor>
+            <arg column="cursor" javaType="_long"/>
+            <arg column="conversation_id" javaType="java.util.UUID" typeHandler="top.yealike.ipe.ai.mybatis.UuidTypeHandler"/>
+            <arg column="run_id" javaType="java.util.UUID" typeHandler="top.yealike.ipe.ai.mybatis.UuidTypeHandler"/>
+            <arg column="type" javaType="java.lang.String"/>
+            <arg column="payload" javaType="java.util.Map" typeHandler="top.yealike.ipe.ai.mybatis.JsonMapTypeHandler"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="ToolCallMap" type="top.yealike.ipe.ai.run.RunRecords$ToolCall">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.ipe.ai.mybatis.UuidTypeHandler"/>
+            <arg column="run_id" javaType="java.util.UUID" typeHandler="top.yealike.ipe.ai.mybatis.UuidTypeHandler"/>
+            <arg column="conversation_id" javaType="java.util.UUID" typeHandler="top.yealike.ipe.ai.mybatis.UuidTypeHandler"/>
+            <arg column="tool_name" javaType="java.lang.String"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="decision" javaType="java.lang.String"/>
+            <arg column="deny_reason" javaType="java.lang.String"/>
+            <arg column="args_summary" javaType="java.util.Map" typeHandler="top.yealike.ipe.ai.mybatis.JsonMapTypeHandler"/>
+            <arg column="result_summary" javaType="java.util.Map" typeHandler="top.yealike.ipe.ai.mybatis.JsonMapTypeHandler"/>
+            <arg column="duration_ms" javaType="java.lang.Integer"/>
+            <arg column="trace_id" javaType="java.lang.String"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+            <arg column="finished_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <insert id="insertRun">
+        insert into ai_run (id, conversation_id, user_message_id, actor, actor_roles, actor_auth_version, question,
+            agent_key,
+                            agent_version, model_key, status, priority, idempotency_key, policy_version,
+                            trace_context,
+                            created_at, updated_at)
+        values (#{id}, #{conversationId}, #{userMessageId}, #{actor}, cast(#{actorRolesJson} as jsonb),
+            #{actorAuthVersion}, #{question}, #{agentKey}, #{agentVersion}, #{modelKey}, 'QUEUED', #{priority},
+            #{idempotencyKey}, #{policyVersion}, #{traceContext}, #{createdAt}, #{createdAt})
+    </insert>
+
+    <select id="find" resultMap="RunMap">
+        select * from ai_run where id = #{id}
+    </select>
+
+    <select id="findByIdempotency" resultMap="RunMap">
+        select * from ai_run where conversation_id = #{conversationId} and idempotency_key = #{idempotencyKey}
+    </select>
+
+    <select id="latest" resultMap="RunMap">
+        select * from ai_run where conversation_id = #{conversationId} order by created_at desc limit 1
+    </select>
+
+    <select id="current" resultMap="RunMap">
+        select * from ai_run where conversation_id = #{conversationId} and status in ('QUEUED', 'RUNNING',
+            'PAUSE_REQUESTED', 'PAUSED', 'CANCEL_REQUESTED') order by case when status in ('RUNNING', 'PAUSE_REQUESTED',
+            'CANCEL_REQUESTED') then 0 when status = 'PAUSED' then 1 else 2 end, priority desc, queue_seq asc limit 1
+    </select>
+
+    <select id="listByConversation" resultMap="RunMap">
+        select * from ai_run where conversation_id = #{conversationId} order by created_at desc limit #{limit}
+    </select>
+
+    <select id="selectNextQueued" resultType="java.util.UUID">
+        select c.id from ai_run c
+        where c.status = 'QUEUED'
+          and not exists (
+              select 1 from ai_run x
+              where x.conversation_id = c.conversation_id
+                and x.status in ('RUNNING', 'PAUSE_REQUESTED', 'CANCEL_REQUESTED'))
+        order by c.priority desc, c.queue_seq asc
+        limit 1
+    </select>
+
+    <update id="claimQueued">
+        update ai_run
+        set status = 'RUNNING', lease_owner = #{leaseOwner}, lease_until = now() + make_interval(secs =>
+            #{leaseSeconds}),
+            started_at = coalesce(started_at, now()), updated_at = now()
+        where id = #{id} and status = 'QUEUED'
+    </update>
+
+    <update id="renewLease">
+        update ai_run set lease_until = now() + make_interval(secs => #{leaseSeconds}), updated_at = now() where id =
+            #{id} and lease_owner = #{leaseOwner} and status in ('RUNNING', 'PAUSE_REQUESTED')
+    </update>
+
+    <update id="transition">
+        update ai_run set status = #{next}, updated_at = now() where id = #{id} and status = #{expected}
+    </update>
+
+    <update id="requestPause">
+        update ai_run set status = 'PAUSE_REQUESTED', updated_at = now() where id = #{id} and status = 'RUNNING'
+    </update>
+
+    <update id="markCompleted">
+        update ai_run set status = 'COMPLETED', usage_json = cast(#{usageJson} as jsonb), finished_at = now(),
+            updated_at = now(), lease_owner = null, lease_until = null where id = #{id} and status in ('RUNNING',
+            'PAUSE_REQUESTED', 'QUEUED')
+    </update>
+
+    <update id="markFailed">
+        update ai_run set status = 'FAILED', error_code = #{code}, error_message = #{message}, usage_json =
+            cast(#{usageJson} as jsonb), finished_at = now(), updated_at = now(), lease_owner = null, lease_until = null
+            where id = #{id} and status in ('RUNNING', 'PAUSE_REQUESTED')
+    </update>
+
+    <update id="markCancelled">
+        update ai_run set status = 'CANCELLED', usage_json = cast(#{usageJson} as jsonb), finished_at = now(),
+            updated_at = now(), lease_owner = null, lease_until = null where id = #{id} and status not in ('COMPLETED',
+            'FAILED')
+    </update>
+
+    <update id="markPaused">
+        update ai_run set status = 'PAUSED', usage_json = cast(#{usageJson} as jsonb), updated_at = now(), lease_owner =
+            null, lease_until = null where id = #{id} and status = 'PAUSE_REQUESTED'
+    </update>
+
+    <update id="requeuePaused">
+        update ai_run set status = 'QUEUED', error_code = null, error_message = null, updated_at = now() where id =
+            #{id} and status = 'PAUSED'
+    </update>
+
+    <update id="requestCancel">
+        update ai_run set status = case when status in ('RUNNING', 'PAUSE_REQUESTED')
+            then 'CANCEL_REQUESTED' else 'CANCELLED' end,
+            finished_at = case when status in ('QUEUED', 'PAUSED') then now() else finished_at end,
+            updated_at = now()
+        where id = #{id} and status in ('QUEUED', 'RUNNING', 'PAUSE_REQUESTED', 'PAUSED')
+    </update>
+
+    <update id="cancelQueued">
+        update ai_run set status = 'CANCELLED', finished_at = now(), updated_at = now() where id = #{id} and status =
+            'QUEUED'
+    </update>
+
+    <select id="countRunning" resultType="java.lang.Integer">
+        select count(*) from ai_run where status in ('RUNNING', 'PAUSE_REQUESTED', 'CANCEL_REQUESTED')
+    </select>
+
+    <select id="selectStatus" resultType="java.lang.String">
+        select status from ai_run where id = #{id}
+    </select>
+
+
+    <select id="nextEventCursor" resultType="java.lang.Long" affectData="true" flushCache="true" useCache="false">
+        update ai_conversation set event_cursor = event_cursor + 1 where id = #{conversationId} returning event_cursor
+    </select>
+
+    <insert id="insertEvent">
+        insert into ai_run_event (conversation_id, run_id, cursor, type, payload, created_at) values (#{conversationId},
+            #{runId}, #{cursor}, #{type}, cast(#{payloadJson} as jsonb), #{createdAt})
+    </insert>
+
+    <select id="eventsAfter" resultMap="RunEventMap">
+        select * from ai_run_event where conversation_id = #{conversationId} and cursor > #{cursor} order by cursor asc
+            limit #{limit}
+    </select>
+
+    <select id="latestCursor" resultType="java.lang.Long">
+        select coalesce(max(cursor), 0) from ai_run_event where conversation_id = #{conversationId}
+    </select>
+
+    <insert id="insertToolCall">
+        insert into ai_tool_call (id, run_id, conversation_id, tool_name, status, decision, deny_reason,
+                                  args_summary, created_at)
+        values (#{id}, #{runId}, #{conversationId}, #{toolName}, #{status}, #{decision}, #{denyReason},
+            cast(#{argsSummaryJson} as jsonb), #{createdAt})
+    </insert>
+
+    <update id="finishToolCall">
+        update ai_tool_call set status = #{status}, result_summary = cast(#{resultSummaryJson} as jsonb), duration_ms =
+            #{durationMs}, finished_at = now() where id = #{id}
+    </update>
+
+    <select id="listToolCalls" resultMap="ToolCallMap">
+        select * from ai_tool_call where run_id = #{runId} order by created_at asc
+    </select>
+
+    <select id="eventByCursor" resultMap="RunEventMap">
+        select * from ai_run_event where conversation_id = #{conversationId} and cursor = #{cursor}
+    </select>
+</mapper>

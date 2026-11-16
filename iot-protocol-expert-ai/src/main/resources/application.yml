@@ -54,6 +54,13 @@ spring:
       # SSE 长连接：单次订阅上限，超时后客户端按 cursor 重连
       request-timeout: 600000
 
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    jdbc-type-for-null: "NULL"
+    call-setters-on-nulls: true
+
 management:
   endpoints:
     web:

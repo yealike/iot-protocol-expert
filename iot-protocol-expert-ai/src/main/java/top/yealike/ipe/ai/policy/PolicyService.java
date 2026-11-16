@@ -7,10 +7,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import top.yealike.ipe.ai.identity.UserIdentity;
-import top.yealike.ipe.ai.support.JsonSupport;
+import top.yealike.ipe.ai.mapper.PermissionPolicyMapper;
 
 /**
  * 授权策略：角色到 Agent / Tool / 站点范围的映射。
@@ -24,12 +23,12 @@ public class PolicyService {
 
     private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(PolicyService.class);
 
-    private final JdbcTemplate jdbc;
+    private final PermissionPolicyMapper mapper;
     private final String environment;
     private final AtomicReference<Snapshot> snapshot = new AtomicReference<>(new Snapshot(List.of(), "v1"));
 
-    public PolicyService(JdbcTemplate jdbc, top.yealike.ipe.ai.config.AiProperties properties) {
-        this.jdbc = jdbc;
+    public PolicyService(PermissionPolicyMapper mapper, top.yealike.ipe.ai.config.AiProperties properties) {
+        this.mapper = mapper;
         this.environment = properties.environment();
     }
 
@@ -48,20 +47,8 @@ public class PolicyService {
     public void reload() {
         lastAttemptMillis = System.currentTimeMillis();
         try {
-            List<Rule> rules = jdbc.query(
-                    "select * from ai_permission_policy where enabled = true and environment in ('*', ?)",
-                    (rs, rowNum) -> new Rule(
-                            rs.getString("role"),
-                            Set.copyOf(JsonSupport.readStringList(rs.getString("agent_keys"))),
-                            Set.copyOf(JsonSupport.readStringList(rs.getString("tool_names"))),
-                            Set.copyOf(JsonSupport.readStringList(rs.getString("station_scope")))), environment);
-            String version = jdbc
-                    .queryForList(
-                            "select policy_version from ai_permission_policy order by updated_at desc limit 1",
-                            String.class)
-                    .stream()
-                    .findFirst()
-                    .orElse("v1");
+            List<Rule> rules = mapper.selectEnabled(environment);
+            String version = mapper.selectLatestVersion().stream().findFirst().orElse("v1");
             snapshot.set(new Snapshot(List.copyOf(rules), version));
         } catch (RuntimeException exception) {
             log.warn("ai permission policy load failed, denying all agent and tool access", exception);

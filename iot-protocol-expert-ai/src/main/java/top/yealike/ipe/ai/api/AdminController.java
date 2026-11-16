@@ -16,6 +16,7 @@ import top.yealike.ipe.ai.agent.AgentCatalog;
 import top.yealike.ipe.ai.identity.CurrentUser;
 import top.yealike.ipe.ai.identity.UserIdentity;
 import top.yealike.ipe.ai.knowledge.KnowledgeService;
+import top.yealike.ipe.ai.mapper.AuditLogMapper;
 import top.yealike.ipe.ai.policy.PolicyService;
 
 /** Agent 目录、知识索引与管理操作。管理类接口要求 ADMIN，权限不自动等于可看所有业务数据。 */
@@ -26,17 +27,14 @@ public class AdminController {
     private final AgentCatalog catalog;
     private final PolicyService policy;
     private final KnowledgeService knowledge;
-    private final org.springframework.jdbc.core.JdbcTemplate jdbc;
+    private final AuditLogMapper mapper;
 
     public AdminController(
-            AgentCatalog catalog,
-            PolicyService policy,
-            KnowledgeService knowledge,
-            org.springframework.jdbc.core.JdbcTemplate jdbc) {
+            AgentCatalog catalog, PolicyService policy, KnowledgeService knowledge, AuditLogMapper mapper) {
         this.catalog = catalog;
         this.policy = policy;
         this.knowledge = knowledge;
-        this.jdbc = jdbc;
+        this.mapper = mapper;
     }
 
     public record IndexRequest(Boolean publish) {}
@@ -126,11 +124,6 @@ public class AdminController {
     }
 
     private void audit(UserIdentity identity, String action, String target, String result) {
-        jdbc.update(
-                "insert into ai_audit_log (actor, action, target_type, target_id, result) values (?, ?, 'DOCUMENT', ?, ?)",
-                identity.username(),
-                action,
-                target,
-                result);
+        mapper.audit(identity.username(), action, target, result);
     }
 }

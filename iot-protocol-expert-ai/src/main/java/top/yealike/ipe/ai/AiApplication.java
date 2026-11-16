@@ -1,5 +1,6 @@
 package top.yealike.ipe.ai;
 
+import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
@@ -10,6 +11,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  *
  * <p>本服务只负责身份、运行时策略、Agent 编排、会话与知识检索；业务数据一律经 ops 内部只读接口获取，不直接访问业务表。
  */
+@MapperScan("top.yealike.ipe.ai.mapper")
 @SpringBootApplication
 @ConfigurationPropertiesScan
 @EnableScheduling
