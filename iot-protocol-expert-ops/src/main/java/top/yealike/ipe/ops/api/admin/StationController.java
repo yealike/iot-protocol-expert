@@ -1,5 +1,8 @@
 package top.yealike.ipe.ops.api.admin;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.security.Principal;
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -16,6 +19,7 @@ import top.yealike.ipe.ops.service.StationService;
 
 @RestController
 @RequestMapping("/api/ops/stations")
+@Tag(name = "站点管理", description = "站点档案、设备绑定和运营汇总")
 public class StationController {
 
     private final StationService stations;
@@ -32,16 +36,19 @@ public class StationController {
     }
 
     @GetMapping
+    @Operation(summary = "查询站点列表")
     public List<Station> list() {
         return stations.list();
     }
 
     @GetMapping("/{id}")
-    public Station get(@PathVariable Long id) {
+    @Operation(summary = "查询站点详情")
+    public Station get(@Parameter(description = "站点 ID") @PathVariable Long id) {
         return stations.get(id);
     }
 
     @PostMapping
+    @Operation(summary = "创建或更新站点")
     @PreAuthorize("hasAuthority('ops:manage')")
     public Station save(@RequestBody Station station, Principal principal) {
         Station saved = stations.save(station);
@@ -50,21 +57,29 @@ public class StationController {
     }
 
     @GetMapping("/{id}/summary")
+    @Operation(summary = "查询站点运营汇总")
     public StationService.StationSummary summary(
-            @PathVariable Long id,
-            @RequestParam(required = false) LocalDate from,
-            @RequestParam(required = false) LocalDate to) {
+            @Parameter(description = "站点 ID") @PathVariable Long id,
+            @Parameter(description = "统计开始日期，含当天") @RequestParam(required = false) LocalDate from,
+            @Parameter(description = "统计结束日期，含当天") @RequestParam(required = false) LocalDate to) {
         return stations.summary(id, from, to);
     }
 
     @GetMapping("/{id}/devices")
-    public List<Map<String, Object>> devices(@PathVariable Long id, @RequestParam(required = false) String protocol) {
+    @Operation(summary = "查询站点设备")
+    public List<Map<String, Object>> devices(
+            @Parameter(description = "站点 ID") @PathVariable Long id,
+            @Parameter(description = "按协议过滤") @RequestParam(required = false) String protocol) {
         return stations.devicesOf(id, protocol).stream().map(this::deviceRow).toList();
     }
 
     @PostMapping("/{id}/devices/{deviceId}")
     @PreAuthorize("hasAuthority('ops:manage')")
-    public Map<String, Object> bind(@PathVariable Long id, @PathVariable Long deviceId, Principal principal) {
+    @Operation(summary = "将设备绑定到站点")
+    public Map<String, Object> bind(
+            @Parameter(description = "站点 ID") @PathVariable Long id,
+            @Parameter(description = "设备 ID") @PathVariable Long deviceId,
+            Principal principal) {
         DeviceInstance device = instances.move(deviceId, id);
         audits.record(
                 principal.getName(), "device.move", "device", String.valueOf(deviceId), "SUCCESS", "station=" + id);

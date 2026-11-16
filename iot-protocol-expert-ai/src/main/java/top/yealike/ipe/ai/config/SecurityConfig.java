@@ -32,7 +32,16 @@ public class SecurityConfig {
             HttpSecurity http, IdentityService identities, InternalSignatureFilter internalSignatureFilter)
             throws Exception {
         http.csrf(csrf -> csrf.disable())
-                .authorizeHttpRequests(auth -> auth.requestMatchers("/actuator/**", "/error")
+                .authorizeHttpRequests(auth -> auth.requestMatchers(
+                                "/actuator/**",
+                                "/error",
+                                "/doc.html",
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/webjars/**",
+                                "/v3/api-docs",
+                                "/v3/api-docs/**",
+                                "/knife4j/**")
                         .permitAll()
                         .requestMatchers("/internal/ai/**")
                         .permitAll()

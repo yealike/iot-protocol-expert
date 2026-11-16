@@ -1,5 +1,9 @@
 package top.yealike.ipe.ai.api;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -18,6 +22,7 @@ import top.yealike.ipe.ai.policy.PolicyService;
 /** 知识索引与策略管理。管理类接口要求 ADMIN，权限不自动等于可看所有业务数据。 */
 @RestController
 @RequestMapping("/api/ai/v1")
+@Tag(name = "AI 知识与策略", description = "协议文档索引、知识发布和权限策略管理")
 public class AdminController {
 
     private final PolicyService policy;
@@ -30,9 +35,11 @@ public class AdminController {
         this.mapper = mapper;
     }
 
-    public record IndexRequest(Boolean publish) {}
+    public record IndexRequest(
+            @Schema(description = "索引完成后是否直接发布") Boolean publish) {}
 
     @GetMapping("/knowledge/stats")
+    @Operation(summary = "查询知识库索引统计")
     @PreAuthorize("hasAuthority('ai:admin')")
     public Map<String, Object> knowledgeStats() {
         CurrentUser.require();
@@ -40,6 +47,7 @@ public class AdminController {
     }
 
     @GetMapping("/knowledge/documents")
+    @Operation(summary = "查询已索引协议文档")
     @PreAuthorize("hasAuthority('ai:admin')")
     public Object knowledgeDocuments() {
         CurrentUser.require();
@@ -47,6 +55,7 @@ public class AdminController {
     }
 
     @PostMapping("/knowledge/index")
+    @Operation(summary = "执行协议文档索引")
     @PreAuthorize("hasAuthority('ai:admin')")
     public Object index(@RequestBody(required = false) IndexRequest request) {
         UserIdentity identity = CurrentUser.require();
@@ -57,34 +66,39 @@ public class AdminController {
     }
 
     @GetMapping("/knowledge/documents/{id}/preview")
+    @Operation(summary = "预览知识文档")
     @PreAuthorize("hasAuthority('ai:admin')")
-    public Object preview(@PathVariable UUID id) {
+    public Object preview(@Parameter(description = "知识文档 ID") @PathVariable UUID id) {
         return knowledge.preview(id);
     }
 
     @PostMapping("/knowledge/documents/{id}/publish")
+    @Operation(summary = "发布知识文档")
     @PreAuthorize("hasAuthority('ai:admin')")
-    public Map<String, Object> publish(@PathVariable UUID id) {
+    public Map<String, Object> publish(@Parameter(description = "知识文档 ID") @PathVariable UUID id) {
         knowledge.publish(id);
         audit(CurrentUser.require(), "KNOWLEDGE_PUBLISH", id.toString(), "SUCCESS");
         return Map.of("ok", true, "status", "PUBLISHED");
     }
 
     @PostMapping("/knowledge/documents/{id}/archive")
+    @Operation(summary = "归档知识文档")
     @PreAuthorize("hasAuthority('ai:admin')")
-    public Map<String, Object> archive(@PathVariable UUID id) {
+    public Map<String, Object> archive(@Parameter(description = "知识文档 ID") @PathVariable UUID id) {
         knowledge.archive(id);
         audit(CurrentUser.require(), "KNOWLEDGE_ARCHIVE", id.toString(), "SUCCESS");
         return Map.of("ok", true, "status", "ARCHIVED");
     }
 
     @GetMapping("/admin/policies")
+    @Operation(summary = "查看当前权限策略")
     @PreAuthorize("hasAuthority('ai:admin')")
     public Map<String, Object> policies() {
         return policy.describe();
     }
 
     @PostMapping("/admin/policies/reload")
+    @Operation(summary = "重新加载权限策略")
     @PreAuthorize("hasAuthority('ai:admin')")
     public Map<String, Object> reload() {
         policy.reload();

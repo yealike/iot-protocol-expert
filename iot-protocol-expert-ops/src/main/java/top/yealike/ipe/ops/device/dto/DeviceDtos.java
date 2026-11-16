@@ -1,5 +1,6 @@
 package top.yealike.ipe.ops.device.dto;
 
+import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.List;
 import java.util.Map;
 
@@ -40,38 +41,40 @@ public final class DeviceDtos {
 
     public record ProductDetail(ProductRow product, Map<String, Object> metadata, Map<String, Object> configuration) {}
 
+    @Schema(description = "产品档案创建或更新请求")
     public record ProductSave(
-            String productCode,
-            String name,
-            String categoryCode,
-            String deviceType,
-            String protocol,
-            Long protocolDocumentId,
-            String transport,
-            String vendor,
-            String model,
-            Map<String, Object> metadata,
-            Map<String, Object> configuration,
-            String sceneModel,
-            String description,
-            String state) {}
+            @Schema(description = "产品编码") String productCode,
+            @Schema(description = "产品名称") String name,
+            @Schema(description = "产品分类编码") String categoryCode,
+            @Schema(description = "设备类型编码") String deviceType,
+            @Schema(description = "协议编码") String protocol,
+            @Schema(description = "关联协议文档 ID") Long protocolDocumentId,
+            @Schema(description = "通信传输方式") String transport,
+            @Schema(description = "厂商") String vendor,
+            @Schema(description = "型号") String model,
+            @Schema(description = "产品元数据") Map<String, Object> metadata,
+            @Schema(description = "产品配置") Map<String, Object> configuration,
+            @Schema(description = "三维场景模型标识") String sceneModel,
+            @Schema(description = "产品说明") String description,
+            @Schema(description = "产品状态") String state) {}
 
     /** 从已有产品复制物模型新建产品（不传 metadata 时使用模板）。 */
     public record ProductFromTemplate(String templateProductId, String productCode, String name, String description) {}
 
     // ------------------------------------------------------------------ 设备
 
+    @Schema(description = "设备分页查询条件")
     public record DeviceQuery(
-            String keyword,
-            String deviceType,
-            List<String> states,
-            Long stationId,
-            Long productId,
-            Boolean enabled,
-            Map<String, String> tagFilters,
-            Integer page,
-            Integer size,
-            String sort) {}
+            @Schema(description = "设备名称或编码关键字") String keyword,
+            @Schema(description = "设备类型编码") String deviceType,
+            @Schema(description = "设备状态列表") List<String> states,
+            @Schema(description = "所属站点 ID") Long stationId,
+            @Schema(description = "所属产品 ID") Long productId,
+            @Schema(description = "是否启用") Boolean enabled,
+            @Schema(description = "标签筛选条件") Map<String, String> tagFilters,
+            @Schema(description = "从 0 开始的页码") Integer page,
+            @Schema(description = "每页记录数") Integer size,
+            @Schema(description = "排序字段；仅支持接口白名单字段") String sort) {}
 
     public record TagValue(String key, String value, String valueType) {}
 
@@ -107,21 +110,22 @@ public final class DeviceDtos {
 
     public record ChannelSpec(String channelNo, String channelType, String name, Boolean enabled) {}
 
+    @Schema(description = "设备档案创建或更新请求")
     public record DeviceSave(
-            String deviceCode,
-            String name,
-            Long productId,
-            String protocolDeviceId,
-            Long stationId,
-            Long parentId,
-            Boolean enabled,
-            Boolean allowSimulate,
-            Boolean allowWork,
-            String remark,
-            SceneAnchor sceneAnchor,
-            Map<String, String> tags,
-            List<ChannelSpec> channels,
-            Map<String, Object> configuration) {}
+            @Schema(description = "设备编码") String deviceCode,
+            @Schema(description = "设备名称") String name,
+            @Schema(description = "产品 ID") Long productId,
+            @Schema(description = "协议侧设备编号") String protocolDeviceId,
+            @Schema(description = "所属站点 ID") Long stationId,
+            @Schema(description = "父设备 ID") Long parentId,
+            @Schema(description = "是否启用") Boolean enabled,
+            @Schema(description = "是否允许模拟") Boolean allowSimulate,
+            @Schema(description = "是否允许运行") Boolean allowWork,
+            @Schema(description = "备注") String remark,
+            @Schema(description = "三维场景锚点") SceneAnchor sceneAnchor,
+            @Schema(description = "设备标签") Map<String, String> tags,
+            @Schema(description = "设备通道配置") List<ChannelSpec> channels,
+            @Schema(description = "设备扩展配置") Map<String, Object> configuration) {}
 
     public record PropertyValue(
             String propertyId,
@@ -198,7 +202,10 @@ public final class DeviceDtos {
 
     // ------------------------------------------------------------------ 数据
 
-    public record PropertyWrite(String propertyId, String channelNo, Object value) {}
+    public record PropertyWrite(
+            @Schema(description = "物模型属性标识") String propertyId,
+            @Schema(description = "通道编号；非通道属性可留空") String channelNo,
+            @Schema(description = "要写入的属性值") Object value) {}
 
     public record PropertyBatchWrite(List<PropertyWrite> values, String collectedAt) {}
 

@@ -13,6 +13,20 @@ spring:
     time-zone: Asia/Shanghai
     date-format: yyyy-MM-dd HH:mm:ss
 
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+  paths-to-match: /api/**
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
 management:
   endpoints:
     web:

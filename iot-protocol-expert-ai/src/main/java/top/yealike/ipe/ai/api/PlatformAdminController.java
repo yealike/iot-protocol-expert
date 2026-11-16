@@ -1,5 +1,9 @@
 package top.yealike.ipe.ai.api;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -45,6 +49,7 @@ import top.yealike.ipe.ai.support.AiExceptions;
 @RestController
 @RequestMapping("/api/ai/v1")
 @PreAuthorize("hasAuthority('ai:admin')")
+@Tag(name = "AI 能力管理", description = "管理模型凭据、MCP、Skill、Agent 及其发布")
 public class PlatformAdminController {
 
     private final ModelProfileService models;
@@ -78,11 +83,13 @@ public class PlatformAdminController {
     // ------------------------------------------------------------------ 模型与凭据
 
     @GetMapping("/models")
+    @Operation(summary = "查询模型配置")
     public Object listModels() {
         return models.list();
     }
 
     @PostMapping("/models")
+    @Operation(summary = "创建模型配置")
     public Object createModel(@RequestBody ModelCreate request) {
         UserIdentity actor = CurrentUser.require();
         UUID id = models.create(
@@ -98,7 +105,9 @@ public class PlatformAdminController {
     }
 
     @PutMapping("/models/{id}")
-    public Object updateModel(@PathVariable UUID id, @RequestBody ModelUpdate request) {
+    @Operation(summary = "更新模型配置")
+    public Object updateModel(
+            @Parameter(description = "模型配置 ID") @PathVariable UUID id, @RequestBody ModelUpdate request) {
         return models.update(
                 id,
                 request.expectedRevision(),
@@ -112,23 +121,28 @@ public class PlatformAdminController {
     }
 
     @PostMapping("/models/{id}/test")
-    public Object testModel(@PathVariable UUID id) {
+    @Operation(summary = "测试模型连接")
+    public Object testModel(@Parameter(description = "模型配置 ID") @PathVariable UUID id) {
         return models.test(id);
     }
 
     @GetMapping("/credentials")
+    @Operation(summary = "查询凭据列表", description = "仅返回凭据摘要，不返回密钥明文")
     public Object listCredentials() {
         return credentials.list().stream().map(credentials::summary).toList();
     }
 
     @PostMapping("/credentials")
+    @Operation(summary = "创建模型凭据")
     public Object createCredential(@RequestBody CredentialCreate request) {
         UserIdentity actor = CurrentUser.require();
         return credentials.summary(credentials.create(actor, request.key(), request.displayName(), request.secret()));
     }
 
     @PutMapping("/credentials/{id}")
-    public Object rotateCredential(@PathVariable UUID id, @RequestBody CredentialRotate request) {
+    @Operation(summary = "轮换模型凭据密钥")
+    public Object rotateCredential(
+            @Parameter(description = "凭据 ID") @PathVariable UUID id, @RequestBody CredentialRotate request) {
         UserIdentity actor = CurrentUser.require();
         return credentials.summary(credentials.rotate(actor, id, request.secret()));
     }
@@ -136,11 +150,13 @@ public class PlatformAdminController {
     // ------------------------------------------------------------------ MCP
 
     @GetMapping("/mcps")
+    @Operation(summary = "查询 MCP 服务")
     public Object listMcps() {
         return mcps.list();
     }
 
     @PostMapping("/mcps")
+    @Operation(summary = "创建 MCP 草稿")
     public Object createMcp(@RequestBody McpCreate request) {
         UserIdentity actor = CurrentUser.require();
         UUID id = mcps.create(
@@ -172,7 +188,8 @@ public class PlatformAdminController {
     }
 
     @PostMapping("/mcps/{id}/test")
-    public Object testMcp(@PathVariable UUID id) {
+    @Operation(summary = "测试 MCP 连通性并读取工具目录")
+    public Object testMcp(@Parameter(description = "MCP 组件 ID") @PathVariable UUID id) {
         return mcps.test(id);
     }
 
@@ -198,6 +215,7 @@ public class PlatformAdminController {
     }
 
     @PostMapping("/mcps/{id}/publish")
+    @Operation(summary = "发布 MCP 版本", description = "冻结工具目录并异步注册组件版本")
     public ResponseEntity<McpService.PublishResult> publishMcp(@PathVariable UUID id, @RequestBody McpPublish request) {
         UserIdentity actor = CurrentUser.require();
         McpService.PublishResult result = mcps.publish(
@@ -208,11 +226,13 @@ public class PlatformAdminController {
     // ------------------------------------------------------------------ Skill
 
     @GetMapping("/skills")
+    @Operation(summary = "查询 Skill 列表")
     public Object listSkills() {
         return skills.list();
     }
 
     @PostMapping("/skills")
+    @Operation(summary = "创建 Skill 草稿")
     public Object createSkill(@RequestBody SkillCreate request) {
         UserIdentity actor = CurrentUser.require();
         UUID id = skills.create(actor, request.key(), request.displayName(), request.description());
@@ -236,11 +256,15 @@ public class PlatformAdminController {
     }
 
     @GetMapping("/skills/{id}/file")
-    public SkillDraftFile skillFile(@PathVariable UUID id, @RequestParam String path) {
+    @Operation(summary = "读取 Skill 草稿文件")
+    public SkillDraftFile skillFile(
+            @Parameter(description = "Skill 组件 ID") @PathVariable UUID id,
+            @Parameter(description = "Skill 包内相对路径，例如 SKILL.md", example = "SKILL.md") @RequestParam String path) {
         return skills.file(id, path);
     }
 
     @PutMapping("/skills/{id}/file")
+    @Operation(summary = "保存 Skill 草稿文件")
     public SkillDraftFile saveSkillFile(
             @PathVariable UUID id, @RequestParam String path, @RequestBody SkillFileSave request) {
         UserIdentity actor = CurrentUser.require();
@@ -253,7 +277,8 @@ public class PlatformAdminController {
     }
 
     @PostMapping("/skills/{id}/validate")
-    public Object validateSkill(@PathVariable UUID id) {
+    @Operation(summary = "校验 Skill 草稿")
+    public Object validateSkill(@Parameter(description = "Skill 组件 ID") @PathVariable UUID id) {
         return skills.validate(id);
     }
 
@@ -263,6 +288,7 @@ public class PlatformAdminController {
     }
 
     @PostMapping("/skills/{id}/publish")
+    @Operation(summary = "发布 Skill 版本", description = "冻结 Skill 文件包并异步注册组件版本")
     public ResponseEntity<SkillService.PublishResult> publishSkill(
             @PathVariable UUID id, @RequestBody SkillPublish request) {
         UserIdentity actor = CurrentUser.require();
@@ -274,6 +300,7 @@ public class PlatformAdminController {
     // ------------------------------------------------------------------ Agent
 
     @GetMapping("/agents")
+    @Operation(summary = "查询 Agent 列表")
     public List<AgentComponent> listAgents() {
         return agents.list();
     }
@@ -284,6 +311,7 @@ public class PlatformAdminController {
     }
 
     @PostMapping("/agents")
+    @Operation(summary = "创建 Agent 草稿")
     public AgentComponent createAgent(@RequestBody AgentCreate request) {
         UserIdentity actor = CurrentUser.require();
         return agents.create(
@@ -334,7 +362,8 @@ public class PlatformAdminController {
     }
 
     @PostMapping("/agents/{id}/validate")
-    public Object validateAgent(@PathVariable UUID id) {
+    @Operation(summary = "编译校验 Agent")
+    public Object validateAgent(@Parameter(description = "Agent 组件 ID") @PathVariable UUID id) {
         return agents.validate(id);
     }
 
@@ -344,6 +373,7 @@ public class PlatformAdminController {
     }
 
     @PostMapping("/agents/{id}/publish")
+    @Operation(summary = "发布 Agent 版本", description = "准备 Runtime 后激活指定版本")
     public ResponseEntity<AgentService.PublishResult> publishAgent(
             @PathVariable UUID id, @RequestBody AgentPublish request) {
         UserIdentity actor = CurrentUser.require();
@@ -353,6 +383,7 @@ public class PlatformAdminController {
     }
 
     @PostMapping("/agents/{id}/rollback")
+    @Operation(summary = "回滚 Agent 版本")
     public ResponseEntity<AgentService.RollbackResult> rollbackAgent(
             @PathVariable UUID id, @RequestBody AgentRollback request) {
         AgentService.RollbackResult result =
@@ -368,12 +399,14 @@ public class PlatformAdminController {
     // ------------------------------------------------------------------ 发布与注册
 
     @GetMapping("/publications/{id}")
-    public Publication publication(@PathVariable UUID id) {
+    @Operation(summary = "查询发布状态")
+    public Publication publication(@Parameter(description = "发布记录 ID") @PathVariable UUID id) {
         return publications.find(id).orElseThrow(() -> AiExceptions.notFound("发布记录不存在"));
     }
 
     @PostMapping("/publications/{id}/retry")
-    public Publication retryPublication(@PathVariable UUID id) {
+    @Operation(summary = "重试失败的发布")
+    public Publication retryPublication(@Parameter(description = "发布记录 ID") @PathVariable UUID id) {
         Publication publication = publications.find(id).orElseThrow(() -> AiExceptions.notFound("发布记录不存在"));
         publications.retry(id);
         return publications.find(id).orElseThrow(() -> AiExceptions.unavailable("发布记录暂时不可读"));
@@ -513,18 +546,22 @@ public class PlatformAdminController {
                 .toList();
     }
 
-    public record CredentialCreate(String key, String displayName, String secret) {}
+    public record CredentialCreate(
+            @Schema(description = "凭据唯一键") String key,
+            @Schema(description = "凭据显示名称") String displayName,
+            @Schema(description = "供应商 API 密钥；只在本次请求中传递") String secret) {}
 
-    public record CredentialRotate(String secret) {}
+    public record CredentialRotate(
+            @Schema(description = "新的供应商 API 密钥") String secret) {}
 
     public record ModelCreate(
-            String key,
-            String displayName,
-            String description,
-            String baseUrl,
-            String modelName,
-            UUID credentialId,
-            Map<String, Object> options) {}
+            @Schema(description = "模型配置唯一键") String key,
+            @Schema(description = "模型显示名称") String displayName,
+            @Schema(description = "用途说明") String description,
+            @Schema(description = "OpenAI 兼容 API 根地址") String baseUrl,
+            @Schema(description = "供应商模型名称") String modelName,
+            @Schema(description = "关联的凭据 ID") UUID credentialId,
+            @Schema(description = "模型调用参数") Map<String, Object> options) {}
 
     public record ModelUpdate(
             long expectedRevision,
@@ -552,7 +589,11 @@ public class PlatformAdminController {
             Map<String, Object> draft,
             boolean enabled) {}
 
-    public record McpPublish(String version, UUID reportId, long expectedRevision, String idempotencyKey) {}
+    public record McpPublish(
+            @Schema(description = "发布版本", example = "1.0.0") String version,
+            @Schema(description = "MCP 连通性测试报告 ID") UUID reportId,
+            @Schema(description = "草稿版本号，用于乐观锁") long expectedRevision,
+            @Schema(description = "幂等键，用于发布请求重试") String idempotencyKey) {}
 
     public record McpToolPolicyUpdate(String toolName, String executionCategory) {}
 
@@ -576,13 +617,13 @@ public class PlatformAdminController {
             UUID skillReleaseId, String componentKey, String version, Integer order, String loadMode) {}
 
     public record AgentCreate(
-            String key,
-            String displayName,
-            String description,
-            UUID modelProfileId,
-            String systemPrompt,
-            Map<String, Object> modelOptions,
-            Map<String, Object> budget,
+            @Schema(description = "Agent 唯一标识") String key,
+            @Schema(description = "Agent 显示名称") String displayName,
+            @Schema(description = "用途说明") String description,
+            @Schema(description = "绑定的模型配置 ID") UUID modelProfileId,
+            @Schema(description = "系统提示词") String systemPrompt,
+            @Schema(description = "模型调用参数") Map<String, Object> modelOptions,
+            @Schema(description = "Run 轮数、工具调用数和超时预算") Map<String, Object> budget,
             List<McpBindingRequest> mcpBindings,
             List<SkillBindingRequest> skillBindings) {}
 

@@ -1,5 +1,8 @@
 package top.yealike.ipe.protocol.api;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.*;
 import org.springframework.web.bind.annotation.*;
 import top.yealike.ipe.protocol.codec.*;
@@ -10,6 +13,7 @@ import top.yealike.ipe.protocol.core.ProtocolType;
 
 @RestController
 @RequestMapping("/api/protocol")
+@Tag(name = "协议通道", description = "查询协议服务与报文目录，并提供报文解码调试入口")
 public class ProtocolController {
     private final ProtocolProperties properties;
     private final java.util.List<ProtocolServer> servers;
@@ -21,6 +25,7 @@ public class ProtocolController {
 
     /** 当前平台注册的协议与监听状态。 */
     @GetMapping("/servers")
+    @Operation(summary = "查询协议服务状态")
     public Object servers() {
         return servers.stream()
                 .map(server -> {
@@ -37,6 +42,7 @@ public class ProtocolController {
     }
 
     @GetMapping("/types")
+    @Operation(summary = "查询支持的协议类型")
     public Object types() {
         return Arrays.stream(ProtocolType.values())
                 .map(type -> Map.of("code", type.code(), "label", type.label(), "transport", type.transport()))
@@ -44,6 +50,7 @@ public class ProtocolController {
     }
 
     @GetMapping("/catalog")
+    @Operation(summary = "查询协议报文目录")
     public Object catalog() {
         return Arrays.stream(FrameType.values())
                 .map(t -> {
@@ -63,9 +70,18 @@ public class ProtocolController {
                 .toList();
     }
 
-    public record DecodeRequest(String wireHex, Integer frameType, String bodyHex) {}
+    public record DecodeRequest(
+            @Schema(description = "完整线上报文的十六进制字符串；提供后优先解码此字段", example = "68...")
+            String wireHex,
+
+            @Schema(description = "帧类型编码；仅在未提供 wireHex 时使用", example = "1")
+            Integer frameType,
+
+            @Schema(description = "帧体十六进制字符串；仅在未提供 wireHex 时使用", example = "010203")
+            String bodyHex) {}
 
     @PostMapping("/decode")
+    @Operation(summary = "解码协议报文", description = "支持完整线上报文解码，或按帧类型解码帧体")
     public Object decode(@RequestBody DecodeRequest r) {
         if (r.wireHex() != null) {
             Frame f = FrameCodec.decode(

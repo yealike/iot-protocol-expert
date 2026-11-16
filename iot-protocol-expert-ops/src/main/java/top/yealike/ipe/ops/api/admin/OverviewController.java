@@ -1,5 +1,7 @@
 package top.yealike.ipe.ops.api.admin;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,6 +18,7 @@ import top.yealike.ipe.ops.thingmodel.DeviceTypeCatalog;
 /** 运维总览：首页与 3D 大屏共用。 */
 @RestController
 @RequestMapping("/api/ops/overview")
+@Tag(name = "运营总览", description = "首页与大屏使用的设备、订单和站点统计")
 public class OverviewController {
 
     private final DeviceInstanceService devices;
@@ -29,11 +32,13 @@ public class OverviewController {
     }
 
     @GetMapping
+    @Operation(summary = "查询设备运营总览")
     public DeviceDtos.Overview overview() {
         return devices.overview();
     }
 
     @GetMapping("/business")
+    @Operation(summary = "查询今日业务统计")
     public Map<String, Object> business() {
         var today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"));
         var result = orders.summarizeAll(
@@ -70,6 +75,7 @@ public class OverviewController {
 
     /** 设备类型目录 + 在线/告警计数，供导航与筛选器使用。 */
     @GetMapping("/device-types")
+    @Operation(summary = "查询设备类型统计")
     public List<Map<String, Object>> deviceTypes() {
         Map<String, DeviceDtos.DeviceTypeSummary> summary = new LinkedHashMap<>();
         for (DeviceDtos.DeviceTypeSummary item : devices.overview().byType()) {
@@ -89,6 +95,7 @@ public class OverviewController {
     }
 
     @GetMapping("/stations")
+    @Operation(summary = "查询站点数量")
     public long stationCount() {
         return stations.list().size();
     }

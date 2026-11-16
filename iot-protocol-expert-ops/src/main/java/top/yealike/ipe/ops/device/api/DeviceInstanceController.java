@@ -1,5 +1,8 @@
 package top.yealike.ipe.ops.device.api;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.security.Principal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -19,6 +22,7 @@ import top.yealike.ipe.ops.thingmodel.ThingModelCodec;
 /** 设备实例：档案、生命周期、实时数据。 */
 @RestController
 @RequestMapping("/api/ops/devices")
+@Tag(name = "设备管理", description = "设备档案、部署、运行权限和实时数据")
 public class DeviceInstanceController {
 
     private final DeviceInstanceService devices;
@@ -40,31 +44,35 @@ public class DeviceInstanceController {
     // ------------------------------------------------------------------ 查询
 
     @PostMapping("/query")
+    @Operation(summary = "分页查询设备", description = "支持关键字、设备类型、状态、站点和标签筛选")
     public PageResult<DeviceDtos.DeviceRow> query(@RequestBody DeviceDtos.DeviceQuery query) {
         return devices.query(query);
     }
 
     /** 兼容简单的 GET 查询（模拟器、脚本调试用）。 */
     @GetMapping
+    @Operation(summary = "简要查询设备列表")
     public PageResult<DeviceDtos.DeviceRow> list(
-            @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String deviceType,
-            @RequestParam(required = false) List<String> states,
-            @RequestParam(required = false) Long stationId,
-            @RequestParam(required = false) Boolean enabled,
-            @RequestParam(required = false) Integer page,
-            @RequestParam(required = false) Integer size,
-            @RequestParam(required = false) String sort) {
+            @Parameter(description = "设备名称或编码关键字") @RequestParam(required = false) String keyword,
+            @Parameter(description = "设备类型编码") @RequestParam(required = false) String deviceType,
+            @Parameter(description = "设备状态列表") @RequestParam(required = false) List<String> states,
+            @Parameter(description = "所属站点 ID") @RequestParam(required = false) Long stationId,
+            @Parameter(description = "是否启用") @RequestParam(required = false) Boolean enabled,
+            @Parameter(description = "从 0 开始的页码") @RequestParam(required = false) Integer page,
+            @Parameter(description = "每页记录数") @RequestParam(required = false) Integer size,
+            @Parameter(description = "排序字段；仅支持服务端白名单") @RequestParam(required = false) String sort) {
         return devices.query(new DeviceDtos.DeviceQuery(
                 keyword, deviceType, states, stationId, null, enabled, null, page, size, sort));
     }
 
     @GetMapping("/{id}")
-    public DeviceDtos.DeviceDetail detail(@PathVariable Long id) {
+    @Operation(summary = "查询设备详情", description = "包含物模型、通道、属性、事件、告警和命令")
+    public DeviceDtos.DeviceDetail detail(@Parameter(description = "设备 ID") @PathVariable Long id) {
         return devices.detail(id);
     }
 
     @GetMapping("/overview")
+    @Operation(summary = "查询设备统计总览")
     public DeviceDtos.Overview overview() {
         return devices.overview();
     }
@@ -77,6 +85,7 @@ public class DeviceInstanceController {
     // ------------------------------------------------------------------ 写入
 
     @PostMapping
+    @Operation(summary = "创建设备")
     @PreAuthorize("hasAuthority('ops:manage')")
     public DeviceDtos.DeviceRow create(@RequestBody DeviceDtos.DeviceSave input, Principal principal) {
         if (input.deviceCode() != null
@@ -90,6 +99,7 @@ public class DeviceInstanceController {
     }
 
     @PutMapping("/{id}")
+    @Operation(summary = "更新设备")
     @PreAuthorize("hasAuthority('ops:manage')")
     public DeviceDtos.DeviceRow update(
             @PathVariable Long id, @RequestBody DeviceDtos.DeviceSave input, Principal principal) {
@@ -123,6 +133,7 @@ public class DeviceInstanceController {
     }
 
     @PostMapping("/{id}/deploy")
+    @Operation(summary = "部署设备")
     @PreAuthorize("hasAuthority('ops:manage')")
     public DeviceDtos.DeviceRow deploy(@PathVariable Long id, Principal principal) {
         DeviceInstance saved = devices.deploy(id);
@@ -131,6 +142,7 @@ public class DeviceInstanceController {
     }
 
     @PostMapping("/{id}/undeploy")
+    @Operation(summary = "取消部署设备")
     @PreAuthorize("hasAuthority('ops:manage')")
     public DeviceDtos.DeviceRow undeploy(@PathVariable Long id, Principal principal) {
         DeviceInstance saved = devices.undeploy(id);
@@ -139,6 +151,7 @@ public class DeviceInstanceController {
     }
 
     @PostMapping("/{id}/enabled")
+    @Operation(summary = "设置设备启用状态")
     @PreAuthorize("hasAuthority('ops:manage')")
     public DeviceDtos.DeviceRow enabled(@PathVariable Long id, @RequestParam boolean value, Principal principal) {
         DeviceInstance saved = devices.setEnabled(id, value);
@@ -147,6 +160,7 @@ public class DeviceInstanceController {
     }
 
     @PostMapping("/{id}/move")
+    @Operation(summary = "调整设备所属站点")
     @PreAuthorize("hasAuthority('ops:manage')")
     public DeviceDtos.DeviceRow move(
             @PathVariable Long id, @RequestParam(required = false) Long stationId, Principal principal) {
@@ -156,6 +170,7 @@ public class DeviceInstanceController {
     }
 
     @PostMapping("/{id}/work-allowance")
+    @Operation(summary = "设置设备运行许可")
     @PreAuthorize("hasAuthority('ops:operate')")
     public DeviceDtos.DeviceRow workAllowance(
             @PathVariable Long id,
@@ -176,24 +191,27 @@ public class DeviceInstanceController {
     // ------------------------------------------------------------------ 数据
 
     @GetMapping("/{id}/properties")
-    public List<DeviceDtos.PropertyValue> properties(@PathVariable Long id) {
+    @Operation(summary = "查询设备属性")
+    public List<DeviceDtos.PropertyValue> properties(@Parameter(description = "设备 ID") @PathVariable Long id) {
         DeviceInstance device = devices.get(id);
         return properties.propertyViews(device, models.of(device));
     }
 
     @GetMapping("/{id}/channels")
-    public List<DeviceDtos.ChannelView> channels(@PathVariable Long id) {
+    @Operation(summary = "查询设备通道")
+    public List<DeviceDtos.ChannelView> channels(@Parameter(description = "设备 ID") @PathVariable Long id) {
         DeviceInstance device = devices.get(id);
         return properties.channelViews(device, models.of(device));
     }
 
     @GetMapping("/{id}/properties/{propertyId}/series")
+    @Operation(summary = "查询设备属性时序")
     public DeviceDtos.SeriesView series(
-            @PathVariable Long id,
-            @PathVariable String propertyId,
-            @RequestParam(required = false) String channelNo,
-            @RequestParam(required = false) LocalDateTime from,
-            @RequestParam(required = false) LocalDateTime to) {
+            @Parameter(description = "设备 ID") @PathVariable Long id,
+            @Parameter(description = "物模型属性标识") @PathVariable String propertyId,
+            @Parameter(description = "通道编号") @RequestParam(required = false) String channelNo,
+            @Parameter(description = "查询开始时间，ISO 日期时间") @RequestParam(required = false) LocalDateTime from,
+            @Parameter(description = "查询结束时间，ISO 日期时间") @RequestParam(required = false) LocalDateTime to) {
         return properties.series(id, channelNo, propertyId, from, to);
     }
 

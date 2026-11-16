@@ -1,5 +1,8 @@
 package top.yealike.ipe.ops.api.admin;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -12,6 +15,7 @@ import top.yealike.ipe.ops.service.OrderService;
 
 @RestController
 @RequestMapping("/api/ops")
+@Tag(name = "订单与账单", description = "充电订单、订单时序数据和账单查询")
 public class OrderController {
 
     private final top.yealike.ipe.ops.telemetry.OrderTelemetryService telemetry;
@@ -26,6 +30,7 @@ public class OrderController {
     }
 
     @GetMapping("/orders")
+    @Operation(summary = "查询充电订单")
     public java.util.List<top.yealike.ipe.ops.dto.OpsDtos.OrderView> orders(
             @RequestParam(required = false) Long stationId,
             @RequestParam(required = false) Long deviceId,
@@ -41,6 +46,7 @@ public class OrderController {
     }
 
     @GetMapping("/orders/page")
+    @Operation(summary = "分页查询充电订单")
     public top.yealike.ipe.ops.common.PageResult<OpsDtos.OrderView> orderPage(
             @RequestParam(required = false) Long stationId,
             @RequestParam(required = false) Long deviceId,
@@ -58,7 +64,8 @@ public class OrderController {
     }
 
     @GetMapping("/orders/{orderNo}")
-    public Map<String, Object> detail(@PathVariable String orderNo) {
+    @Operation(summary = "查询订单详情和账单")
+    public Map<String, Object> detail(@Parameter(description = "平台订单号") @PathVariable String orderNo) {
         ChargeOrder order = orders.require(orderNo);
         Map<String, Object> detail = new LinkedHashMap<>();
         detail.put("order", orders.view(order));
@@ -67,11 +74,14 @@ public class OrderController {
     }
 
     @GetMapping("/orders/{orderNo}/telemetry")
-    public top.yealike.ipe.ops.telemetry.OrderTelemetryService.Result telemetry(@PathVariable String orderNo) {
+    @Operation(summary = "查询订单遥测曲线")
+    public top.yealike.ipe.ops.telemetry.OrderTelemetryService.Result telemetry(
+            @Parameter(description = "平台订单号") @PathVariable String orderNo) {
         return telemetry.query(orderNo);
     }
 
     @GetMapping("/bills")
+    @Operation(summary = "查询充电账单")
     public List<Object> bills(
             @RequestParam(required = false) Long stationId,
             @RequestParam(required = false) Long deviceId,

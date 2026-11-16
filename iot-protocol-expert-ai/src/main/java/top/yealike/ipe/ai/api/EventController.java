@@ -1,5 +1,8 @@
 package top.yealike.ipe.ai.api;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.PreDestroy;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
@@ -26,6 +29,7 @@ import top.yealike.ipe.ai.run.RunEventService;
 /** 按持久化游标读取已提交事件，重放和实时事件采用相同顺序，支持跨实例。 */
 @RestController
 @RequestMapping("/api/ai/v1")
+@Tag(name = "AI 对话事件", description = "SSE 事件流，支持断点续传")
 public class EventController {
     private static final int BATCH = 200;
     private final RunEventService events;
@@ -54,10 +58,12 @@ public class EventController {
     }
 
     @GetMapping(value = "/conversations/{id}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @Operation(summary = "订阅对话事件流", description = "实时推送消息增量、工具进度和 Run 终态；使用游标续传")
     public SseEmitter stream(
-            @PathVariable UUID id,
-            @RequestParam(defaultValue = "0") long after,
-            @RequestParam(required = false) Long afterCursor,
+            @Parameter(description = "会话 ID") @PathVariable UUID id,
+            @Parameter(description = "续传游标的兼容参数", example = "0") @RequestParam(defaultValue = "0") long after,
+            @Parameter(description = "上次收到事件的游标；优先于 after", example = "42") @RequestParam(required = false)
+                    Long afterCursor,
             jakarta.servlet.http.HttpServletRequest request) {
         String cookie = request.getHeader("Cookie");
         var identity = CurrentUser.require();

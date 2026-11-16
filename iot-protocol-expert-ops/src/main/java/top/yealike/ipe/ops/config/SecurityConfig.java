@@ -36,7 +36,19 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth.requestMatchers("/internal/**", "/api/ops/simulator/**")
                         .permitAll()
                         // 后端只提供 API：登录/登出/健康检查与错误页匿名可取，其余一律要求认证
-                        .requestMatchers("/actuator/**", "/login", "/logout", "/error", "/favicon.ico")
+                        .requestMatchers(
+                                "/actuator/**",
+                                "/login",
+                                "/logout",
+                                "/error",
+                                "/favicon.ico",
+                                "/doc.html",
+                                "/swagger-ui.html",
+                                "/swagger-ui/**",
+                                "/webjars/**",
+                                "/v3/api-docs",
+                                "/v3/api-docs/**",
+                                "/knife4j/**")
                         .permitAll()
                         .requestMatchers("/api/ops/auth/**")
                         .authenticated()

@@ -37,6 +37,7 @@
         <spotless.version>2.46.1</spotless.version>
         <palantir-java-format.version>2.103.0</palantir-java-format.version>
         <mybatis-spring-boot.version>4.0.1</mybatis-spring-boot.version>
+        <knife4j.version>5.7.9</knife4j.version>
         <!-- 对齐 Spring Boot 4.0.x / Spring Cloud 2025.1.x 的 Spring Cloud Alibaba 版本，内置 nacos-client 3.1.1 -->
         <spring-cloud-alibaba.version>2025.1.0.0</spring-cloud-alibaba.version>
     </properties>
