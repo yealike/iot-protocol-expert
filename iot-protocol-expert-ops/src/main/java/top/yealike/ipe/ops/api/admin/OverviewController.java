@@ -43,6 +43,9 @@ public class OverviewController {
         response.put("settledOrderCount", result.getC());
         response.put("settledEnergy", result.getE());
         response.put("settledAmount", result.getA());
+        response.put("chargedEnergy", orders.sumEnergyActiveBetween(
+                today.plusDays(1).atStartOfDay(), today.atStartOfDay()));
+        response.put("dischargedEnergy", java.math.BigDecimal.ZERO);
         List<Map<String, Object>> daily = new ArrayList<>();
         for (int days = 6; days >= 0; days--) {
             var date = today.minusDays(days);
