@@ -32,6 +32,7 @@ public class ReleaseReconciler {
 
     private static final Logger log = LoggerFactory.getLogger(ReleaseReconciler.class);
     private static final Duration REGISTRY_WAIT = Duration.ofSeconds(60);
+    private static final int MAX_PAGES_PER_RECONCILE = 1_000;
 
     private final ControlClient control;
     private final PrepareService prepareService;
@@ -88,8 +89,10 @@ public class ReleaseReconciler {
             int prepared = 0;
             int failed = 0;
             long cursor = 0L;
-            int seen = 0;
-            do {
+            int pages = 0;
+            boolean truncated = true;
+            while (pages < MAX_PAGES_PER_RECONCILE) {
+                pages++;
                 DesiredReleasePage page = control.desiredReleases(cursor);
                 if (page == null || page.items() == null) {
                     throw new ControlException(502, "CONTROL_UNAVAILABLE", "控制面返回无效的版本分页");
@@ -115,10 +118,26 @@ public class ReleaseReconciler {
                                 code(exception),
                                 safeMessage(exception));
                     }
-                    seen++;
                 }
-                cursor = page.cursor();
-            } while (seen >= 200 && cursor > 0);
+                if (page.items().isEmpty()) {
+                    truncated = false;
+                    break;
+                }
+                long nextCursor = page.cursor();
+                if (nextCursor <= cursor) {
+                    truncated = false;
+                    log.warn("release reconcile stopped: cursor did not advance from {}", cursor);
+                    break;
+                }
+                if (!page.hasMore()) {
+                    truncated = false;
+                    break;
+                }
+                cursor = nextCursor;
+            }
+            if (truncated) {
+                log.warn("release reconcile stopped after {} pages; remaining pages wait for next cycle", pages);
+            }
             log.info("release reconcile finished: prepared={} failed={}", prepared, failed);
         } catch (RuntimeException exception) {
             log.warn("release reconcile aborted: code={} reason={}", code(exception), safeMessage(exception));

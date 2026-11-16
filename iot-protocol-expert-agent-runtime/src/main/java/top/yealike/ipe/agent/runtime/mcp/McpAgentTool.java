@@ -113,15 +113,16 @@ public final class McpAgentTool implements AgentTool {
             guard.reserveToolCall();
             guard.acquireToolSlot();
             slot = true;
+            ToolAuthorizeRequest authorizeRequest = new ToolAuthorizeRequest(
+                    guard.runId(),
+                    guard.executionToken(),
+                    tool.alias(),
+                    Digests.digest(input == null ? Map.of() : input),
+                    guard.authVersion(),
+                    requestId);
             ToolAuthorizeResponse authorization;
             try {
-                authorization = control.authorize(new ToolAuthorizeRequest(
-                        guard.runId(),
-                        guard.executionToken(),
-                        tool.alias(),
-                        Digests.digest(input == null ? Map.of() : input),
-                        guard.authVersion(),
-                        requestId));
+                authorization = control.authorize(authorizeRequest);
             } catch (ControlException exception) {
                 return failure(ErrorCodes.TOOL_DENIED, "工具授权校验失败", descriptor.key());
             }
@@ -169,6 +170,24 @@ public final class McpAgentTool implements AgentTool {
                         OpsMcpInvocationAdapter.CONTEXT_FIELD,
                         OpsMcpInvocationAdapter.seal(tool.originalName(), actor, stationScope, secret));
             }
+            // 授权、凭据和连接建立期间可能已收到取消；真正发送前再次向 Control 复核执行权，
+            // 取消落库后即使 cancel HTTP 被阻断，也不能再发起新的业务工具调用。
+            guard.ensureActive();
+            ToolAuthorizeResponse recheck;
+            try {
+                recheck = control.authorize(authorizeRequest);
+            } catch (ControlException exception) {
+                return failure(ErrorCodes.TOOL_DENIED, "工具授权复核失败，未发送调用", descriptor.key());
+            }
+            if (recheck == null || !recheck.allowed()) {
+                metrics.counter("mcp_error_total", "mcp", descriptor.key(), "code", "DENIED")
+                        .increment();
+                return failure(
+                        ErrorCodes.TOOL_DENIED,
+                        recheck == null || recheck.reason() == null ? "Run 已取消或失去执行权，未发送工具调用" : recheck.reason(),
+                        descriptor.key());
+            }
+            guard.ensureActive();
             McpToolEnvelope envelope = pool.call(connection, tool.originalName(), arguments);
             String json = render(envelope);
             return envelope.ok() ? ToolResultBlock.text(json) : ToolResultBlock.error(json);

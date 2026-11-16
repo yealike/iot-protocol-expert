@@ -23,6 +23,7 @@ import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import top.yealike.ipe.agent.runtime.config.RuntimeProperties;
+import top.yealike.ipe.ai.contract.ComponentEndpoint;
 import top.yealike.ipe.ai.contract.ComponentNames;
 import top.yealike.ipe.ai.contract.ComponentType;
 import top.yealike.ipe.ai.contract.InternalPaths;
@@ -72,8 +73,14 @@ public class NacosRuntimeRegistry {
         return advertiseIp;
     }
 
-    /** 从当前环境的 Nacos 健康实例中解析组件入口；未启用或无实例时返回 null。 */
+    /** 从当前环境的 Nacos 健康实例中解析组件基地址；未启用或无实例时返回 null。 */
     public String discoverBaseUrl(String serviceName) {
+        ComponentEndpoint endpoint = discoverEndpoint(serviceName);
+        return endpoint == null ? null : endpoint.baseUrl();
+    }
+
+    /** 从当前环境的 Nacos 健康实例中解析完整入口，保留 metadata 中的 scheme/path/query。 */
+    public ComponentEndpoint discoverEndpoint(String serviceName) {
         if (!properties.nacos().enabled() || serviceName == null || serviceName.isBlank()) {
             return null;
         }
@@ -89,15 +96,22 @@ public class NacosRuntimeRegistry {
                 return null;
             }
             Instance instance = healthy.get(ThreadLocalRandom.current().nextInt(healthy.size()));
-            String scheme = instance.getMetadata() == null
-                    ? null
-                    : instance.getMetadata().get("scheme");
-            String resolvedScheme = scheme == null || scheme.isBlank() ? "http" : scheme;
-            return resolvedScheme + "://" + instance.getIp() + ":" + instance.getPort();
+            return endpointOf(instance);
         } catch (NacosException | RuntimeException exception) {
             log.debug("component discovery failed: service={} reason={}", serviceName, exception.getMessage());
             return null;
         }
+    }
+
+    static ComponentEndpoint endpointOf(Instance instance) {
+        Map<String, String> metadata = instance.getMetadata() == null ? Map.of() : instance.getMetadata();
+        String scheme = metadata.get("scheme");
+        return ComponentEndpoint.of(
+                scheme == null || scheme.isBlank() ? "http" : scheme,
+                instance.getIp(),
+                instance.getPort(),
+                metadata.get("path"),
+                metadata.get("query"));
     }
 
     @EventListener(ApplicationReadyEvent.class)

@@ -193,7 +193,7 @@ public class RuntimeRunCoordinator {
     }
 
     public RunContext context(UUID runId, long executionToken) {
-        requireActiveExecution(runId, executionToken, true);
+        requireActiveExecution(runId, executionToken, false);
         Run run = runs.find(runId).orElseThrow(() -> AiExceptions.notFound("Run 不存在"));
         List<Message> history = conversations.listMessagesThrough(
                 run.conversationId(),
@@ -312,7 +312,7 @@ public class RuntimeRunCoordinator {
     }
 
     public ToolAuthorizeResponse authorize(ToolAuthorizeRequest request) {
-        Run run = requireActiveExecution(request.runId(), request.executionToken(), true);
+        Run run = requireActiveExecution(request.runId(), request.executionToken(), false);
         AgentRelease release = agents.release(run.agentReleaseId());
         AgentManifest manifest = release.manifest();
         AgentManifest.McpBinding binding = manifest.mcp().stream()
@@ -362,7 +362,7 @@ public class RuntimeRunCoordinator {
     public CredentialResolveResponse resolveCredential(CredentialResolveRequest request) {
         Set<String> allowedRefs = new java.util.HashSet<>();
         if (request.runId() != null) {
-            requireActiveExecution(request.runId(), request.executionToken(), true);
+            requireActiveExecution(request.runId(), request.executionToken(), false);
             Run run = runs.find(request.runId()).orElseThrow(() -> AiExceptions.notFound("Run 不存在"));
             AgentRelease release = agents.release(run.agentReleaseId());
             collectManifestCredentials(release.manifest(), allowedRefs);

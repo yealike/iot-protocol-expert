@@ -353,9 +353,11 @@ public class PlatformAdminController {
     }
 
     @PostMapping("/agents/{id}/rollback")
-    public AgentComponent rollbackAgent(@PathVariable UUID id, @RequestBody AgentRollback request) {
-        agents.rollback(id, request.expectedRevision(), request.targetVersion());
-        return agents.require(id);
+    public ResponseEntity<AgentService.RollbackResult> rollbackAgent(
+            @PathVariable UUID id, @RequestBody AgentRollback request) {
+        AgentService.RollbackResult result =
+                agents.rollback(id, request.expectedRevision(), request.targetVersion(), request.idempotencyKey());
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(result);
     }
 
     @DeleteMapping("/agents/{id}")
@@ -601,5 +603,5 @@ public class PlatformAdminController {
 
     public record AgentPublish(String version, long expectedRevision, String idempotencyKey) {}
 
-    public record AgentRollback(String targetVersion, long expectedRevision) {}
+    public record AgentRollback(String targetVersion, long expectedRevision, String idempotencyKey) {}
 }

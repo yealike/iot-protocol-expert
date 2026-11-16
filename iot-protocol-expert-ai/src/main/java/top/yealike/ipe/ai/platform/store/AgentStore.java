@@ -231,8 +231,19 @@ public class AgentStore {
                 """, (rows, index) -> mapRelease(rows));
     }
 
-    /** 返回默认版本和仍被会话或在途 Run 引用的可服务历史版本。 */
-    public List<AgentRelease> publishedReleases() {
+    /** 用户目录只返回每个 Agent 当前默认版本，避免同一 key 出现多个可选项。 */
+    public List<AgentRelease> defaultReleases() {
+        return jdbc.query("""
+                select r.id, r.agent_id, c.component_key, r.version, r.manifest_json, r.manifest_digest,
+                       r.state, r.generation, r.release_cursor, r.created_at
+                  from ai_agent_release r join ai_agent_component c on c.id = r.agent_id
+                 where c.enabled = true and r.state = 'ACTIVE' and c.published_version = r.version
+                 order by r.release_cursor
+                """, (rows, index) -> mapRelease(rows));
+    }
+
+    /** Runtime 对账返回默认版本和仍被会话或在途 Run 引用的可服务历史版本。 */
+    public List<AgentRelease> desiredReleases() {
         return jdbc.query("""
                 select r.id, r.agent_id, c.component_key, r.version, r.manifest_json, r.manifest_digest,
                        r.state, r.generation, r.release_cursor, r.created_at
@@ -293,12 +304,14 @@ public class AgentStore {
     }
 
     public boolean publishComponent(UUID agentId, String version, long expectedGeneration) {
-        return jdbc.update("""
+        return jdbc.update(
+                        """
                         update ai_agent_component c
                            set published_version = ?, publication_generation = ?,
                                revision = revision + 1, updated_at = now()
                          where c.id = ?
-                           and publication_generation < ?
+                           and (publication_generation < ?
+                                or (publication_generation = ? and published_version = ?))
                            and exists (
                                select 1
                                  from ai_agent_release r
@@ -306,7 +319,15 @@ public class AgentStore {
                                   and r.version = ?
                                   and r.state = 'ACTIVE'
                            )
-                        """, version, expectedGeneration, agentId, expectedGeneration, version) > 0;
+                        """,
+                        version,
+                        expectedGeneration,
+                        agentId,
+                        expectedGeneration,
+                        expectedGeneration,
+                        version,
+                        version)
+                > 0;
     }
 
     public Optional<String> publishedVersion(String agentKey) {

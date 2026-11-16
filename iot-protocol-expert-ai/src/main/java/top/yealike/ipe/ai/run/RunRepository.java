@@ -7,6 +7,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 import top.yealike.ipe.ai.mapper.RunMapper;
 import top.yealike.ipe.ai.run.RunRecords.Run;
 import top.yealike.ipe.ai.run.RunRecords.RunEvent;
@@ -91,12 +92,24 @@ public class RunRepository {
      *
      * <p>按优先级与提交顺序取队首；认领失败直接返回空，等下一轮调度。
      */
-    public Optional<Run> claimNextForDispatch(String dispatchOwner, int leaseSeconds, Instant deadlineAt) {
-        List<UUID> candidates = mapper.selectNextQueued();
+    @Transactional
+    public Optional<Run> claimNextForDispatch(
+            String dispatchOwner, int leaseSeconds, Instant deadlineAt, int perUserActiveLimit) {
+        int normalizedLimit = Math.max(1, perUserActiveLimit);
+        List<UUID> candidates = mapper.selectNextQueued(normalizedLimit);
         if (candidates.isEmpty()) {
             return Optional.empty();
         }
         UUID id = candidates.getFirst();
+        Run candidate = find(id).orElse(null);
+        if (candidate == null) {
+            return Optional.empty();
+        }
+        // 多 Control 必须按用户串行认领；advisory xact lock 与事务同生命周期。
+        mapper.lockQuota("ai-run-dispatch:user:" + candidate.actor());
+        if (countUserActive(candidate.actor(), null) >= normalizedLimit) {
+            return Optional.empty();
+        }
         int updated = mapper.claimForDispatch(dispatchOwner, leaseSeconds, deadlineAt, id);
         if (updated == 0) {
             return Optional.empty();
@@ -149,6 +162,11 @@ public class RunRepository {
         return mapper.markFailedWithToken(code, message, JsonSupport.write(usage), id, executionToken, instanceId) > 0;
     }
 
+    /** Control 权威终结已过期或已超时的 Run；返回终结后的状态，CAS 失败返回 null。 */
+    public String terminateExpired(UUID id, long executionToken, String instanceId, String code, String message) {
+        return mapper.terminateExpired(id, executionToken, instanceId, code, message);
+    }
+
     public void markCancelled(UUID id, Map<String, Object> usage) {
         mapper.markCancelled(JsonSupport.write(usage), id);
     }
@@ -192,8 +210,8 @@ public class RunRepository {
         return count == null ? 0 : count;
     }
 
-    public int countUserInFlight(String actor, UUID excludeConversationId) {
-        Integer count = mapper.countUserInFlight(actor, excludeConversationId);
+    public int countUserActive(String actor, UUID excludeConversationId) {
+        Integer count = mapper.countUserActive(actor, excludeConversationId);
         return count == null ? 0 : count;
     }
 

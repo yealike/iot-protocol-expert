@@ -24,7 +24,7 @@ class ReleaseReconcilerPeriodicTest {
         ExecutorService executor = mock(ExecutorService.class);
         when(executor.submit(any(Runnable.class))).thenAnswer(invocation -> null);
         when(registry.ready()).thenReturn(true);
-        when(control.desiredReleases()).thenReturn(new DesiredReleasePage(List.of(), 0L, 100));
+        when(control.desiredReleases()).thenReturn(new DesiredReleasePage(List.of(), 0L, 100, false));
 
         ReleaseReconciler reconciler = new ReleaseReconciler(control, prepareService, registry, executor);
         reconciler.start();

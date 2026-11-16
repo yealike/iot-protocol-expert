@@ -228,7 +228,7 @@ Control 必须拒绝过期 token、错误 instanceId、非 ACTIVE release、错�
 - `IPE_AI_MCP_REGISTRY_ENABLED` 只控制 Nacos MCP 目录订阅，不能替代 `IPE_AI_REGISTRY_ENABLED`。
 - 启动脚本没有显式配置时会把 `IPE_AI_REGISTRY_ENABLED` 和 `IPE_AI_MCP_REGISTRY_ENABLED` 设为 `false`；`seed-ai.ps1` 在检测到 Nacos 地址与 MCP 入口时会默认启用平台注册，也可在 `.env.local` 显式覆盖。
 - MCP/Skill 发布现在会实际注册 Nacos；`ai_registry_projection` 只记录期望/观测状态，排查时应以 Nacos 实例列表为准。
-- `IPE_CONTROL_SERVICE_NAME` 同时影响 Control 的平台 Nacos 服务名和 Runtime 期望的 Control 身份，但两者默认值不同（`ipe-ai-control` / `control`）；通常不要显式设置。
+- `IPE_CONTROL_SERVICE_NAME` 同时影响 Control 的平台 Nacos 服务名和 Runtime 的发现目标，默认统一为 `ipe-ai-control`；如需覆盖，Control 与 Runtime 必须使用同一值。
 
 ### 7.2 Runtime
 
@@ -236,7 +236,7 @@ Control 必须拒绝过期 token、错误 instanceId、非 ACTIVE release、错�
 |---|---|
 | `IPE_RUNTIME_PORT` | Runtime HTTP 端口，默认 19084 |
 | `IPE_CONTROL_BASE_URL` | Control 内部地址，默认 `http://127.0.0.1:19083` |
-| `IPE_CONTROL_SERVICE_NAME` / `IPE_RUNTIME_SERVICE_NAME` | HMAC 调用身份，默认 `control` / `runtime` |
+| `IPE_CONTROL_SERVICE_NAME` / `IPE_RUNTIME_SERVICE_NAME` | Control 发现名 / Runtime HMAC 身份，默认 `ipe-ai-control` / `runtime` |
 | `IPE_RUNTIME_KEY_ID` | 服务密钥标识，默认 `runtime` |
 | `IPE_INTERNAL_SERVICE_KEY` / `_FILE` | 必须与 Control 相同 |
 | `IPE_AI_REGISTRY_ENABLED` | 是否注册 `ipe-agent-runtime` 和精确 Agent 版本 |

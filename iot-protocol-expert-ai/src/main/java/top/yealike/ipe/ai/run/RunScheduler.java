@@ -98,7 +98,8 @@ public class RunScheduler {
             var claimed = runs.claimNextForDispatch(
                     nodeId,
                     leaseSeconds,
-                    Instant.now().plusMillis(properties.run().timeoutMs()));
+                    Instant.now().plusMillis(properties.run().timeoutMs()),
+                    platform.runtime().perUserInFlight());
             if (claimed.isEmpty()) {
                 return;
             }
@@ -214,29 +215,40 @@ public class RunScheduler {
     }
 
     private void reapExpiredLeases() {
+        Instant now = Instant.now();
         for (Run run : runs.expiredLeases(20)) {
-            if (RunRecords.DISPATCHING.equals(run.status()) && run.dispatchNextAttemptAt() != null) {
+            boolean deadlineExpired =
+                    run.deadlineAt() != null && !run.deadlineAt().isAfter(now);
+            if (!deadlineExpired
+                    && RunRecords.DISPATCHING.equals(run.status())
+                    && run.dispatchNextAttemptAt() != null) {
                 continue;
             }
-            if (runs.markFailed(
-                    run.id(),
-                    run.executionToken(),
-                    run.runtimeInstanceId(),
-                    ErrorCodes.EXECUTION_LOST,
-                    "执行租约已过期，Runtime 未继续回写进度",
-                    Map.of())) {
+            String code = deadlineExpired ? "RUN_TIMED_OUT" : ErrorCodes.EXECUTION_LOST;
+            String message = deadlineExpired ? "Run 已超过执行截止时间，由 Control 终结" : "执行租约已过期，Runtime 未继续回写进度";
+            String terminal =
+                    runs.terminateExpired(run.id(), run.executionToken(), run.runtimeInstanceId(), code, message);
+            if (terminal == null) {
+                continue;
+            }
+            if (RunRecords.CANCELLED.equals(terminal)) {
+                events.publish(
+                        run.conversationId(),
+                        run.id(),
+                        "run.cancelled",
+                        Map.of("status", RunRecords.CANCELLED, "note", "Runtime 取消确认超时，由 Control 终结"));
+                log.warn("run cancellation converged by expiry: run={} instance={}", run.id(), run.runtimeInstanceId());
+            } else {
                 events.publish(
                         run.conversationId(),
                         run.id(),
                         "run.failed",
-                        Map.of(
-                                "runId",
-                                run.id().toString(),
-                                "errorCode",
-                                ErrorCodes.EXECUTION_LOST,
-                                "message",
-                                "执行实例失联，任务已终止；可重新提问生成新 Run"));
-                log.warn("run lease expired: run={} instance={}", run.id(), run.runtimeInstanceId());
+                        Map.of("runId", run.id().toString(), "errorCode", code, "message", message));
+                log.warn(
+                        "run expired and terminated: run={} instance={} code={}",
+                        run.id(),
+                        run.runtimeInstanceId(),
+                        code);
             }
         }
     }

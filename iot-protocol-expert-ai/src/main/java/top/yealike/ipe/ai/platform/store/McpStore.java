@@ -234,8 +234,8 @@ public class McpStore {
     }
 
     public boolean publishComponent(UUID componentId, String version, long expectedGeneration) {
-        return jdbc.update(
-                        """
+        int updated = jdbc.update(
+                """
                         update ai_mcp_component c
                            set published_version = ?, publication_generation = ?, revision = revision + 1, updated_at = now()
                          where c.id = ?
@@ -247,8 +247,21 @@ public class McpStore {
                                   and r.generation = ?
                                   and r.state = 'ACTIVE'
                            )
-                        """, version, expectedGeneration, componentId, version, expectedGeneration, expectedGeneration)
-                > 0;
+                        """, version, expectedGeneration, componentId, expectedGeneration, version, expectedGeneration);
+        return updated > 0 || alreadyPublished(componentId, version, expectedGeneration);
+    }
+
+    /**
+     * 发布事务提交后重入时，默认指针与代次已经推进；把该状态视为幂等成功，避免迟到 worker 将成功发布改成失败。
+     */
+    private boolean alreadyPublished(UUID componentId, String version, long expectedGeneration) {
+        Integer count = jdbc.queryForObject(
+                "select count(*) from ai_mcp_component where id = ? and published_version = ? and publication_generation = ?",
+                Integer.class,
+                componentId,
+                version,
+                expectedGeneration);
+        return count != null && count > 0;
     }
 
     public UUID insertTestReport(

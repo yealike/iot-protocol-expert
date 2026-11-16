@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   Alert,
   App,
@@ -39,6 +39,7 @@ export default function PublicationsPage() {
   const navigate = useNavigate()
   const [manualId, setManualId] = useState('')
   const [innerTab, setInnerTab] = useState<'progress' | 'registry'>('progress')
+  const announcedPublicationRef = useRef<string | null>(null)
   const queryClient = useQueryClient()
   const publication = useQuery({
     queryKey: ['ai-publication', publicationId],
@@ -57,6 +58,20 @@ export default function PublicationsPage() {
     },
     onError: (error: Error) => message.error(error.message)
   })
+
+  useEffect(() => {
+    const data = publication.data
+    if (!data || data.state !== 'PUBLISHED' || announcedPublicationRef.current === data.id) {
+      return
+    }
+    announcedPublicationRef.current = data.id
+    message.success(`发布完成：${data.resourceType} ${data.version}`)
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['ai-agent-catalog'] }),
+      queryClient.invalidateQueries({ queryKey: ['ai-agents-admin'] }),
+      queryClient.invalidateQueries({ queryKey: ['ai-agent-detail'] })
+    ])
+  }, [message, publication.data, queryClient])
 
   const openPublication = () => {
     const id = manualId.trim()

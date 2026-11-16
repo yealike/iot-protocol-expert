@@ -107,6 +107,7 @@ export default function AgentsPage() {
   const [validation, setValidation] = useState<AiAgentCompileResult | null>(null)
   const [publishOpen, setPublishOpen] = useState(false)
   const [publishAgent, setPublishAgent] = useState<AiAgentComponent | null>(null)
+  const rollbackKeysRef = useRef<Record<string, string>>({})
   const loadedAgentRef = useRef<string | null>(null)
   const revisionRef = useRef<number | null>(null)
 
@@ -310,17 +311,23 @@ export default function AgentsPage() {
   const rollback = useMutation({
     mutationFn: (version: string) => {
       if (!detailAgent) throw new Error('Agent 尚未加载')
+      const idempotencyKey = rollbackKeysRef.current[version] ?? crypto.randomUUID()
+      rollbackKeysRef.current[version] = idempotencyKey
       return api.aiRollbackAgent(detailAgent.id, {
         targetVersion: version,
-        expectedRevision: detailAgent.revision
+        expectedRevision: detailAgent.revision,
+        idempotencyKey
       })
     },
-    onSuccess: async () => {
-      message.success('默认发布指针已回滚')
+    onSuccess: async (result, version) => {
+      delete rollbackKeysRef.current[version]
+      const publicationId = rememberPublication(result, 'AGENT', result.version)
+      message.success('回滚已提交，等待发布完成后默认版本才会切换')
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ['ai-agent-detail', editingId] }),
         queryClient.invalidateQueries({ queryKey: ['ai-agents-admin'] })
       ])
+      navigate(`/ai-admin/publications/${publicationId}`)
     },
     onError: (error: Error) => message.error(error.message)
   })
@@ -707,7 +714,7 @@ export default function AgentsPage() {
                     row.version !== detailAgent?.publishedVersion ? (
                       <Popconfirm
                         title={`将默认发布指针回滚到 ${row.version}？`}
-                        description="新会话将使用该版本；旧会话仍固定原版本。"
+                        description="回滚异步执行；发布成功后新会话才会使用该版本，旧会话仍固定原版本。"
                         onConfirm={() => rollback.mutate(row.version)}
                       >
                         <Button type="link" size="small" loading={rollback.isPending}>

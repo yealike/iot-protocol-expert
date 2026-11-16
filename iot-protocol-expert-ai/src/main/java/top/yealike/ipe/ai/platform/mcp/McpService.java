@@ -10,6 +10,7 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.ipe.ai.contract.ComponentDigests;
+import top.yealike.ipe.ai.contract.ComponentEndpoint;
 import top.yealike.ipe.ai.contract.ComponentNames;
 import top.yealike.ipe.ai.contract.ComponentType;
 import top.yealike.ipe.ai.contract.Digests;
@@ -300,8 +301,10 @@ public class McpService {
         String contentDigest =
                 Digests.digest(Map.of("transport", "STREAMABLE_HTTP", "endpoint", resolved.endpoint(), "tools", tools));
         Map<String, Object> endpointPolicy = new LinkedHashMap<>();
+        URI resolvedUri = URI.create(resolved.endpoint());
         endpointPolicy.put("endpoint", resolved.endpoint());
-        endpointPolicy.put("path", URI.create(resolved.endpoint()).getPath());
+        endpointPolicy.put("path", resolvedUri.getRawPath());
+        endpointPolicy.put("query", resolvedUri.getRawQuery() == null ? "" : resolvedUri.getRawQuery());
         endpointPolicy.put(
                 "serviceName", ComponentNames.serviceName(ComponentType.MCP, component.key(), resolvedVersion));
         endpointPolicy.put("timeoutMs", timeoutMs(component));
@@ -397,17 +400,45 @@ public class McpService {
     }
 
     private String resolvePublishedEndpoint(McpRelease release) {
-        String serviceName = String.valueOf(release.endpointPolicy().getOrDefault("serviceName", ""));
-        String path = String.valueOf(release.endpointPolicy().getOrDefault("path", ""));
-        String endpoint = String.valueOf(release.endpointPolicy().getOrDefault("endpoint", ""));
-        if (registry.enabled() && !serviceName.isBlank()) {
-            NacosRegistryService.InstanceView instance = registry.pickHealthy(serviceName);
-            if (instance == null) {
-                throw AiExceptions.unprocessable(ErrorCodes.REGISTRY_UNAVAILABLE, "MCP 无健康注册实例");
+        try {
+            String serviceName = text(release.endpointPolicy().get("serviceName"));
+            String path = text(release.endpointPolicy().get("path"));
+            String query = text(release.endpointPolicy().get("query"));
+            String endpoint = text(release.endpointPolicy().get("endpoint"));
+            if (registry.enabled() && !serviceName.isBlank()) {
+                NacosRegistryService.InstanceView instance = registry.pickHealthy(serviceName);
+                if (instance == null) {
+                    throw AiExceptions.unprocessable(ErrorCodes.REGISTRY_UNAVAILABLE, "MCP 无健康注册实例");
+                }
+                String scheme = text(instance.metadata().get("scheme"));
+                if (scheme.isBlank()) {
+                    scheme = fallbackScheme(endpoint);
+                }
+                String discoveredPath = text(instance.metadata().get("path"));
+                String discoveredQuery = text(instance.metadata().get("query"));
+                return ComponentEndpoint.of(
+                                scheme,
+                                instance.ip(),
+                                instance.port(),
+                                discoveredPath.isBlank() ? path : discoveredPath,
+                                discoveredQuery.isBlank() ? query : discoveredQuery)
+                        .toUri();
             }
-            return "http://" + instance.ip() + ":" + instance.port() + path;
+            return ComponentEndpoint.parse(endpoint).toUri();
+        } catch (IllegalArgumentException exception) {
+            throw AiExceptions.unprocessable("MCP_ENDPOINT_INVALID", "MCP 入口地址无效：" + release.componentKey());
         }
-        return endpoint;
+    }
+
+    private static String fallbackScheme(String endpoint) {
+        if (endpoint == null || endpoint.isBlank()) {
+            return "http";
+        }
+        return ComponentEndpoint.parse(endpoint).scheme();
+    }
+
+    private static String text(Object value) {
+        return value == null ? "" : String.valueOf(value).strip();
     }
 
     private Resolved resolve(McpComponent component) {

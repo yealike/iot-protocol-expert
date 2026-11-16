@@ -2,6 +2,7 @@ package top.yealike.ipe.agent.runtime.mcp;
 
 import org.springframework.stereotype.Component;
 import top.yealike.ipe.agent.runtime.registry.NacosRuntimeRegistry;
+import top.yealike.ipe.ai.contract.ComponentEndpoint;
 import top.yealike.ipe.ai.contract.McpDescriptor;
 
 /**
@@ -26,16 +27,23 @@ public class McpEndpointResolver {
         if (serviceName.isBlank()) {
             return descriptor;
         }
-        String baseUrl = registry.discoverBaseUrl(serviceName);
-        if (baseUrl == null || baseUrl.isBlank()) {
+        ComponentEndpoint discovered = registry.discoverEndpoint(serviceName);
+        if (discovered == null) {
             throw new IllegalStateException("MCP 注册中心没有健康实例：" + serviceName);
         }
         String path = text(descriptor.endpointPolicy().get("path"));
+        String query = text(descriptor.endpointPolicy().get("query"));
         return new McpDescriptor(
                 descriptor.key(),
                 descriptor.version(),
                 descriptor.transport(),
-                baseUrl + path,
+                ComponentEndpoint.of(
+                                discovered.scheme(),
+                                discovered.host(),
+                                discovered.port(),
+                                discovered.path().isBlank() ? path : discovered.path(),
+                                discovered.query().isBlank() ? query : discovered.query())
+                        .toUri(),
                 descriptor.credentialRef(),
                 descriptor.secretRevision(),
                 descriptor.catalogDigest(),

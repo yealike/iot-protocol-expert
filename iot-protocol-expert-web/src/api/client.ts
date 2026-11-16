@@ -27,6 +27,7 @@ import type {
   AiPublishReceipt,
   AiRegistryComponent,
   AiRegistryVersionDetail,
+  AiRollbackReceipt,
   AiRun,
   AiSkillComponent,
   AiSkillCreate,
@@ -423,8 +424,10 @@ export const api = {
       idempotencyKey: string
     }
   ) => aiRequest<AiPublishReceipt>(`/agents/${encodeURIComponent(id)}/publish`, aiJson(body)),
-  aiRollbackAgent: (id: string, body: { targetVersion: string; expectedRevision: number }) =>
-    aiRequest<AiAgentComponent>(`/agents/${encodeURIComponent(id)}/rollback`, aiJson(body)),
+  aiRollbackAgent: (
+    id: string,
+    body: { targetVersion: string; expectedRevision: number; idempotencyKey: string }
+  ) => aiRequest<AiRollbackReceipt>(`/agents/${encodeURIComponent(id)}/rollback`, aiJson(body)),
 
   // ---------------------------------------------------------------- AI 管理：发布与注册
 

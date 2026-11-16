@@ -99,6 +99,45 @@ class MapperXmlBindingTest {
     }
 
     @Test
+    void controlExpiryTerminationUsesExpiredCasInsteadOfActiveLease() {
+        var statement = configuration.getMappedStatement(RunMapper.class.getName() + ".terminateExpired");
+        String sql = statement.getBoundSql(Map.of()).getSql().replaceAll("\\s+", " ");
+        assertTrue(sql.contains("lease_until < now()"));
+        assertTrue(sql.contains("deadline_at < now()"));
+        assertFalse(sql.contains("lease_until > now()"));
+        assertTrue(sql.contains("returning status"));
+
+        var runtimeFailure = configuration.getMappedStatement(RunMapper.class.getName() + ".markFailedWithToken");
+        String runtimeSql = runtimeFailure.getBoundSql(Map.of()).getSql().replaceAll("\\s+", " ");
+        assertTrue(runtimeSql.contains("lease_until > now()"));
+        assertTrue(runtimeSql.contains("deadline_at > now()"));
+
+        var expired = configuration.getMappedStatement(RunMapper.class.getName() + ".selectExpiredLeases");
+        String expiredSql = expired.getBoundSql(Map.of("limit", 20)).getSql().replaceAll("\\s+", " ");
+        assertTrue(expiredSql.contains("deadline_at < now()"));
+    }
+
+    @Test
+    void dispatchQuotaSqlSeparatesQueuedAndActiveRuns() {
+        var next = configuration.getMappedStatement(RunMapper.class.getName() + ".selectNextQueued");
+        String nextSql =
+                next.getBoundSql(Map.of("perUserActiveLimit", 1)).getSql().replaceAll("\\s+", " ");
+        assertTrue(nextSql.contains("a.status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')"));
+        assertEquals(
+                1,
+                next.getBoundSql(Map.of("perUserActiveLimit", 1))
+                        .getParameterMappings()
+                        .size());
+
+        var active = configuration.getMappedStatement(RunMapper.class.getName() + ".countUserActive");
+        String activeSql = active.getBoundSql(Map.of("actor", "user", "excludeConversationId", ID))
+                .getSql()
+                .replaceAll("\\s+", " ");
+        assertFalse(activeSql.contains("'QUEUED'"));
+        assertTrue(activeSql.contains("'DISPATCHING'"));
+    }
+
+    @Test
     void keywordSqlBindsFiltersAndKeepsKeywordsOutOfSqlText() {
         var statement = configuration.getMappedStatement(KnowledgeMapper.class.getName() + ".candidates");
         String keyword = "x' OR 1=1 --";

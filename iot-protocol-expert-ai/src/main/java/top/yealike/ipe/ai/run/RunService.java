@@ -206,13 +206,17 @@ public class RunService {
             throw new AiExceptions.AiException(429, "RUN_QUEUE_FULL", "全局排队任务已达上限，请稍后重试");
         }
         int userQueued = runs.countUserQueued(identity.actor(), null);
-        if (userQueued >= quota.perUserQueued()) {
+        int userActive = runs.countUserActive(identity.actor(), null);
+        int queuedLimit = Math.max(0, quota.perUserQueued());
+        int userLimit = Math.max(0, quota.perUserInFlight()) + queuedLimit;
+        if (userQueued >= queuedLimit) {
             throw new AiExceptions.AiException(429, "USER_QUEUE_FULL", "当前账号排队任务已达上限，请稍后重试");
         }
-        int userInFlight = runs.countUserInFlight(identity.actor(), null);
-        if (userInFlight >= quota.perUserInFlight()) {
-            throw new AiExceptions.AiException(429, "USER_RUN_BUSY", "当前账号已有任务在途，请等待完成后再提交");
+        if (userActive + userQueued >= userLimit) {
+            throw new AiExceptions.AiException(429, "USER_RUN_BUSY", "当前账号未完成任务已达上限，请等待完成后再提交");
         }
+        // 排队与执行分开计数：perUserQueued 只约束 QUEUED，perUserInFlight 在派发认领时约束 active。
+        // 已有一条运行时仍允许排满 perUserQueued 条等待，不能被“在途”计数提前拒绝。
     }
 
     public Run requireRun(UserIdentity identity, UUID runId) {

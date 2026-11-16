@@ -126,6 +126,12 @@
               select 1 from ai_run x
               where x.conversation_id = c.conversation_id
                 and x.status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED'))
+          and (
+            select count(*)
+              from ai_run a
+             where a.actor = c.actor
+               and a.status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+          ) &lt; #{perUserActiveLimit}
         order by c.priority desc, c.queue_seq asc
         limit 1
     </select>
@@ -240,6 +246,26 @@
           and (deadline_at is null or deadline_at &gt; now())
     </update>
 
+    <!-- Control 权威终结失联 Run：必须仍处于过期条件，续租成功后 CAS 失败，避免误杀。 -->
+    <select id="terminateExpired" resultType="java.lang.String" affectData="true" flushCache="true" useCache="false">
+        update ai_run
+           set status = case when status = 'CANCEL_REQUESTED' then 'CANCELLED' else 'FAILED' end,
+               error_code = case when status = 'CANCEL_REQUESTED' then null else #{code} end,
+               error_message = case when status = 'CANCEL_REQUESTED'
+                                    then 'Runtime 取消确认超时，由 Control 终结'
+                                    else #{message} end,
+               finished_at = now(), updated_at = now(), lease_owner = null, lease_until = null
+         where id = #{id} and execution_token = #{executionToken}
+           and (runtime_instance_id = #{instanceId}
+                or (runtime_instance_id is null and #{instanceId} is null))
+           and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+           and (
+                (lease_until is not null and lease_until &lt; now())
+                or (deadline_at is not null and deadline_at &lt; now())
+           )
+        returning status
+    </select>
+
     <update id="markCancelledWithToken">
         update ai_run
         set status = 'CANCELLED', usage_json = cast(#{usageJson} as jsonb), finished_at = now(), updated_at = now(),
@@ -277,10 +303,10 @@
           and (conversation_id != #{excludeConversationId} or #{excludeConversationId} is null)
     </select>
 
-    <select id="countUserInFlight" resultType="java.lang.Integer">
+    <select id="countUserActive" resultType="java.lang.Integer">
         select count(*) from ai_run
         where actor = #{actor}
-          and status in ('QUEUED', 'DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+          and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
           and (conversation_id != #{excludeConversationId} or #{excludeConversationId} is null)
     </select>
 
@@ -292,8 +318,16 @@
     <select id="selectExpiredLeases" resultMap="RunMap">
         select <include refid="RunColumns"/> from ai_run
          where status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
-           and lease_until is not null and lease_until &lt; now()
-         order by lease_until
+           and (
+                (lease_until is not null and lease_until &lt; now())
+                or (deadline_at is not null and deadline_at &lt; now())
+           )
+           and not (
+                status = 'DISPATCHING'
+                and dispatch_next_attempt_at is not null
+                and (deadline_at is null or deadline_at &gt; now())
+           )
+         order by least(deadline_at, lease_until)
          limit #{limit}
     </select>
 

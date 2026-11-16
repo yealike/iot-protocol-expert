@@ -111,27 +111,38 @@ public class PublicationStore {
         return find(id);
     }
 
+    /**
+     * 阶段推进必须由当前租约持有者执行，并以预期状态做 CAS。
+     *
+     * <p>租约过期后旧 worker 不得再推进或清除新 worker 的租约；调用方在同一数据库事务中完成业务写入和本推进，
+     * 本方法返回 false 时必须回滚整个事务。
+     */
     public boolean advance(
-            UUID id, String expectedState, String nextState, String nextPhase, String errorCode, String errorMessage) {
-        return jdbc.update(
-                        "update ai_publication set state = ?, phase = ?, error_code = ?, error_message = ?, lease_owner = null, lease_until = null, updated_at = now() where id = ? and state = ?",
-                        nextState,
-                        nextPhase,
-                        errorCode,
-                        errorMessage,
-                        id,
-                        expectedState)
-                > 0;
+            UUID id,
+            String owner,
+            String expectedState,
+            String nextState,
+            String nextPhase,
+            String errorCode,
+            String errorMessage) {
+        return jdbc.update("""
+                        update ai_publication
+                           set state = ?, phase = ?, error_code = ?, error_message = ?,
+                               lease_owner = null, lease_until = null, updated_at = now()
+                         where id = ? and state = ? and lease_owner = ? and lease_until > now()
+                        """, nextState, nextPhase, errorCode, errorMessage, id, expectedState, owner) > 0;
     }
 
     /** @return 是否已达到最大重试次数并进入 FAILED 终态。 */
-    public boolean fail(UUID id, String code, String message, Instant nextAttemptAt) {
-        int changed = jdbc.update(
-                "update ai_publication set state = case when attempts + 1 >= 5 then 'FAILED' else state end, error_code = ?, error_message = ?, attempts = attempts + 1, next_attempt_at = ?, lease_owner = null, lease_until = null, updated_at = now() where id = ?",
-                code,
-                message,
-                Timestamp.from(nextAttemptAt),
-                id);
+    public boolean fail(
+            UUID id, String owner, String expectedState, String code, String message, Instant nextAttemptAt) {
+        int changed = jdbc.update("""
+                update ai_publication
+                   set state = case when attempts + 1 >= 5 then 'FAILED' else state end,
+                       error_code = ?, error_message = ?, attempts = attempts + 1, next_attempt_at = ?,
+                       lease_owner = null, lease_until = null, updated_at = now()
+                 where id = ? and state = ? and lease_owner = ? and lease_until > now()
+                """, code, message, Timestamp.from(nextAttemptAt), id, expectedState, owner);
         if (changed == 0) {
             return false;
         }
@@ -144,20 +155,23 @@ public class PublicationStore {
                 id);
     }
 
-    public boolean expire(UUID id, Instant deadline) {
+    public boolean expire(UUID id, String owner, String expectedState, Instant deadline) {
         return jdbc.update(
-                        "update ai_publication set state = 'FAILED', error_code = 'PUBLICATION_TIMEOUT', error_message = '发布超时，请检查注册或运行时状态后重试', lease_owner = null, lease_until = null, updated_at = now() where id = ? and state in ('VALIDATING', 'PREPARING', 'REGISTERING') and deadline_at < ?",
+                        "update ai_publication set state = 'FAILED', error_code = 'PUBLICATION_TIMEOUT', error_message = '发布超时，请检查注册或运行时状态后重试', lease_owner = null, lease_until = null, updated_at = now() where id = ? and state = ? and lease_owner = ? and lease_until > now() and deadline_at < ?",
                         id,
+                        expectedState,
+                        owner,
                         Timestamp.from(deadline))
                 > 0;
     }
 
-    public void markFailed(UUID id, String code, String message) {
-        jdbc.update(
-                "update ai_publication set state = 'FAILED', error_code = ?, error_message = ?, lease_owner = null, lease_until = null, updated_at = now() where id = ?",
-                code,
-                message,
-                id);
+    public boolean markFailed(UUID id, String owner, String expectedState, String code, String message) {
+        return jdbc.update("""
+                update ai_publication
+                   set state = 'FAILED', error_code = ?, error_message = ?, lease_owner = null, lease_until = null,
+                       updated_at = now()
+                 where id = ? and state = ? and lease_owner = ? and lease_until > now()
+                """, code, message, id, expectedState, owner) > 0;
     }
 
     public UUID insertOutbox(

@@ -132,11 +132,14 @@ public class InternalControlController {
             @RequestParam(required = false) Long cursor, @RequestParam(defaultValue = "100") int limit) {
         int normalized = Math.min(Math.max(limit, 1), 200);
         long lastSeen = cursor == null || cursor < 0 ? 0L : cursor;
+        List<AgentRelease> candidates = agentStore.desiredReleases().stream()
+                .filter(release -> release.releaseCursor() > lastSeen)
+                .toList();
         List<Map<String, Object>> items = new ArrayList<>();
         long nextCursor = lastSeen;
-        for (AgentRelease release : agentStore.publishedReleases()) {
-            if (release.releaseCursor() <= lastSeen) {
-                continue;
+        for (AgentRelease release : candidates) {
+            if (items.size() >= normalized) {
+                break;
             }
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("releaseId", release.id());
@@ -147,11 +150,9 @@ public class InternalControlController {
             item.put("state", release.state());
             items.add(item);
             nextCursor = release.releaseCursor();
-            if (items.size() >= normalized) {
-                break;
-            }
         }
-        return Map.of("items", items, "cursor", nextCursor, "limit", normalized);
+        return Map.of(
+                "items", items, "cursor", nextCursor, "limit", normalized, "hasMore", candidates.size() > items.size());
     }
 
     @GetMapping("/runtime/readiness")

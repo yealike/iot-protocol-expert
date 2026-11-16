@@ -2,6 +2,7 @@ package top.yealike.ipe.ai.platform.agent;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -205,13 +206,34 @@ public class AgentService {
     }
 
     @Transactional
-    public AgentRelease rollback(UUID id, long expectedRevision, String targetVersion) {
+    public RollbackResult rollback(UUID id, long expectedRevision, String targetVersion, String idempotencyKey) {
         AgentComponent component = agents.lock(id).orElseThrow(() -> AiExceptions.notFound("Agent 不存在"));
+        String version = requireVersion(targetVersion);
+        String requestedKey = blank(idempotencyKey) ? UUID.randomUUID().toString() : idempotencyKey.strip();
+        String key = requestedKey.startsWith("rollback-") ? requestedKey : "rollback-" + requestedKey;
+        if (key.length() > 120) {
+            throw AiExceptions.badRequest("幂等键过长");
+        }
+        var existing = publications.findByIdempotency("AGENT", id, key);
+        if (existing.isPresent()) {
+            Publication publication = existing.get();
+            if (!publication.version().equals(version)) {
+                throw AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "幂等键已用于不同的回滚目标版本");
+            }
+            AgentRelease replayTarget = agents.findRelease(component.key(), version)
+                    .orElseThrow(() -> AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "回滚记录与版本不一致"));
+            return new RollbackResult(
+                    replayTarget.id(),
+                    publication.id(),
+                    publication.version(),
+                    publication.generation(),
+                    publication.state());
+        }
         if (component.revision() != expectedRevision) {
             throw AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "Agent 已被其他请求修改，请刷新后重试");
         }
-        AgentRelease target = agents.findRelease(component.key(), requireVersion(targetVersion))
-                .orElseThrow(() -> AiExceptions.notFound("目标版本不存在"));
+        AgentRelease target =
+                agents.findRelease(component.key(), version).orElseThrow(() -> AiExceptions.notFound("目标版本不存在"));
         if ("REVOKED".equals(target.state()) || "FAILED".equals(target.state())) {
             throw AiExceptions.conflict(ErrorCodes.RELEASE_NOT_ACTIVE, "目标版本已废止或发布失败，不能回滚");
         }
@@ -224,7 +246,7 @@ public class AgentService {
                 target.version(),
                 component.revision(),
                 generation,
-                "rollback-" + UUID.randomUUID(),
+                key,
                 Instant.now().plusSeconds(60));
         publications.insertOutbox(
                 "AGENT",
@@ -235,7 +257,7 @@ public class AgentService {
                         "releaseId", target.id(),
                         "publicationId", publicationId,
                         "version", target.version())));
-        return target;
+        return new RollbackResult(target.id(), publicationId, target.version(), generation, "VALIDATING");
     }
 
     @Transactional
@@ -252,8 +274,8 @@ public class AgentService {
     }
 
     public List<AgentCatalogItem> catalog(UserIdentity identity) {
-        List<AgentCatalogItem> result = new ArrayList<>();
-        for (AgentRelease release : agents.publishedReleases()) {
+        Map<String, AgentCatalogItem> result = new LinkedHashMap<>();
+        for (AgentRelease release : agents.defaultReleases()) {
             if (!policy.canUseAgent(identity, release.agentKey()).allowed()) {
                 continue;
             }
@@ -264,20 +286,22 @@ public class AgentService {
             boolean healthy = !registry.enabled()
                     || registry.hasHealthy(
                             ComponentNames.serviceName(ComponentType.AGENT, release.agentKey(), release.version()));
-            result.add(new AgentCatalogItem(
+            result.putIfAbsent(
                     release.agentKey(),
-                    release.version(),
-                    manifest.displayName(),
-                    "",
-                    healthy ? "ACTIVE" : "DEGRADED",
-                    toolCount,
-                    manifest.skills().size(),
-                    manifest.skills().stream()
-                            .map(top.yealike.ipe.ai.contract.AgentManifest.SkillBinding::key)
-                            .toList(),
-                    healthy));
+                    new AgentCatalogItem(
+                            release.agentKey(),
+                            release.version(),
+                            manifest.displayName(),
+                            "",
+                            healthy ? "ACTIVE" : "DEGRADED",
+                            toolCount,
+                            manifest.skills().size(),
+                            manifest.skills().stream()
+                                    .map(top.yealike.ipe.ai.contract.AgentManifest.SkillBinding::key)
+                                    .toList(),
+                            healthy));
         }
-        return result;
+        return new ArrayList<>(result.values());
     }
 
     public AgentRelease requirePublishedRelease(String agentKey, String version) {
@@ -375,4 +399,6 @@ public class AgentService {
             List<AgentRelease> releases) {}
 
     public record PublishResult(UUID releaseId, UUID publicationId, String version, String manifestDigest) {}
+
+    public record RollbackResult(UUID releaseId, UUID publicationId, String version, long generation, String state) {}
 }

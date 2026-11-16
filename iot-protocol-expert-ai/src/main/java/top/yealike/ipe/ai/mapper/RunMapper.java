@@ -44,7 +44,7 @@ public interface RunMapper {
 
     List<Run> listByConversation(@Param("conversationId") UUID conversationId, @Param("limit") int limit);
 
-    List<UUID> selectNextQueued();
+    List<UUID> selectNextQueued(@Param("perUserActiveLimit") int perUserActiveLimit);
 
     int claimForDispatch(
             @Param("dispatchOwner") String dispatchOwner,
@@ -110,6 +110,13 @@ public interface RunMapper {
             @Param("executionToken") long executionToken,
             @Param("instanceId") String instanceId);
 
+    String terminateExpired(
+            @Param("id") UUID id,
+            @Param("executionToken") long executionToken,
+            @Param("instanceId") String instanceId,
+            @Param("code") String code,
+            @Param("message") String message);
+
     int markCancelledWithToken(
             @Param("usageJson") String usageJson,
             @Param("id") UUID id,
@@ -126,7 +133,7 @@ public interface RunMapper {
 
     Integer countUserQueued(@Param("actor") String actor, @Param("excludeConversationId") UUID excludeConversationId);
 
-    Integer countUserInFlight(@Param("actor") String actor, @Param("excludeConversationId") UUID excludeConversationId);
+    Integer countUserActive(@Param("actor") String actor, @Param("excludeConversationId") UUID excludeConversationId);
 
     Integer lockQuota(@Param("scope") String scope);
 

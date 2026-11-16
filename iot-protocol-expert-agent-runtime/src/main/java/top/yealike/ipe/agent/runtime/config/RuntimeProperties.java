@@ -32,7 +32,7 @@ public record RuntimeProperties(
         }
         serviceName = blank(serviceName) ? "runtime" : serviceName;
         serviceKeyId = blank(serviceKeyId) ? serviceName : serviceKeyId;
-        controlServiceName = blank(controlServiceName) ? "control" : controlServiceName;
+        controlServiceName = blank(controlServiceName) ? "ipe-ai-control" : controlServiceName;
         nacos = nacos == null ? Nacos.defaults() : nacos;
         run = run == null ? Run.defaults() : run;
         mcp = mcp == null ? Mcp.defaults() : mcp;

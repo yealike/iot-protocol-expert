@@ -54,7 +54,7 @@ class RunServiceTest {
     }
 
     @Test
-    void submitRejectsWhenUserInFlightQuotaIsFull() {
+    void submitRejectsWhenUserQueueQuotaIsFull() {
         ConversationRepository conversations = mock(ConversationRepository.class);
         RunRepository runs = mock(RunRepository.class);
         RunEventService events = mock(RunEventService.class);
@@ -68,8 +68,8 @@ class RunServiceTest {
         when(policy.canUseAgent(identity(), "agent")).thenReturn(new PolicyService.Decision(true, null, "v1"));
         when(runs.findByIdempotency(conversationId, "key")).thenReturn(java.util.Optional.empty());
         when(runs.countQueued()).thenReturn(0);
-        when(runs.countUserQueued("user", null)).thenReturn(0);
-        when(runs.countUserInFlight("user", null)).thenReturn(1);
+        when(runs.countUserQueued("user", null)).thenReturn(2);
+        when(runs.countUserActive("user", null)).thenReturn(1);
         RunService service = new RunService(
                 conversations,
                 runs,
@@ -83,7 +83,7 @@ class RunServiceTest {
 
         assertThatThrownBy(() -> service.submit(identity(), conversationId, "问题", "key", null))
                 .isInstanceOf(AiExceptions.AiException.class)
-                .hasMessageContaining("已有任务在途");
+                .hasMessageContaining("排队任务已达上限");
     }
 
     @Test
@@ -119,6 +119,73 @@ class RunServiceTest {
     }
 
     @Test
+    void submitAllowsOneActiveAndTwoQueuedRuns() {
+        ConversationRepository conversations = mock(ConversationRepository.class);
+        RunRepository runs = mock(RunRepository.class);
+        RunEventService events = mock(RunEventService.class);
+        PolicyService policy = mock(PolicyService.class);
+        AgentService agents = mock(AgentService.class);
+        RuntimeDispatchClient runtime = mock(RuntimeDispatchClient.class);
+        AiObservability observability = mock(AiObservability.class);
+        passThroughObservability(observability);
+        UUID conversationId = UUID.randomUUID();
+        when(conversations.find(conversationId)).thenReturn(java.util.Optional.of(conversation(conversationId)));
+        when(policy.canUseAgent(identity(), "agent")).thenReturn(new PolicyService.Decision(true, null, "v1"));
+        when(runs.findByIdempotency(conversationId, "key")).thenReturn(java.util.Optional.empty());
+        when(runs.countQueued()).thenReturn(0);
+        when(runs.countUserQueued("user", null)).thenReturn(1);
+        when(runs.countUserActive("user", null)).thenReturn(1);
+        when(agents.requirePublishedRelease("agent", "1.0.0")).thenThrow(AiExceptions.unavailable("已越过排队配额"));
+        RunService service = new RunService(
+                conversations,
+                runs,
+                events,
+                policy,
+                agents,
+                runtime,
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry(),
+                observability,
+                platform(100, 2, 1));
+
+        assertThatThrownBy(() -> service.submit(identity(), conversationId, "问题", "key", null))
+                .isInstanceOf(AiExceptions.AiException.class)
+                .hasMessage("已越过排队配额");
+    }
+
+    @Test
+    void submitRejectsWhenActiveAndQueuedReachCombinedLimit() {
+        ConversationRepository conversations = mock(ConversationRepository.class);
+        RunRepository runs = mock(RunRepository.class);
+        RunEventService events = mock(RunEventService.class);
+        PolicyService policy = mock(PolicyService.class);
+        AgentService agents = mock(AgentService.class);
+        RuntimeDispatchClient runtime = mock(RuntimeDispatchClient.class);
+        AiObservability observability = mock(AiObservability.class);
+        passThroughObservability(observability);
+        UUID conversationId = UUID.randomUUID();
+        when(conversations.find(conversationId)).thenReturn(java.util.Optional.of(conversation(conversationId)));
+        when(policy.canUseAgent(identity(), "agent")).thenReturn(new PolicyService.Decision(true, null, "v1"));
+        when(runs.findByIdempotency(conversationId, "key")).thenReturn(java.util.Optional.empty());
+        when(runs.countQueued()).thenReturn(0);
+        when(runs.countUserQueued("user", null)).thenReturn(0);
+        when(runs.countUserActive("user", null)).thenReturn(3);
+        RunService service = new RunService(
+                conversations,
+                runs,
+                events,
+                policy,
+                agents,
+                runtime,
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry(),
+                observability,
+                platform(100, 2, 1));
+
+        assertThatThrownBy(() -> service.submit(identity(), conversationId, "问题", "key", null))
+                .isInstanceOf(AiExceptions.AiException.class)
+                .hasMessageContaining("未完成任务已达上限");
+    }
+
+    @Test
     void retryArrivingAfterQuotaLockReturnsExistingWithoutCheckingQuota() {
         ConversationRepository conversations = mock(ConversationRepository.class);
         RunRepository runs = mock(RunRepository.class);
@@ -150,7 +217,7 @@ class RunServiceTest {
         verify(runs).lockQuota("ai-run-quota:global");
         verify(runs).lockQuota("ai-run-quota:user:user");
         verify(runs, org.mockito.Mockito.never()).countQueued();
-        verify(runs, org.mockito.Mockito.never()).countUserInFlight("user", null);
+        verify(runs, org.mockito.Mockito.never()).countUserActive("user", null);
     }
 
     private static PlatformProperties platform(int queueLimit, int perUserQueued, int perUserInFlight) {

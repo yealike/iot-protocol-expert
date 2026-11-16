@@ -363,6 +363,14 @@ export interface AiPublishReceipt {
   manifestDigest?: string
 }
 
+export interface AiRollbackReceipt {
+  releaseId: string
+  publicationId: string
+  version: string
+  generation: number
+  state: AiPublicationState | string
+}
+
 export interface AiPublication {
   id: string
   resourceType: 'MODEL' | 'MCP' | 'SKILL' | 'AGENT' | string

@@ -192,7 +192,7 @@ public class PublicationCoordinator {
             return Step.DONE;
         }
         if (publication.deadlineAt() != null && publication.deadlineAt().isBefore(Instant.now())) {
-            if (publications.expire(publication.id(), Instant.now())) {
+            if (publications.expire(publication.id(), worker, publication.state(), Instant.now())) {
                 cleanupFailed(publication);
             }
             return Step.DONE;
@@ -233,14 +233,15 @@ public class PublicationCoordinator {
             failPermanent(publication, "STALE_PUBLICATION", "草稿已变化，本次发布不能覆盖新版本");
             return Step.DONE;
         }
-        boolean advanced = publications.advance(publication.id(), "VALIDATING", "PREPARING", "PREPARING", null, null);
+        boolean advanced =
+                publications.advance(publication.id(), worker, "VALIDATING", "PREPARING", "PREPARING", null, null);
         return advanced ? Step.WAIT : Step.WAIT;
     }
 
     private Step prepare(Publication publication) {
         return switch (publication.resourceType()) {
             case "MCP", "SKILL" ->
-                publications.advance(publication.id(), "PREPARING", "REGISTERING", "REGISTERING", null, null)
+                publications.advance(publication.id(), worker, "PREPARING", "REGISTERING", "REGISTERING", null, null)
                         ? Step.WAIT
                         : Step.WAIT;
             case "AGENT" -> prepareAgent(publication);
@@ -260,7 +261,7 @@ public class PublicationCoordinator {
         String serviceName = ComponentNames.serviceName(ComponentType.AGENT, release.agentKey(), release.version());
         boolean healthy = !registry.enabled() || registry.hasHealthy(serviceName);
         if ("ACTIVE".equals(release.state()) && healthy) {
-            publications.advance(publication.id(), "PREPARING", "REGISTERING", "REGISTERING", null, null);
+            publications.advance(publication.id(), worker, "PREPARING", "REGISTERING", "REGISTERING", null, null);
             return Step.WAIT;
         }
         var targets = runtime.prepareTargets();
@@ -286,7 +287,7 @@ public class PublicationCoordinator {
             return Step.RETRY;
         }
         boolean advanced =
-                publications.advance(publication.id(), "PREPARING", "REGISTERING", "REGISTERING", null, null);
+                publications.advance(publication.id(), worker, "PREPARING", "REGISTERING", "REGISTERING", null, null);
         if (!advanced) {
             return Step.WAIT;
         }
@@ -322,15 +323,19 @@ public class PublicationCoordinator {
                 return Step.RETRY;
             }
         }
-        boolean completed = transactions.execute(status -> {
+        boolean completed = Boolean.TRUE.equals(transactions.execute(status -> {
             if ((mcps.setReleaseState(release.id(), "ACTIVE") == 0)
                     || !mcps.publishComponent(release.componentId(), release.version(), publication.generation())) {
                 status.setRollbackOnly();
                 return false;
             }
             projections.ready("MCP", release.id(), serviceName, "control");
-            return complete(publication);
-        });
+            if (!complete(publication)) {
+                status.setRollbackOnly();
+                return false;
+            }
+            return true;
+        }));
         if (!completed) {
             retry(publication, ErrorCodes.REVISION_CONFLICT, "MCP 默认版本已被更新的发布意图修改");
             return Step.RETRY;
@@ -355,15 +360,19 @@ public class PublicationCoordinator {
                 return Step.RETRY;
             }
         }
-        boolean completed = transactions.execute(status -> {
+        boolean completed = Boolean.TRUE.equals(transactions.execute(status -> {
             if ((skills.setReleaseState(release.id(), "ACTIVE") == 0)
                     || !skills.publishComponent(release.skillId(), release.version(), publication.generation())) {
                 status.setRollbackOnly();
                 return false;
             }
             projections.ready("SKILL", release.id(), serviceName, "control");
-            return complete(publication);
-        });
+            if (!complete(publication)) {
+                status.setRollbackOnly();
+                return false;
+            }
+            return true;
+        }));
         if (!completed) {
             retry(publication, ErrorCodes.REVISION_CONFLICT, "Skill 默认版本已被更新的发布意图修改");
             return Step.RETRY;
@@ -439,15 +448,19 @@ public class PublicationCoordinator {
             retry(publication, ErrorCodes.REGISTRY_UNAVAILABLE, "注册中心未发现该 Agent 版本的健康实例");
             return Step.RETRY;
         }
-        boolean completed = transactions.execute(status -> {
+        boolean completed = Boolean.TRUE.equals(transactions.execute(status -> {
             if ((agents.setReleaseState(release.id(), "ACTIVE") == 0)
                     || !agents.publishComponent(release.agentId(), release.version(), publication.generation())) {
                 status.setRollbackOnly();
                 return false;
             }
             projections.ready("AGENT", release.id(), serviceName, "runtime");
-            return complete(publication);
-        });
+            if (!complete(publication)) {
+                status.setRollbackOnly();
+                return false;
+            }
+            return true;
+        }));
         if (!completed) {
             retry(publication, ErrorCodes.REVISION_CONFLICT, "Agent 默认版本已被更新的发布意图修改");
             return Step.RETRY;
@@ -456,18 +469,20 @@ public class PublicationCoordinator {
     }
 
     private boolean complete(Publication publication) {
-        return publications.advance(publication.id(), publication.state(), "PUBLISHED", "PUBLISHED", null, null);
+        return publications.advance(
+                publication.id(), worker, publication.state(), "PUBLISHED", "PUBLISHED", null, null);
     }
 
     private void retry(Publication publication, String code, String message) {
-        if (publications.fail(publication.id(), code, message, nextAttempt(publication))) {
+        if (publications.fail(publication.id(), worker, publication.state(), code, message, nextAttempt(publication))) {
             cleanupFailed(publication);
         }
     }
 
     private void failPermanent(Publication publication, String code, String message) {
-        publications.markFailed(publication.id(), code, message);
-        cleanupFailed(publication);
+        if (publications.markFailed(publication.id(), worker, publication.state(), code, message)) {
+            cleanupFailed(publication);
+        }
     }
 
     /**

@@ -143,7 +143,8 @@ public class ControlClient {
     }
 
     private <T> T get(String path, Class<T> type) {
-        return execute(properties.controlServiceName(), properties.controlBaseUrl(), "GET", path, null, type);
+        return execute(
+                properties.controlServiceName(), baseUrl(properties.controlServiceName()), "GET", path, null, type);
     }
 
     private <T> T get(String serviceName, String path, Class<T> type) {
@@ -151,7 +152,8 @@ public class ControlClient {
     }
 
     private <T> T post(String path, Object body, Class<T> type) {
-        return execute(properties.controlServiceName(), properties.controlBaseUrl(), "POST", path, body, type);
+        return execute(
+                properties.controlServiceName(), baseUrl(properties.controlServiceName()), "POST", path, body, type);
     }
 
     private <T> T execute(String serviceName, String baseUrl, String method, String path, Object body, Class<T> type) {
@@ -189,9 +191,10 @@ public class ControlClient {
             if (discovered != null) {
                 return discovered;
             }
-            if (!properties.controlServiceName().equals(serviceName)) {
-                throw new ControlException(503, "COMPONENT_UNAVAILABLE", "注册中心没有可用的组件实例：" + serviceName);
-            }
+            String code = properties.controlServiceName().equals(serviceName)
+                    ? "CONTROL_UNAVAILABLE"
+                    : "COMPONENT_UNAVAILABLE";
+            throw new ControlException(503, code, "注册中心没有可用的组件实例：" + serviceName);
         }
         return properties.controlBaseUrl();
     }

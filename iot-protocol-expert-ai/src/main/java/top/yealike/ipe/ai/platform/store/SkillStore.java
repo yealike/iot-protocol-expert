@@ -216,7 +216,8 @@ public class SkillStore {
     }
 
     public boolean publishComponent(UUID skillId, String version, long expectedGeneration) {
-        return jdbc.update("""
+        int updated =
+                jdbc.update("""
                         update ai_skill_component c
                            set published_version = ?, publication_generation = ?, revision = revision + 1, updated_at = now()
                          where c.id = ?
@@ -228,8 +229,21 @@ public class SkillStore {
                                   and r.generation = ?
                                   and r.state = 'ACTIVE'
                            )
-                        """, version, expectedGeneration, skillId, version, expectedGeneration, expectedGeneration)
-                > 0;
+                        """, version, expectedGeneration, skillId, expectedGeneration, version, expectedGeneration);
+        return updated > 0 || alreadyPublished(skillId, version, expectedGeneration);
+    }
+
+    /**
+     * 发布事务提交后重入时，默认指针与代次已经推进；把该状态视为幂等成功，避免迟到 worker 将成功发布改成失败。
+     */
+    private boolean alreadyPublished(UUID skillId, String version, long expectedGeneration) {
+        Integer count = jdbc.queryForObject(
+                "select count(*) from ai_skill_component where id = ? and published_version = ? and publication_generation = ?",
+                Integer.class,
+                skillId,
+                version,
+                expectedGeneration);
+        return count != null && count > 0;
     }
 
     private SkillComponent mapComponent(java.sql.ResultSet rows) throws java.sql.SQLException {
