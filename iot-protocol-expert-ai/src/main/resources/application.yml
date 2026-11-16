@@ -105,6 +105,13 @@ ipe:
       top-k: ${IPE_AI_TOP_K:6}
       min-score: ${IPE_AI_MIN_SCORE:1}
       max-document-bytes: ${IPE_AI_MAX_DOCUMENT_BYTES:20971520}
+    observability:
+      otel:
+        # 官方 AgentScope TelemetryTracer：invoke_agent / chat / execute_tool Span
+        enabled: ${IPE_AI_OTEL_ENABLED:${IPE_OTLP_ENABLED:true}}
+        # 默认不导出 prompt / response 正文；仅本地排障时显式开启
+        content-enabled: ${IPE_AI_OTEL_CONTENT_ENABLED:false}
+        max-content-chars: ${IPE_AI_OTEL_MAX_CONTENT_CHARS:8192}
 
 logging:
   structured:

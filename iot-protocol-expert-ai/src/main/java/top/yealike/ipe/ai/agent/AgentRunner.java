@@ -18,7 +18,6 @@ import reactor.core.publisher.Flux;
 import top.yealike.ipe.ai.agent.AgentCatalog.Definition;
 import top.yealike.ipe.ai.config.AiProperties;
 import top.yealike.ipe.ai.knowledge.KnowledgeService;
-import top.yealike.ipe.ai.observability.TracedModel;
 import top.yealike.ipe.ai.policy.PolicyService;
 import top.yealike.ipe.ai.support.AiExceptions;
 import top.yealike.ipe.ai.tool.DelegationTools;
@@ -45,8 +44,6 @@ public class AgentRunner {
     private final PolicyService policy;
     private final KnowledgeService knowledge;
     private final RemoteTools remoteTools;
-    private final io.micrometer.observation.ObservationRegistry observations;
-    private final io.micrometer.tracing.Tracer tracer;
 
     public AgentRunner(
             AgentCatalog catalog,
@@ -54,17 +51,13 @@ public class AgentRunner {
             ToolGuard guard,
             PolicyService policy,
             KnowledgeService knowledge,
-            RemoteTools remoteTools,
-            io.micrometer.observation.ObservationRegistry observations,
-            io.micrometer.tracing.Tracer tracer) {
+            RemoteTools remoteTools) {
         this.catalog = catalog;
         this.properties = properties;
         this.guard = guard;
         this.policy = policy;
         this.knowledge = knowledge;
         this.remoteTools = remoteTools;
-        this.observations = observations;
-        this.tracer = tracer;
     }
 
     public Definition requireDefinition(String agentKey) {
@@ -84,10 +77,9 @@ public class AgentRunner {
                 .put("runId", session.runId().toString())
                 .put("agentKey", definition.agentKey())
                 .build();
-        Flux<AgentEvent> events = agent.streamEvents(messages, context)
+        return agent.streamEvents(messages, context)
                 .timeout(Duration.ofMillis(properties.model().timeoutMs()))
                 .doFinally(signal -> agent.close());
-        return events;
     }
 
     /** 子 Agent 同步执行：只取最终文本，不向用户暴露其内部步骤。 */
@@ -141,12 +133,11 @@ public class AgentRunner {
                         .temperature(properties.model().temperature())
                         .build())
                 .build();
-        Model tracedModel = new TracedModel(model, observations, tracer);
         return ReActAgent.builder()
                 .name(definition.name())
                 .description(definition.description())
                 .sysPrompt(definition.sysPrompt())
-                .model(tracedModel)
+                .model(model)
                 .toolkit(toolkit)
                 .maxIters(properties.run().maxIters())
                 .enableMetaTool(false)

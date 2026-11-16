@@ -3,12 +3,13 @@
 当前方案：应用通过 **OTLP HTTP** 把 trace、log、metric 发送到服务器上的 **OpenTelemetry Collector**，Collector 再分发：
 
 ```text
-Protocol/Ops/Simulator --OTLP HTTP--> Collector :4318
-                                      ├── traces  --> Tempo :3200  --> Grafana
-                                      ├── logs    --> Loki :3100   --> Grafana
-                                      └── metrics --> Prometheus (scrape :8889) --> Grafana
+Protocol/Ops/Simulator/AI --OTLP HTTP--> Collector :4318
+                                         ├── traces  --> Tempo :3200  --> Grafana
+                                         ├── logs    --> Loki :3100   --> Grafana
+                                         └── metrics --> Prometheus (scrape :8889) --> Grafana
 
 Ops --JDBC--> PostgreSQL (设备/订单/账单/报文/命令/排障)
+AI  --JDBC--> PostgreSQL (会话/Run/事件/知识库)
 ```
 
 集中式可观测性组件部署在独立服务器上，应用仍可在本机运行。真实服务器地址、账号和部署路径仅保存在本机配置中。
@@ -31,6 +32,8 @@ mvn -B package
 | Prometheus 文本指标 | <http://localhost:19080/actuator/prometheus> | <http://localhost:19082/actuator/prometheus> | <http://localhost:19081/actuator/prometheus> |
 
 `/actuator/telemetry` 仅 `local` profile 启用，缓存最近 1000 个 Span，供没有 Grafana 时快速排查；生产链路以 Tempo 为准。
+
+AI 助手（`19083`）的 `health` / `prometheus` 入口遵循同一规则；AI Trace 不单独建 exporter，直接复用本节的 OTLP 管道。
 
 ## IDEA 启动
 
@@ -65,7 +68,47 @@ Tempo 数据源自带 Trace → Logs 跳转；Loki 的 `trace_id` 派生字段�
 | Prometheus | `9090` | 抓取 Collector `:8889` 暴露的应用指标与 spanmetrics |
 | Grafana | `3000` | 统一查询与展示 |
 
-Collector 内置脱敏：删除 password / authorization / cookie / token / body / payload / VIN / card 等属性，移除 `db.statement`、`db.query.text`、`url.query`。指标资源属性仅保留低基数标签。
+Collector 内置脱敏：删除 password / authorization / cookie / body / payload / VIN / card 等属性，以及
+access_token / api_key / secret 等凭据键；移除 `db.statement`、`db.query.text`、`url.query`。注意不能用宽泛的
+`.*token.*` 规则，否则会误删 `gen_ai.usage.input_tokens` / `output_tokens`。指标资源属性仅保留低基数标签。
+
+## AI 对话链路
+
+AI 服务注册 AgentScope 官方 `TelemetryTracer`，Span 使用 GenAI 语义约定，并复用 Spring Boot 的 OTLP 管道：
+
+> AgentScope 2.0.4 中带内容的 `TelemetryTracer` 仍通过已标记待删除的 `TracerRegistry` 挂载；升级 2.1+
+> 时需复核官方 middleware 是否已支持内容属性，再调整 `AgentScopeTelemetry`。
+
+应用级 Span（HTTP、JDBC、`ai run execute`）由 Spring Boot Micrometer Tracing 产生，Agent 级 Span 由
+AgentScope 官方 `TelemetryTracer` 产生；两者注入同一个 `OpenTelemetry` Bean，共用 `SdkTracerProvider`、
+Resource、Sampler 与 OTLP exporter，因此 trace_id 和父子关系可以连续。
+
+```text
+ai run execute                     # Run 队列恢复的父 Span
+└── invoke_agent team-leader       # gen_ai.operation.name=invoke_agent
+    ├── chat deepseek-flash        # gen_ai.operation.name=chat
+    │   ├── gen_ai.request.model
+    │   ├── gen_ai.usage.input_tokens / output_tokens
+    │   └── gen_ai.response.finish_reasons
+    └── execute_tool search_protocol_knowledge
+```
+
+默认只导出元数据与 token；`gen_ai.input.messages`、`gen_ai.output.messages`、`gen_ai.tool.call.arguments/result`、
+`gen_ai.tool.definitions`、`agentscope.function.*` 不写入 Trace。需要在本地查看完整对话时显式开启：
+
+```powershell
+$env:IPE_AI_OTEL_CONTENT_ENABLED='true'
+$env:IPE_AI_OTEL_MAX_CONTENT_CHARS='8192'
+```
+
+开启后仍会按长度截断，并对常见凭据 JSON 字段、Bearer Token、`sk-*` 密钥做脱敏。完整 prompt/response 属于业务数据，
+不应在生产默认开启；Tempo / Doris 的保留期和访问权限需要同步评估。
+
+Grafana 查询：
+
+- Tempo Explore 选择 `service_name=iot-protocol-expert-ai`，按 Span 名称 `invoke_agent`、`chat`、`execute_tool` 过滤。
+- 打开任一 `chat` Span，在 Attributes 中查看 `gen_ai.usage.input_tokens` / `output_tokens`。
+- 按 `trace_id` 汇总所有 `chat` Span 的 token 属性，可得到一次对话的总 token；Doris 查询按实际 `otel_traces` 表结构调整。
 
 ## 指标
 
