@@ -12,20 +12,18 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.Page;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.ipe.ops.alarm.entity.AlarmRecord;
 import top.yealike.ipe.ops.alarm.entity.AlarmRule;
-import top.yealike.ipe.ops.alarm.repository.AlarmRecordRepository;
-import top.yealike.ipe.ops.alarm.repository.AlarmRuleRepository;
 import top.yealike.ipe.ops.common.PageResult;
 import top.yealike.ipe.ops.common.PageSupport;
 import top.yealike.ipe.ops.device.dto.DeviceDtos;
 import top.yealike.ipe.ops.device.entity.DeviceInstance;
 import top.yealike.ipe.ops.device.entity.DevicePropertyLatest;
-import top.yealike.ipe.ops.device.repository.DeviceInstanceRepository;
+import top.yealike.ipe.ops.mapper.AlarmRecordMapper;
+import top.yealike.ipe.ops.mapper.AlarmRuleMapper;
+import top.yealike.ipe.ops.mapper.DeviceInstanceMapper;
 import top.yealike.ipe.ops.thingmodel.ThingModelCodec;
 import top.yealike.ipe.ops.thingmodel.ThingValues;
 
@@ -47,15 +45,15 @@ public class AlarmService {
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final int AUTO_CLOSE_AFTER_MINUTES = 5;
 
-    private final AlarmRuleRepository rules;
-    private final AlarmRecordRepository records;
-    private final DeviceInstanceRepository devices;
+    private final AlarmRuleMapper rules;
+    private final AlarmRecordMapper records;
+    private final DeviceInstanceMapper devices;
 
     private final AtomicLong ruleEpoch = new AtomicLong();
     private final Map<Long, CachedRules> ruleCache = new ConcurrentHashMap<>();
     private final Map<String, Pending> pending = new ConcurrentHashMap<>();
 
-    public AlarmService(AlarmRuleRepository rules, AlarmRecordRepository records, DeviceInstanceRepository devices) {
+    public AlarmService(AlarmRuleMapper rules, AlarmRecordMapper records, DeviceInstanceMapper devices) {
         this.rules = rules;
         this.records = records;
         this.devices = devices;
@@ -262,41 +260,29 @@ public class AlarmService {
             String keyword,
             Integer page,
             Integer size) {
-        Specification<AlarmRecord> spec = (root, query, cb) -> {
-            List<jakarta.persistence.criteria.Predicate> predicates = new ArrayList<>();
-            if (state != null && !state.isBlank()) {
-                predicates.add(cb.equal(root.get("state"), state.trim().toUpperCase()));
-            }
-            if (level != null && !level.isBlank()) {
-                predicates.add(cb.equal(root.get("level"), level.trim().toUpperCase()));
-            }
-            if (deviceId != null) {
-                predicates.add(cb.equal(root.get("deviceId"), deviceId));
-            }
-            if (keyword != null && !keyword.isBlank()) {
-                predicates.add(cb.like(
-                        cb.lower(root.get("title")), "%" + keyword.trim().toLowerCase() + "%"));
-            }
-            if (deviceType != null && !deviceType.isBlank() || stationId != null) {
-                var sub = query.subquery(Long.class);
-                var deviceRoot = sub.from(DeviceInstance.class);
-                List<jakarta.persistence.criteria.Predicate> inner = new ArrayList<>();
-                if (deviceType != null && !deviceType.isBlank()) {
-                    inner.add(cb.equal(
-                            deviceRoot.get("deviceType"), deviceType.trim().toUpperCase()));
-                }
-                if (stationId != null) {
-                    inner.add(cb.equal(deviceRoot.get("stationId"), stationId));
-                }
-                sub.select(deviceRoot.get("id")).where(inner.toArray(jakarta.persistence.criteria.Predicate[]::new));
-                predicates.add(root.get("deviceId").in(sub));
-            }
-            return cb.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
-        };
-        Page<AlarmRecord> result = records.findAll(
-                spec, PageSupport.pageable(page, size, "-lastAt", Set.of("lastAt", "firstAt", "id", "level")));
-        Map<Long, DeviceInstance> deviceMap = deviceMap(result.getContent());
-        return PageResult.of(result, record -> view(record, deviceMap));
+        String stateFilter =
+                state == null || state.isBlank() ? null : state.trim().toUpperCase();
+        String levelFilter =
+                level == null || level.isBlank() ? null : level.trim().toUpperCase();
+        String typeFilter = deviceType == null || deviceType.isBlank()
+                ? null
+                : deviceType.trim().toUpperCase();
+        String keywordFilter = keyword == null || keyword.isBlank() ? null : keyword.trim();
+        PageSupport.PageQuery paging =
+                PageSupport.pageable(page, size, "-lastAt", Set.of("lastAt", "firstAt", "id", "level"));
+        List<AlarmRecord> content = records.search(
+                stateFilter,
+                levelFilter,
+                deviceId,
+                typeFilter,
+                stationId,
+                keywordFilter,
+                paging.orderBy(),
+                paging.size(),
+                paging.offset());
+        long total = records.countSearch(stateFilter, levelFilter, deviceId, typeFilter, stationId, keywordFilter);
+        Map<Long, DeviceInstance> deviceMap = deviceMap(content);
+        return PageResult.of(content, paging.page(), paging.size(), total, record -> view(record, deviceMap));
     }
 
     public List<DeviceDtos.AlarmView> openFor(Long deviceId) {

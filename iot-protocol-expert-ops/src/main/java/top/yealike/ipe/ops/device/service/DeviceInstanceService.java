@@ -1,8 +1,5 @@
 package top.yealike.ipe.ops.device.service;
 
-import jakarta.persistence.criteria.Predicate;
-import jakarta.persistence.criteria.Root;
-import jakarta.persistence.criteria.Subquery;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -17,8 +14,6 @@ import java.util.Optional;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.data.domain.Page;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.ipe.ops.alarm.service.AlarmService;
@@ -31,15 +26,15 @@ import top.yealike.ipe.ops.device.entity.DeviceInstance;
 import top.yealike.ipe.ops.device.entity.DevicePropertyLatest;
 import top.yealike.ipe.ops.device.entity.DeviceTag;
 import top.yealike.ipe.ops.device.entity.Product;
-import top.yealike.ipe.ops.device.repository.DeviceChannelRepository;
-import top.yealike.ipe.ops.device.repository.DeviceEventLogRepository;
-import top.yealike.ipe.ops.device.repository.DeviceInstanceRepository;
-import top.yealike.ipe.ops.device.repository.DevicePropertyLatestRepository;
-import top.yealike.ipe.ops.device.repository.DeviceTagRepository;
 import top.yealike.ipe.ops.domain.CommandRecord;
 import top.yealike.ipe.ops.domain.Station;
-import top.yealike.ipe.ops.repository.CommandRecordRepository;
-import top.yealike.ipe.ops.repository.StationRepository;
+import top.yealike.ipe.ops.mapper.CommandRecordMapper;
+import top.yealike.ipe.ops.mapper.DeviceChannelMapper;
+import top.yealike.ipe.ops.mapper.DeviceEventLogMapper;
+import top.yealike.ipe.ops.mapper.DeviceInstanceMapper;
+import top.yealike.ipe.ops.mapper.DevicePropertyLatestMapper;
+import top.yealike.ipe.ops.mapper.DeviceTagMapper;
+import top.yealike.ipe.ops.mapper.StationMapper;
 import top.yealike.ipe.ops.thingmodel.DeviceTypeCatalog;
 import top.yealike.ipe.ops.thingmodel.ThingModel;
 import top.yealike.ipe.ops.thingmodel.ThingModelCodec;
@@ -66,30 +61,30 @@ public class DeviceInstanceService {
     private static final Set<String> SORTABLE =
             Set.of("id", "deviceCode", "name", "deviceType", "protocol", "state", "lastSeen", "createdAt", "updatedAt");
 
-    private final DeviceInstanceRepository devices;
-    private final DeviceTagRepository tags;
-    private final DeviceChannelRepository channels;
-    private final DeviceEventLogRepository events;
-    private final DevicePropertyLatestRepository latest;
+    private final DeviceInstanceMapper devices;
+    private final DeviceTagMapper tags;
+    private final DeviceChannelMapper channels;
+    private final DeviceEventLogMapper events;
+    private final DevicePropertyLatestMapper latest;
     private final ProductService products;
-    private final StationRepository stations;
+    private final StationMapper stations;
     private final ThingModelResolver models;
     private final DevicePropertyService properties;
     private final AlarmService alarms;
-    private final CommandRecordRepository commands;
+    private final CommandRecordMapper commands;
 
     public DeviceInstanceService(
-            DeviceInstanceRepository devices,
-            DeviceTagRepository tags,
-            DeviceChannelRepository channels,
-            DeviceEventLogRepository events,
-            DevicePropertyLatestRepository latest,
+            DeviceInstanceMapper devices,
+            DeviceTagMapper tags,
+            DeviceChannelMapper channels,
+            DeviceEventLogMapper events,
+            DevicePropertyLatestMapper latest,
             ProductService products,
-            StationRepository stations,
+            StationMapper stations,
             ThingModelResolver models,
             DevicePropertyService properties,
             AlarmService alarms,
-            CommandRecordRepository commands) {
+            CommandRecordMapper commands) {
         this.devices = devices;
         this.tags = tags;
         this.channels = channels;
@@ -106,57 +101,32 @@ public class DeviceInstanceService {
     // ------------------------------------------------------------------ 查询
 
     public PageResult<DeviceDtos.DeviceRow> query(DeviceDtos.DeviceQuery query) {
-        Specification<DeviceInstance> spec = specification(query);
-        Page<DeviceInstance> page =
-                devices.findAll(spec, PageSupport.pageable(query.page(), query.size(), query.sort(), SORTABLE));
-        Map<Long, DeviceInstance> self = new LinkedHashMap<>();
-        page.getContent().forEach(device -> self.put(device.id, device));
-        ViewContext context = context(page.getContent());
-        return PageResult.of(page, device -> row(device, context));
-    }
-
-    private Specification<DeviceInstance> specification(DeviceDtos.DeviceQuery query) {
-        return (root, cq, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
-            if (query.keyword() != null && !query.keyword().isBlank()) {
-                String like = "%" + query.keyword().trim().toLowerCase(Locale.ROOT) + "%";
-                predicates.add(cb.or(
-                        cb.like(cb.lower(root.get("deviceCode")), like),
-                        cb.like(cb.lower(root.get("name")), like),
-                        cb.like(cb.lower(root.get("protocolDeviceId")), like)));
-            }
-            if (query.deviceType() != null && !query.deviceType().isBlank()) {
-                predicates.add(cb.equal(
-                        root.get("deviceType"), query.deviceType().trim().toUpperCase(Locale.ROOT)));
-            }
-            if (query.states() != null && !query.states().isEmpty()) {
-                predicates.add(root.get("state")
-                        .in(query.states().stream()
-                                .map(DeviceInstance::normalizeState)
-                                .toList()));
-            }
-            if (query.stationId() != null) {
-                predicates.add(cb.equal(root.get("stationId"), query.stationId()));
-            }
-            if (query.productId() != null) {
-                predicates.add(cb.equal(root.get("productId"), query.productId()));
-            }
-            if (query.enabled() != null) {
-                predicates.add(cb.equal(root.get("enabled"), query.enabled()));
-            }
-            if (query.tagFilters() != null && !query.tagFilters().isEmpty()) {
-                for (Map.Entry<String, String> entry : query.tagFilters().entrySet()) {
-                    Subquery<Long> sub = cq.subquery(Long.class);
-                    Root<DeviceTag> tagRoot = sub.from(DeviceTag.class);
-                    sub.select(tagRoot.get("deviceId"))
-                            .where(
-                                    cb.equal(tagRoot.get("tagKey"), entry.getKey()),
-                                    cb.equal(tagRoot.get("tagValue"), entry.getValue()));
-                    predicates.add(root.get("id").in(sub));
-                }
-            }
-            return cb.and(predicates.toArray(Predicate[]::new));
-        };
+        String keyword = query.keyword() == null || query.keyword().isBlank()
+                ? null
+                : query.keyword().trim();
+        String deviceType = query.deviceType() == null || query.deviceType().isBlank()
+                ? null
+                : query.deviceType().trim().toUpperCase(Locale.ROOT);
+        List<String> states = query.states() == null
+                ? null
+                : query.states().stream().map(DeviceInstance::normalizeState).toList();
+        Map<String, String> tagFilters = query.tagFilters() == null ? Map.of() : query.tagFilters();
+        PageSupport.PageQuery paging = PageSupport.pageable(query.page(), query.size(), query.sort(), SORTABLE);
+        List<DeviceInstance> content = devices.search(
+                keyword,
+                deviceType,
+                states,
+                query.stationId(),
+                query.productId(),
+                query.enabled(),
+                tagFilters,
+                paging.orderBy(),
+                paging.size(),
+                paging.offset());
+        long total = devices.countSearch(
+                keyword, deviceType, states, query.stationId(), query.productId(), query.enabled(), tagFilters);
+        ViewContext context = context(content);
+        return PageResult.of(content, paging.page(), paging.size(), total, device -> row(device, context));
     }
 
     public DeviceInstance get(Long id) {
@@ -304,7 +274,8 @@ public class DeviceInstanceService {
                 counts[0]++;
             }
         }
-        return new ViewContext(stationNames, productNames, products.protocolDocuments(productIds), tagMap, propertyMap, channelCounts);
+        return new ViewContext(
+                stationNames, productNames, products.protocolDocuments(productIds), tagMap, propertyMap, channelCounts);
     }
 
     public DeviceDtos.DeviceRow view(DeviceInstance device) {

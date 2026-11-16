@@ -52,9 +52,9 @@ public class OrderController {
             @RequestParam(required = false) List<ChargeOrder.Status> status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
+        var result = orders.searchPage(stationId, deviceId, gunNo, protocol, orderNo, from, to, status, page, size);
         return top.yealike.ipe.ops.common.PageResult.of(
-                orders.searchPage(stationId, deviceId, gunNo, protocol, orderNo, from, to, status, page, size),
-                orders::view);
+                result.content(), result.page(), result.size(), result.total(), orders::view);
     }
 
     @GetMapping("/orders/{orderNo}")

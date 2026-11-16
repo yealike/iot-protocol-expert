@@ -8,16 +8,16 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.ipe.ops.domain.RateModel;
 import top.yealike.ipe.ops.dto.OpsDtos;
-import top.yealike.ipe.ops.repository.RateModelRepository;
+import top.yealike.ipe.ops.mapper.RateModelMapper;
 
 @Service
 public class RateModelService {
 
     private static final int[] DEFAULT_SEGMENTS = defaultSegments();
 
-    private final RateModelRepository models;
+    private final RateModelMapper models;
 
-    public RateModelService(RateModelRepository models) {
+    public RateModelService(RateModelMapper models) {
         this.models = models;
     }
 

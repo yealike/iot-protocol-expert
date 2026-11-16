@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.ipe.ops.mapper.ProtocolDocSectionMapper">
+
+    <resultMap id="ProtocolDocSectionMap" type="top.yealike.ipe.ops.domain.ProtocolDocSection">
+        <id property="id" column="id"/>
+        <result property="docId" column="doc_id"/>
+        <result property="protocol" column="protocol"/>
+        <result property="version" column="version"/>
+        <result property="frameOrAction" column="frame_or_action"/>
+        <result property="heading" column="heading"/>
+        <result property="content" column="content"/>
+        <result property="locator" column="locator"/>
+        <result property="keywords" column="keywords"/>
+    </resultMap>
+
+    <select id="selectByFrame" resultMap="ProtocolDocSectionMap">
+        select id, doc_id, protocol, version, frame_or_action, heading, content, locator, keywords
+        from ipe_ops.protocol_doc_section
+        where protocol = #{protocol}
+          and version = #{version}
+          and lower(frame_or_action) = lower(#{frameOrAction})
+        order by id
+    </select>
+
+    <select id="search" resultMap="ProtocolDocSectionMap">
+        select id, doc_id, protocol, version, frame_or_action, heading, content, locator, keywords
+        from ipe_ops.protocol_doc_section
+        where protocol = #{protocol}
+          and version = #{version}
+          and (
+              lower(content) like lower(concat('%', #{keyword}, '%'))
+              or lower(keywords) like lower(concat('%', #{keyword}, '%'))
+              or lower(heading) like lower(concat('%', #{keyword}, '%'))
+          )
+        order by id
+    </select>
+</mapper>

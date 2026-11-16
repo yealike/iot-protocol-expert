@@ -20,7 +20,8 @@ class AiContextCodecTest {
 
     @Test
     void decodesOperationBoundContext() throws Exception {
-        String encoded = encode("get_order_detail", """
+        String encoded = encode(
+                "get_order_detail", """
                 {"actor":"1","scope":"1,2","session":"session-id","expires":%d}
                 """.formatted(Instant.now().plusSeconds(30).getEpochSecond()));
         var context = codec().decode("get_order_detail", encoded);
@@ -32,7 +33,8 @@ class AiContextCodecTest {
 
     @Test
     void rejectsContextBoundToAnotherOperation() throws Exception {
-        String encoded = encode("resolve_session", """
+        String encoded = encode(
+                "resolve_session", """
                 {"actor":"1","expires":%d}
                 """.formatted(Instant.now().plusSeconds(30).getEpochSecond()));
 
@@ -41,7 +43,8 @@ class AiContextCodecTest {
 
     @Test
     void rejectsExpiredContext() throws Exception {
-        String encoded = encode("get_order_detail", """
+        String encoded = encode(
+                "get_order_detail", """
                 {"actor":"1","expires":%d}
                 """.formatted(Instant.now().minusSeconds(1).getEpochSecond()));
 
@@ -64,10 +67,9 @@ class AiContextCodecTest {
         byte[] payload = cipher.doFinal(claims.getBytes(StandardCharsets.UTF_8));
         return Base64.getUrlEncoder()
                 .withoutPadding()
-                .encodeToString(
-                        java.nio.ByteBuffer.allocate(nonce.length + payload.length)
-                                .put(nonce)
-                                .put(payload)
-                                .array());
+                .encodeToString(java.nio.ByteBuffer.allocate(nonce.length + payload.length)
+                        .put(nonce)
+                        .put(payload)
+                        .array());
     }
 }

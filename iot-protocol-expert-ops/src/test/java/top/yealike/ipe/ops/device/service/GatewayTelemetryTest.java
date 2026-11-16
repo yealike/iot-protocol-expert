@@ -12,13 +12,16 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import top.yealike.ipe.ops.alarm.service.AlarmService;
 import top.yealike.ipe.ops.device.entity.DeviceInstance;
-import top.yealike.ipe.ops.device.repository.*;
+import top.yealike.ipe.ops.mapper.DeviceChannelMapper;
+import top.yealike.ipe.ops.mapper.DeviceInstanceMapper;
+import top.yealike.ipe.ops.mapper.DevicePropertyLatestMapper;
+import top.yealike.ipe.ops.mapper.DevicePropertyTsMapper;
 import top.yealike.ipe.ops.thingmodel.ThingModel;
 import top.yealike.ipe.ops.thingmodel.ValueType;
 
 class GatewayTelemetryTest {
-    private final DeviceInstanceRepository devices = mock(DeviceInstanceRepository.class);
-    private final DevicePropertyLatestRepository latest = mock(DevicePropertyLatestRepository.class);
+    private final DeviceInstanceMapper devices = mock(DeviceInstanceMapper.class);
+    private final DevicePropertyLatestMapper latest = mock(DevicePropertyLatestMapper.class);
     private final ThingModelResolver models = mock(ThingModelResolver.class);
     private DevicePropertyService service;
     private DeviceInstance device;
@@ -27,9 +30,9 @@ class GatewayTelemetryTest {
     void setUp() {
         service = new DevicePropertyService(
                 latest,
-                mock(DevicePropertyTsRepository.class),
+                mock(DevicePropertyTsMapper.class),
                 devices,
-                mock(DeviceChannelRepository.class),
+                mock(DeviceChannelMapper.class),
                 models,
                 mock(AlarmService.class));
         device = new DeviceInstance();

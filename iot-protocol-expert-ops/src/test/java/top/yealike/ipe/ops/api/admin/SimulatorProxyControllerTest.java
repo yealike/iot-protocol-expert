@@ -23,13 +23,18 @@ class SimulatorProxyControllerTest {
         });
         server.start();
         try {
-            var proxy = new SimulatorProxyController("http://127.0.0.1:" + server.getAddress().getPort());
+            var proxy = new SimulatorProxyController(
+                    "http://127.0.0.1:" + server.getAddress().getPort());
             var request = new MockHttpServletRequest("POST", "/api/simulator-proxy/fleet/12/start");
             request.setQueryString("code=1");
             var response = proxy.forward(request, "{}".getBytes(StandardCharsets.UTF_8));
             assertEquals(409, response.getStatusCode().value());
             assertEquals("{\"message\":\"failed\"}", new String((byte[]) response.getBody(), StandardCharsets.UTF_8));
-            assertEquals(400, proxy.forward(new MockHttpServletRequest("GET", "/api/simulator-proxy/../state"), null).getStatusCode().value());
+            assertEquals(
+                    400,
+                    proxy.forward(new MockHttpServletRequest("GET", "/api/simulator-proxy/../state"), null)
+                            .getStatusCode()
+                            .value());
         } finally {
             server.stop(0);
         }

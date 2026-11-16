@@ -3,9 +3,6 @@ package top.yealike.ipe.ops.common;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 
 /** 分页与排序参数的安全解析：限制单页上限，白名单排序字段。 */
 public final class PageSupport {
@@ -15,37 +12,60 @@ public final class PageSupport {
 
     private PageSupport() {}
 
-    public static Pageable pageable(Integer page, Integer size, String sort, Set<String> allowedSortFields) {
-        int pageIndex = page == null || page < 0 ? 0 : page;
-        int pageSize = size == null || size <= 0 ? DEFAULT_SIZE : Math.min(size, MAX_SIZE);
-        return PageRequest.of(pageIndex, pageSize, sort(sort, allowedSortFields));
+    public static PageQuery pageable(Integer page, Integer size, String sort, Set<String> allowedSortFields) {
+        return pageable(page, size, sort, allowedSortFields, "-id", MAX_SIZE);
     }
 
+    public static PageQuery pageable(
+            Integer page, Integer size, String sort, Set<String> allowedSortFields, String defaultSort, int maxSize) {
+        int pageIndex = page == null || page < 0 ? 0 : page;
+        int pageSize = size == null || size <= 0 ? DEFAULT_SIZE : Math.min(size, maxSize);
+        return new PageQuery(pageIndex, pageSize, pageIndex * pageSize, orderBy(sort, allowedSortFields, defaultSort));
+    }
+
+    public record PageQuery(int page, int size, int offset, String orderBy) {}
+
     /** 支持 {@code field,asc|desc} 与简写 {@code -field}。非法字段直接忽略。 */
-    public static Sort sort(String raw, Set<String> allowedSortFields) {
-        if (raw == null || raw.isBlank()) {
-            return Sort.by(Sort.Order.desc("id"));
-        }
-        List<Sort.Order> orders = new ArrayList<>();
-        for (String token : raw.split(";")) {
+    private static String orderBy(String raw, Set<String> allowedSortFields, String defaultSort) {
+        String effective = raw == null || raw.isBlank() ? defaultSort : raw;
+        List<String> orders = new ArrayList<>();
+        for (String token : effective.split(";")) {
             String text = token.trim();
             if (text.isEmpty()) {
                 continue;
             }
-            Sort.Direction direction = Sort.Direction.ASC;
+            String direction = "ASC";
             if (text.startsWith("-")) {
-                direction = Sort.Direction.DESC;
+                direction = "DESC";
                 text = text.substring(1);
             }
             String[] parts = text.split(",");
             String field = parts[0].trim();
-            if (parts.length > 1) {
-                direction = "desc".equalsIgnoreCase(parts[1].trim()) ? Sort.Direction.DESC : Sort.Direction.ASC;
+            if (parts.length > 1 && "desc".equalsIgnoreCase(parts[1].trim())) {
+                direction = "DESC";
             }
-            if (allowedSortFields == null || allowedSortFields.contains(field)) {
-                orders.add(new Sort.Order(direction, field));
+            if (!field.matches("[A-Za-z][A-Za-z0-9]*")
+                    || (allowedSortFields != null && !allowedSortFields.contains(field))) {
+                continue;
+            }
+            orders.add(column(field) + " " + direction);
+        }
+        if (orders.isEmpty()) {
+            orders.add("id DESC");
+        }
+        return String.join(", ", orders);
+    }
+
+    private static String column(String field) {
+        StringBuilder column = new StringBuilder();
+        for (int i = 0; i < field.length(); i++) {
+            char ch = field.charAt(i);
+            if (Character.isUpperCase(ch)) {
+                column.append('_').append(Character.toLowerCase(ch));
+            } else {
+                column.append(ch);
             }
         }
-        return orders.isEmpty() ? Sort.by(Sort.Order.desc("id")) : Sort.by(orders);
+        return column.toString();
     }
 }

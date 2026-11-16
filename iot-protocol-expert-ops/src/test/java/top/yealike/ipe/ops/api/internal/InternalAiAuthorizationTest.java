@@ -15,11 +15,12 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import top.yealike.ipe.ops.config.OpsProperties;
 import top.yealike.ipe.ops.device.service.DeviceInstanceService;
 import top.yealike.ipe.ops.domain.ChargeOrder;
+import top.yealike.ipe.ops.mapper.ProtocolDocumentMapper;
+import top.yealike.ipe.ops.mapper.StationMapper;
 import top.yealike.ipe.ops.security.IdentityService;
 import top.yealike.ipe.ops.service.BillService;
 import top.yealike.ipe.ops.service.OrderService;
@@ -44,7 +45,8 @@ class InternalAiAuthorizationTest {
                 mock(BillService.class),
                 mock(DeviceInstanceService.class),
                 mock(OrderTelemetryService.class),
-                mock(JdbcTemplate.class),
+                mock(ProtocolDocumentMapper.class),
+                mock(StationMapper.class),
                 identities,
                 mock(OpsSessionLookup.class),
                 new AiContextCodec(properties),

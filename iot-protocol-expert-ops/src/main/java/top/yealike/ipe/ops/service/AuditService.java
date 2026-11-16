@@ -2,18 +2,17 @@ package top.yealike.ipe.ops.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.ipe.ops.domain.AuditLog;
-import top.yealike.ipe.ops.repository.AuditLogRepository;
+import top.yealike.ipe.ops.mapper.AuditLogMapper;
 
 @Service
 public class AuditService {
 
-    private final AuditLogRepository audits;
+    private final AuditLogMapper audits;
 
-    public AuditService(AuditLogRepository audits) {
+    public AuditService(AuditLogMapper audits) {
         this.audits = audits;
     }
 
@@ -31,6 +30,6 @@ public class AuditService {
     }
 
     public List<AuditLog> recent() {
-        return audits.findAll(PageRequest.of(0, 200)).getContent();
+        return audits.findRecent200();
     }
 }

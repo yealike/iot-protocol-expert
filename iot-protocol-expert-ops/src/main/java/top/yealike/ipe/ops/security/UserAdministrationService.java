@@ -1,13 +1,17 @@
 package top.yealike.ipe.ops.security;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Set;
 import org.springframework.http.HttpStatus;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
+import top.yealike.ipe.ops.domain.AuditLog;
+import top.yealike.ipe.ops.domain.OpsUser;
+import top.yealike.ipe.ops.mapper.AuditLogMapper;
+import top.yealike.ipe.ops.mapper.IdentityMapper;
 
 @Service
 public class UserAdministrationService {
@@ -17,9 +21,10 @@ public class UserAdministrationService {
 
     public record Role(String code, String name, List<String> permissions) {}
 
-    private final JdbcTemplate jdbc;
+    private final IdentityMapper iam;
     private final PasswordEncoder passwords;
     private final IdentityService identities;
+    private final AuditLogMapper audits;
 
     public record Change(
             String username,
@@ -29,28 +34,24 @@ public class UserAdministrationService {
             boolean allStations,
             List<Long> stationIds) {}
 
-    public UserAdministrationService(JdbcTemplate jdbc, PasswordEncoder passwords, IdentityService identities) {
-        this.jdbc = jdbc;
+    public UserAdministrationService(
+            IdentityMapper iam, PasswordEncoder passwords, IdentityService identities, AuditLogMapper audits) {
+        this.iam = iam;
         this.passwords = passwords;
         this.identities = identities;
+        this.audits = audits;
     }
 
     public List<IdentityService.Identity> list() {
-        return jdbc.queryForList("select id from ops_user order by id", Long.class).stream()
+        return iam.selectAllUserIds().stream()
                 .map(id -> identities.byId(id).orElseThrow())
                 .toList();
     }
 
     public List<Role> roles() {
-        return jdbc.query(
-                "select code, name from iam_role order by code",
-                (rs, row) -> new Role(
-                        rs.getString("code"),
-                        rs.getString("name"),
-                        jdbc.queryForList(
-                                "select permission from iam_role_permission where role_code = ? order by permission",
-                                String.class,
-                                rs.getString("code"))));
+        return iam.selectRoles().stream()
+                .map(role -> new Role(role.code(), role.name(), iam.selectRolePermissions(role.code())))
+                .toList();
     }
 
     @Transactional
@@ -60,16 +61,10 @@ public class UserAdministrationService {
         if ((permissions.contains("ops:manage") || permissions.contains("ops:operate"))
                 && !permissions.contains("ops:read")) throw bad("运营操作和管理权限需要运营读取权限");
         if (permissions.contains("ai:admin") && !permissions.contains("ai:use")) throw bad("AI 管理权限需要 AI 使用权限");
-        jdbc.update("delete from iam_role_permission where role_code = ?", code);
-        for (String permission : Set.copyOf(permissions))
-            jdbc.update("insert into iam_role_permission(role_code,permission) values (?,?)", code, permission);
-        jdbc.update(
-                "update ops_user set auth_version = auth_version + 1 where id in (select user_id from iam_user_role where role_code = ?)",
-                code);
-        jdbc.update(
-                "insert into audit_log(actor,action,target_type,target_id,result,created_at) values (?, 'ROLE_UPDATE', 'ROLE', ?, 'SUCCESS', now())",
-                actor,
-                code);
+        iam.deleteRolePermissions(code);
+        for (String permission : Set.copyOf(permissions)) iam.insertRolePermission(code, permission);
+        iam.incrementAuthVersionByRole(code);
+        audit(actor, "ROLE_UPDATE", "ROLE", code);
         return roles().stream()
                 .filter(role -> role.code().equals(code))
                 .findFirst()
@@ -79,17 +74,16 @@ public class UserAdministrationService {
     @Transactional
     public IdentityService.Identity create(Change change, String actor) {
         validate(change, true);
-        if (!jdbc.queryForList("select id from ops_user where username = ?", Long.class, change.username())
-                .isEmpty()) throw bad("用户名已存在");
-        Long id = jdbc.queryForObject(
-                "insert into ops_user(username,password_hash,enabled,all_stations,created_at) values (?,?,?,?,now()) returning id",
-                Long.class,
-                change.username(),
-                passwords.encode(change.password()),
-                change.enabled(),
-                change.allStations());
+        if (iam.countUsername(change.username()) > 0) throw bad("用户名已存在");
+        OpsUser user = new OpsUser();
+        user.username = change.username();
+        user.passwordHash = passwords.encode(change.password());
+        user.enabled = change.enabled();
+        user.createdAt = LocalDateTime.now();
+        iam.insertUser(user, change.allStations());
+        long id = user.id;
         assign(id, change);
-        audit(actor, "USER_CREATE", id);
+        audit(actor, "USER_CREATE", "USER", String.valueOf(id));
         return identities.byId(id).orElseThrow();
     }
 
@@ -101,26 +95,20 @@ public class UserAdministrationService {
         if (target.username().equals(actor)
                 && (!change.enabled() || !change.roles().contains("ADMIN") || !change.allStations()))
             throw bad("不能停用或移除自己的管理员权限");
-        jdbc.update(
-                "update ops_user set enabled = ?, all_stations = ?, auth_version = auth_version + 1 where id = ?",
-                change.enabled(),
-                change.allStations(),
-                id);
+        iam.updateUserAccess(id, change.enabled(), change.allStations());
         if (change.password() != null && !change.password().isBlank())
-            jdbc.update("update ops_user set password_hash = ? where id = ?", passwords.encode(change.password()), id);
-        jdbc.update("delete from iam_user_role where user_id = ?", id);
-        jdbc.update("delete from iam_user_station where user_id = ?", id);
+            iam.updatePassword(id, passwords.encode(change.password()));
+        iam.deleteUserRoles(id);
+        iam.deleteUserStations(id);
         assign(id, change);
-        audit(actor, "USER_UPDATE", id);
+        audit(actor, "USER_UPDATE", "USER", String.valueOf(id));
         return identities.byId(id).orElseThrow();
     }
 
     private void assign(long id, Change change) {
-        for (String role : Set.copyOf(change.roles()))
-            jdbc.update("insert into iam_user_role(user_id,role_code) values (?,?)", id, role);
+        for (String role : Set.copyOf(change.roles())) iam.insertUserRole(id, role);
         if (!change.allStations())
-            for (Long station : Set.copyOf(change.stationIds()))
-                jdbc.update("insert into iam_user_station(user_id,station_id) values (?,?)", id, station);
+            for (Long station : Set.copyOf(change.stationIds())) iam.insertUserStation(id, station);
     }
 
     private void validate(Change c, boolean creating) {
@@ -134,17 +122,18 @@ public class UserAdministrationService {
         if (c.roles() == null || c.roles().isEmpty() || !ROLES.containsAll(c.roles())) throw bad("角色无效");
         if (c.stationIds() == null || c.stationIds().stream().anyMatch(id -> id == null || id <= 0))
             throw bad("站点范围无效");
-        for (Long id : c.stationIds())
-            if (jdbc.queryForObject("select count(*) from station where id = ?", Long.class, id) == 0)
-                throw bad("站点不存在: " + id);
+        for (Long id : c.stationIds()) if (!iam.stationExists(id)) throw bad("站点不存在: " + id);
     }
 
-    private void audit(String actor, String action, long id) {
-        jdbc.update(
-                "insert into audit_log(actor,action,target_type,target_id,result,created_at) values (?,?, 'USER', ?, 'SUCCESS', now())",
-                actor,
-                action,
-                String.valueOf(id));
+    private void audit(String actor, String action, String targetType, String targetId) {
+        AuditLog log = new AuditLog();
+        log.actor = actor;
+        log.action = action;
+        log.targetType = targetType;
+        log.targetId = targetId;
+        log.result = "SUCCESS";
+        log.createdAt = LocalDateTime.now();
+        audits.save(log);
     }
 
     private static ResponseStatusException bad(String message) {

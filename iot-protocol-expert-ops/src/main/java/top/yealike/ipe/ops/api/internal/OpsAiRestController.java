@@ -16,19 +16,19 @@ import java.util.Map;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-import tools.jackson.databind.json.JsonMapper;
-import top.yealike.ipe.ops.config.OpsProperties;
 import top.yealike.ipe.ops.device.dto.DeviceDtos;
 import top.yealike.ipe.ops.device.service.DeviceInstanceService;
 import top.yealike.ipe.ops.domain.ChargeOrder;
+import top.yealike.ipe.ops.domain.Station;
 import top.yealike.ipe.ops.dto.OpsDtos;
+import top.yealike.ipe.ops.mapper.ProtocolDocumentMapper;
+import top.yealike.ipe.ops.mapper.StationMapper;
 import top.yealike.ipe.ops.security.IdentityService;
 import top.yealike.ipe.ops.service.BillService;
 import top.yealike.ipe.ops.service.OrderService;
@@ -48,27 +48,30 @@ public class OpsAiRestController {
     private final BillService bills;
     private final DeviceInstanceService devices;
     private final OrderTelemetryService telemetry;
-    private final JdbcTemplate jdbc;
+    private final ProtocolDocumentMapper documents;
+    private final StationMapper stations;
     private final IdentityService identities;
     private final OpsSessionLookup sessions;
     private final AiContextCodec contexts;
     private final String documentDirectory;
 
     public OpsAiRestController(
-        OrderService orders,
-        BillService bills,
-        DeviceInstanceService devices,
-        OrderTelemetryService telemetry,
-        JdbcTemplate jdbc,
-        IdentityService identities,
-        OpsSessionLookup sessions,
+            OrderService orders,
+            BillService bills,
+            DeviceInstanceService devices,
+            OrderTelemetryService telemetry,
+            ProtocolDocumentMapper documents,
+            StationMapper stations,
+            IdentityService identities,
+            OpsSessionLookup sessions,
             AiContextCodec contexts,
-        @Value("${ipe.ops.protocol-document-dir:./data/protocol-documents}") String documentDirectory) {
+            @Value("${ipe.ops.protocol-document-dir:./data/protocol-documents}") String documentDirectory) {
         this.orders = orders;
         this.bills = bills;
         this.devices = devices;
         this.telemetry = telemetry;
-        this.jdbc = jdbc;
+        this.documents = documents;
+        this.stations = stations;
         this.identities = identities;
         this.sessions = sessions;
         this.contexts = contexts;
@@ -89,9 +92,9 @@ public class OpsAiRestController {
     public IdentityService.Identity userIdentity(@RequestBody Map<String, Object> args) {
         context("resolve_actor", args);
         return identities
-            .byId(number(args, "id"))
-            .filter(IdentityService.Identity::enabled)
-            .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
+                .byId(number(args, "id"))
+                .filter(IdentityService.Identity::enabled)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
 
     @PostMapping("/get_order_detail")
@@ -131,13 +134,13 @@ public class OpsAiRestController {
         data.put("device", deviceSummary(detail.device()));
         data.put("station", stationSummary(detail.device().stationId()));
         data.put(
-            "channels",
-            detail.channels().stream()
-                .map(channel -> Map.of(
-                    "channelNo", channel.channelNo(),
-                    "channelType", channel.channelType(),
-                    "name", channel.name() == null ? "" : channel.name()))
-                .toList());
+                "channels",
+                detail.channels().stream()
+                        .map(channel -> Map.of(
+                                "channelNo", channel.channelNo(),
+                                "channelType", channel.channelType(),
+                                "name", channel.name() == null ? "" : channel.name()))
+                        .toList());
         return envelope(data, false, List.of());
     }
 
@@ -161,8 +164,8 @@ public class OpsAiRestController {
         if (windowHours != null && windowHours > 0 && !points.isEmpty()) {
             Instant threshold = Instant.now().minusSeconds(windowHours * 3600L);
             points = points.stream()
-                .filter(point -> point.time() != null && point.time().isAfter(threshold))
-                .toList();
+                    .filter(point -> point.time() != null && point.time().isAfter(threshold))
+                    .toList();
         }
         OrderTelemetryService.Point first = firstWithSoc(points);
         OrderTelemetryService.Point last = lastWithSoc(points);
@@ -172,7 +175,7 @@ public class OpsAiRestController {
         data.put("sample_count", points.size());
         data.put("truncated", result.truncated());
         data.put(
-            "first_sample_time", points.isEmpty() ? null : points.getFirst().time());
+                "first_sample_time", points.isEmpty() ? null : points.getFirst().time());
         data.put("last_sample_time", points.isEmpty() ? null : points.getLast().time());
         data.put("first_soc", socValue(first));
         data.put("first_soc_time", first == null ? null : first.time());
@@ -192,24 +195,7 @@ public class OpsAiRestController {
     @PostMapping("/list_documents")
     public Map<String, Object> documents(@RequestBody Map<String, Object> args) {
         requireAiAdmin(context("list_documents", args));
-        List<Map<String, Object>> rows = jdbc.query("""
-            select id::text as id, protocol_code, protocol_name_en, document_version, title, original_filename,
-                   content_type, file_size, sha256, created_at
-            from ipe_ops.protocol_document where status = 'ACTIVE' order by created_at desc
-            """, (rs, rowNum) -> {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("id", rs.getString("id"));
-            row.put("protocolCode", rs.getString("protocol_code"));
-            row.put("protocolNameEn", rs.getString("protocol_name_en"));
-            row.put("protocolVersion", rs.getString("document_version"));
-            row.put("title", rs.getString("title"));
-            row.put("originalFilename", rs.getString("original_filename"));
-            row.put("contentType", rs.getString("content_type"));
-            row.put("fileSize", rs.getLong("file_size"));
-            row.put("sha256", rs.getString("sha256"));
-            return row;
-        });
-        return envelope(rows, false, List.of());
+        return envelope(documents.selectActiveForAi(), false, List.of());
     }
 
     @PostMapping("/read_document")
@@ -218,14 +204,7 @@ public class OpsAiRestController {
         long id = number(args, "id");
         long offset = number(args, "offset");
         if (id <= 0 || offset < 0) throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
-        String storageKey = jdbc
-            .query(
-                "select storage_key from ipe_ops.protocol_document where id = ? and status = 'ACTIVE'",
-                (rs, rowNum) -> rs.getString("storage_key"),
-                id)
-            .stream()
-            .findFirst()
-            .orElse(null);
+        String storageKey = documents.selectActiveStorageKey(id);
         if (storageKey == null || !STORAGE_KEY.matcher(storageKey).matches()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         }
@@ -245,14 +224,14 @@ public class OpsAiRestController {
             try (var stream = java.nio.channels.Channels.newInputStream(channel)) {
                 byte[] bytes = stream.readNBytes(DOCUMENT_CHUNK_BYTES);
                 return Map.of(
-                    "base64",
-                    Base64.getEncoder().encodeToString(bytes),
-                    "size",
-                    size,
-                    "offset",
-                    offset,
-                    "eof",
-                    offset + bytes.length == size);
+                        "base64",
+                        Base64.getEncoder().encodeToString(bytes),
+                        "size",
+                        size,
+                        "offset",
+                        offset,
+                        "eof",
+                        offset + bytes.length == size);
             }
         } catch (IOException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY);
@@ -298,20 +277,15 @@ public class OpsAiRestController {
         if (stationId == null) {
             return Map.of();
         }
-        return jdbc
-            .query(
-                "select id, station_code, name from ipe_ops.station where id = ?",
-                (rs, rowNum) -> {
-                    Map<String, Object> item = new LinkedHashMap<>();
-                    item.put("id", rs.getLong("id"));
-                    item.put("station_code", rs.getString("station_code"));
-                    item.put("name", rs.getString("name"));
-                    return item;
-                },
-                stationId)
-            .stream()
-            .findFirst()
-            .orElse(Map.of());
+        Station station = stations.selectById(stationId);
+        if (station == null) {
+            return Map.of();
+        }
+        Map<String, Object> item = new LinkedHashMap<>();
+        item.put("id", station.id);
+        item.put("station_code", station.stationCode);
+        item.put("name", station.name);
+        return item;
     }
 
     private static OrderTelemetryService.Point firstWithSoc(List<OrderTelemetryService.Point> points) {
@@ -350,10 +324,10 @@ public class OpsAiRestController {
         var identity = requireActor(context);
         String scope = context.scope();
         if (!identity.canAccessStation(stationId)
-            || (!"*".equals(scope)
-            && (scope == null
-            || stationId == null
-            || !List.of(scope.split(",")).contains(stationId.toString())))) {
+                || (!"*".equals(scope)
+                        && (scope == null
+                                || stationId == null
+                                || !List.of(scope.split(",")).contains(stationId.toString())))) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
     }
@@ -361,10 +335,10 @@ public class OpsAiRestController {
     private IdentityService.Identity requireActor(RequestContext context) {
         try {
             return identities
-                .byId(Long.parseLong(context.actor()))
-                .filter(identity ->
-                    identity.enabled() && identity.permissions().contains("ai:use"))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
+                    .byId(Long.parseLong(context.actor()))
+                    .filter(identity ->
+                            identity.enabled() && identity.permissions().contains("ai:use"))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN));
         } catch (NumberFormatException ex) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
@@ -376,8 +350,7 @@ public class OpsAiRestController {
         }
     }
 
-    private record RequestContext(String actor, String scope, String session) {
-    }
+    private record RequestContext(String actor, String scope, String session) {}
 
     private RequestContext context(String operation, Map<String, Object> args) {
         try {
@@ -391,14 +364,13 @@ public class OpsAiRestController {
     @ExceptionHandler(ResponseStatusException.class)
     ResponseEntity<Map<String, Integer>> status(ResponseStatusException ex) {
         return ResponseEntity.status(ex.getStatusCode())
-            .body(Map.of("status", ex.getStatusCode().value()));
+                .body(Map.of("status", ex.getStatusCode().value()));
     }
 
     @ExceptionHandler({IllegalArgumentException.class, ArithmeticException.class})
     ResponseEntity<Map<String, Integer>> invalidOperationArguments() {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status", 404));
     }
-
 
     private static String string(Map<?, ?> args, String key) {
         if (!(args.get(key) instanceof String value) || value.isBlank() || value.length() > 128) {

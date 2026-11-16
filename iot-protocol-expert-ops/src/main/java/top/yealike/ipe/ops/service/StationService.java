@@ -8,13 +8,13 @@ import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.ipe.ops.device.entity.DeviceInstance;
-import top.yealike.ipe.ops.device.repository.DeviceInstanceRepository;
-import top.yealike.ipe.ops.device.repository.DevicePropertyLatestRepository;
 import top.yealike.ipe.ops.domain.ChargeOrder;
 import top.yealike.ipe.ops.domain.Station;
-import top.yealike.ipe.ops.repository.BillRepository;
-import top.yealike.ipe.ops.repository.ChargeOrderRepository;
-import top.yealike.ipe.ops.repository.StationRepository;
+import top.yealike.ipe.ops.mapper.BillMapper;
+import top.yealike.ipe.ops.mapper.ChargeOrderMapper;
+import top.yealike.ipe.ops.mapper.DeviceInstanceMapper;
+import top.yealike.ipe.ops.mapper.DevicePropertyLatestMapper;
+import top.yealike.ipe.ops.mapper.StationMapper;
 
 /**
  * 站点服务。
@@ -24,18 +24,18 @@ import top.yealike.ipe.ops.repository.StationRepository;
 @Service
 public class StationService {
 
-    private final StationRepository stations;
-    private final DeviceInstanceRepository devices;
-    private final DevicePropertyLatestRepository properties;
-    private final ChargeOrderRepository orders;
-    private final BillRepository bills;
+    private final StationMapper stations;
+    private final DeviceInstanceMapper devices;
+    private final DevicePropertyLatestMapper properties;
+    private final ChargeOrderMapper orders;
+    private final BillMapper bills;
 
     public StationService(
-            StationRepository stations,
-            DeviceInstanceRepository devices,
-            DevicePropertyLatestRepository properties,
-            ChargeOrderRepository orders,
-            BillRepository bills) {
+            StationMapper stations,
+            DeviceInstanceMapper devices,
+            DevicePropertyLatestMapper properties,
+            ChargeOrderMapper orders,
+            BillMapper bills) {
         this.stations = stations;
         this.devices = devices;
         this.properties = properties;

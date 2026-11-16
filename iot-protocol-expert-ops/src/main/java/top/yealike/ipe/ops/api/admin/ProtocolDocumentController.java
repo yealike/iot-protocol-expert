@@ -16,31 +16,29 @@ import org.springframework.http.ContentDisposition;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import top.yealike.ipe.ops.mapper.ProtocolDocumentMapper;
 
 @RestController
 @RequestMapping("/api/ops/protocol-documents")
 public class ProtocolDocumentController {
     private static final long MAX_BYTES = 20L * 1024 * 1024;
-    private final JdbcTemplate jdbc;
+    private final ProtocolDocumentMapper documents;
     private final Path root;
 
     public ProtocolDocumentController(
-            JdbcTemplate jdbc, @Value("${ipe.ops.protocol-document-dir:./data/protocol-documents}") String directory) {
-        this.jdbc = jdbc;
+            ProtocolDocumentMapper documents,
+            @Value("${ipe.ops.protocol-document-dir:./data/protocol-documents}") String directory) {
+        this.documents = documents;
         this.root = Path.of(directory).toAbsolutePath().normalize();
     }
 
     @GetMapping
     public List<Map<String, Object>> list(@RequestParam(required = false) String protocol) {
-        return jdbc.queryForList(
-                "select id, protocol_code as \"protocolCode\", protocol_name_en as \"protocolNameEn\", document_version as \"documentVersion\", title, original_filename as \"originalFilename\", file_size as \"fileSize\", status, uploaded_by as \"uploadedBy\", created_at as \"createdAt\" from ipe_ops.protocol_document where status = 'ACTIVE' and (? = '' or protocol_code = ?) order by id desc",
-                protocol == null ? "" : protocol,
-                protocol == null ? "" : protocol);
+        return documents.selectActive(protocol == null ? "" : protocol);
     }
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -100,9 +98,7 @@ public class ProtocolDocumentController {
             }
             Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE);
             String type = lower.endsWith(".pdf") ? "application/pdf" : "text/plain";
-            Long id = jdbc.queryForObject(
-                    "insert into ipe_ops.protocol_document(protocol_code, protocol_name_en, document_version, title, original_filename, storage_key, content_type, file_size, sha256, uploaded_by) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) returning id",
-                    Long.class,
+            Long id = documents.insertDocument(
                     protocolCode,
                     protocolNameEn,
                     documentVersion.trim(),
@@ -132,17 +128,14 @@ public class ProtocolDocumentController {
     }
 
     private ResponseEntity<FileSystemResource> fileResponse(long id, boolean inline) throws IOException {
-        var rows = jdbc.queryForList(
-                "select storage_key, original_filename, content_type from ipe_ops.protocol_document where id = ? and status = 'ACTIVE'",
-                id);
-        if (rows.isEmpty()) throw new IllegalArgumentException("文档不存在");
-        var row = rows.get(0);
-        String key = (String) row.get("storage_key");
+        ProtocolDocumentMapper.FileInfo row = documents.selectFileInfo(id);
+        if (row == null) throw new IllegalArgumentException("文档不存在");
+        String key = row.storageKey();
         if (!key.matches("[0-9a-f-]{36}")) throw new IllegalArgumentException("文件标识无效");
         Path realRoot = root.toRealPath();
         Path path = realRoot.resolve(key).toRealPath();
         if (!path.startsWith(realRoot) || !Files.isRegularFile(path)) throw new IllegalArgumentException("文档文件不可用");
-        String type = (String) row.get("content_type");
+        String type = row.contentType();
         MediaType mediaType = "application/pdf".equals(type)
                 ? MediaType.APPLICATION_PDF
                 : new MediaType("text", "plain", java.nio.charset.StandardCharsets.UTF_8);
@@ -152,8 +145,7 @@ public class ProtocolDocumentController {
                 .header(
                         HttpHeaders.CONTENT_DISPOSITION,
                         (inline ? ContentDisposition.inline() : ContentDisposition.attachment())
-                                .filename(
-                                        (String) row.get("original_filename"), java.nio.charset.StandardCharsets.UTF_8)
+                                .filename(row.originalFilename(), java.nio.charset.StandardCharsets.UTF_8)
                                 .build()
                                 .toString())
                 .body(new FileSystemResource(path));
@@ -163,15 +155,9 @@ public class ProtocolDocumentController {
     @PreAuthorize("hasAuthority('ops:manage')")
     @Transactional
     public void archive(@PathVariable long id) {
-        var document = jdbc.queryForList(
-                "select id from ipe_ops.protocol_document where id = ? and status = 'ACTIVE' for update", id);
-        if (document.isEmpty()) throw new IllegalArgumentException("文档不存在");
-        Integer references = jdbc.queryForObject(
-                "select count(*) from ipe_ops.product where protocol_document_id = ?", Integer.class, id);
-        if (references != null && references > 0) throw new IllegalArgumentException("该文档已被产品引用，不能归档");
-        if (jdbc.update(
-                        "update ipe_ops.protocol_document set status = 'ARCHIVED', updated_at = now() where id = ? and status = 'ACTIVE'",
-                        id)
-                != 1) throw new IllegalArgumentException("文档不存在");
+        if (documents.selectActiveIdForUpdate(id) == null) throw new IllegalArgumentException("文档不存在");
+        long references = documents.countProductReferences(id);
+        if (references > 0) throw new IllegalArgumentException("该文档已被产品引用，不能归档");
+        if (documents.archive(id) != 1) throw new IllegalArgumentException("文档不存在");
     }
 }

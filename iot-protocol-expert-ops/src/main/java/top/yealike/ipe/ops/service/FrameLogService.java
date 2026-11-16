@@ -1,25 +1,22 @@
 package top.yealike.ipe.ops.service;
 
-import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.ipe.ops.device.entity.DeviceInstance;
-import top.yealike.ipe.ops.device.repository.DeviceInstanceRepository;
 import top.yealike.ipe.ops.domain.FrameLog;
 import top.yealike.ipe.ops.dto.OpsDtos;
-import top.yealike.ipe.ops.repository.FrameLogRepository;
+import top.yealike.ipe.ops.mapper.DeviceInstanceMapper;
+import top.yealike.ipe.ops.mapper.FrameLogMapper;
 
 @Service
 public class FrameLogService {
 
-    private final FrameLogRepository frames;
-    private final DeviceInstanceRepository devices;
+    private final FrameLogMapper frames;
+    private final DeviceInstanceMapper devices;
 
-    public FrameLogService(FrameLogRepository frames, DeviceInstanceRepository devices) {
+    public FrameLogService(FrameLogMapper frames, DeviceInstanceMapper devices) {
         this.frames = frames;
         this.devices = devices;
     }
@@ -54,28 +51,12 @@ public class FrameLogService {
             LocalDateTime from,
             LocalDateTime to,
             int limit) {
-        Specification<FrameLog> spec = (root, query, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
-            if (deviceId != null) predicates.add(cb.equal(root.get("deviceId"), deviceId));
-            if (protocol != null && !protocol.isBlank()) predicates.add(cb.equal(root.get("protocol"), protocol));
-            if (protocolDeviceId != null && !protocolDeviceId.isBlank()) {
-                predicates.add(cb.equal(root.get("protocolDeviceId"), protocolDeviceId));
-            }
-            if (messageId != null && !messageId.isBlank()) predicates.add(cb.equal(root.get("messageId"), messageId));
-            if (from != null) predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), from));
-            if (to != null) predicates.add(cb.lessThan(root.get("createdAt"), to));
-            query.orderBy(cb.desc(root.get("id")));
-            return cb.and(predicates.toArray(new Predicate[0]));
-        };
-        return frames.findAll(spec).stream()
-                .limit(Math.min(Math.max(limit, 1), 1000))
-                .toList();
+        return frames.search(
+                deviceId, protocol, protocolDeviceId, messageId, from, to, Math.min(Math.max(limit, 1), 1000));
     }
 
     public List<FrameLog> recent(Long deviceId) {
-        return deviceId == null
-                ? frames.findAll().stream().limit(200).toList()
-                : frames.findTop200ByDeviceIdOrderByCreatedAtDesc(deviceId);
+        return deviceId == null ? frames.selectRecent(200) : frames.findTop200ByDeviceIdOrderByCreatedAtDesc(deviceId);
     }
 
     private java.util.Optional<DeviceInstance> deviceOf(String protocol, String code) {

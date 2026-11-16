@@ -22,14 +22,17 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class SimulatorProxyController {
     private static final String PREFIX = "/api/simulator-proxy";
-    private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
+    private final HttpClient client =
+            HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build();
     private final String baseUrl;
 
     public SimulatorProxyController(@Value("${ipe.ops.simulator-base-url:http://127.0.0.1:19081}") String baseUrl) {
         this.baseUrl = baseUrl.replaceAll("/+$", "");
     }
 
-    @RequestMapping(value = "/api/simulator-proxy/**", method = {RequestMethod.GET, RequestMethod.POST})
+    @RequestMapping(
+            value = "/api/simulator-proxy/**",
+            method = {RequestMethod.GET, RequestMethod.POST})
     public ResponseEntity<?> forward(HttpServletRequest request, @RequestBody(required = false) byte[] body) {
         String path = request.getRequestURI().substring(PREFIX.length());
         if (!path.matches("/[A-Za-z0-9/_-]*") || path.contains("//")) {
