@@ -193,7 +193,8 @@ public class RuntimeRunCoordinator {
     }
 
     public RunContext context(UUID runId, long executionToken) {
-        Run run = requireToken(runId, executionToken);
+        requireActiveExecution(runId, executionToken, true);
+        Run run = runs.find(runId).orElseThrow(() -> AiExceptions.notFound("Run 不存在"));
         List<Message> history = conversations.listMessagesThrough(
                 run.conversationId(),
                 run.userMessageId(),
@@ -209,14 +210,9 @@ public class RuntimeRunCoordinator {
     }
 
     public top.yealike.ipe.ai.contract.RunEventAck events(RunEventBatch batch) {
-        Run run = requireToken(batch.runId(), batch.executionToken());
+        Run run = requireActiveExecution(batch.runId(), batch.executionToken(), true);
         if (!Objects.equals(run.runtimeInstanceId(), batch.instanceId())) {
             throw AiExceptions.conflict(ErrorCodes.STALE_EXECUTION_TOKEN, "执行实例已失去该 Run 的所有权");
-        }
-        if (!RunRecords.DISPATCHING.equals(run.status())
-                && !RunRecords.RUNNING.equals(run.status())
-                && !RunRecords.CANCEL_REQUESTED.equals(run.status())) {
-            throw AiExceptions.conflict(ErrorCodes.STALE_EXECUTION_TOKEN, "Run 已不在可写状态");
         }
         return ingest.ingest(run.conversationId(), batch);
     }
@@ -229,9 +225,8 @@ public class RuntimeRunCoordinator {
         if (run.terminal()) {
             return;
         }
-        RunTerminalStatus status =
-                RunRecords.CANCEL_REQUESTED.equals(run.status()) ? RunTerminalStatus.CANCELLED : request.status();
-        if (status == null) {
+        RunTerminalStatus requestedStatus = request.status();
+        if (requestedStatus == null) {
             throw AiExceptions.badRequest("终态不能为空");
         }
         String answer = request.answer() == null ? "" : request.answer();
@@ -239,6 +234,22 @@ public class RuntimeRunCoordinator {
             throw AiExceptions.badRequest("最终回答超过允许长度");
         }
         transactions.executeWithoutResult(ignored -> {
+            Run current = runs.lock(request.runId()).orElseThrow(() -> AiExceptions.notFound("Run 不存在"));
+            if (current.terminal()) {
+                return;
+            }
+            if (current.executionToken() != request.executionToken()
+                    || !Objects.equals(current.runtimeInstanceId(), request.instanceId())) {
+                throw AiExceptions.conflict(ErrorCodes.STALE_EXECUTION_TOKEN, "终态提交已过期或 Run 已终结");
+            }
+            if (current.leaseUntil() == null
+                    || !current.leaseUntil().isAfter(Instant.now())
+                    || (current.deadlineAt() != null && !current.deadlineAt().isAfter(Instant.now()))) {
+                throw AiExceptions.conflict(ErrorCodes.STALE_EXECUTION_TOKEN, "Run 执行权已失效或已超时");
+            }
+            RunTerminalStatus status = RunRecords.CANCEL_REQUESTED.equals(current.status())
+                    ? RunTerminalStatus.CANCELLED
+                    : requestedStatus;
             boolean changed;
             String type;
             Map<String, Object> payload = new LinkedHashMap<>();
@@ -247,14 +258,15 @@ public class RuntimeRunCoordinator {
             payload.put("warnings", request.warnings());
             switch (status) {
                 case SUCCEEDED -> {
-                    changed = runs.markCompleted(run.id(), run.executionToken(), request.instanceId(), request.usage());
+                    changed = runs.markCompleted(
+                            current.id(), current.executionToken(), request.instanceId(), request.usage());
                     if (changed && !answer.isBlank()) {
-                        long seq = conversations.nextMessageSeq(run.conversationId());
+                        long seq = conversations.nextMessageSeq(current.conversationId());
                         UUID messageId = UUID.randomUUID();
                         conversations.insertMessage(
                                 messageId,
-                                run.conversationId(),
-                                run.id(),
+                                current.conversationId(),
+                                current.id(),
                                 "assistant",
                                 answer,
                                 citations(request.citations()),
@@ -267,7 +279,8 @@ public class RuntimeRunCoordinator {
                     type = "run.completed";
                 }
                 case CANCELLED -> {
-                    changed = runs.markCancelled(run.id(), run.executionToken(), request.instanceId(), request.usage());
+                    changed = runs.markCancelled(
+                            current.id(), current.executionToken(), request.instanceId(), request.usage());
                     type = "run.cancelled";
                 }
                 default -> {
@@ -282,19 +295,24 @@ public class RuntimeRunCoordinator {
                     payload.put("errorCode", code);
                     payload.put("message", message);
                     changed = runs.markFailed(
-                            run.id(), run.executionToken(), request.instanceId(), code, message, request.usage());
+                            current.id(),
+                            current.executionToken(),
+                            request.instanceId(),
+                            code,
+                            message,
+                            request.usage());
                     type = "run.failed";
                 }
             }
             if (!changed) {
                 throw AiExceptions.conflict(ErrorCodes.STALE_EXECUTION_TOKEN, "终态提交已过期或 Run 已终结");
             }
-            events.publish(run.conversationId(), run.id(), type, payload);
+            events.publish(current.conversationId(), current.id(), type, payload);
         });
     }
 
     public ToolAuthorizeResponse authorize(ToolAuthorizeRequest request) {
-        Run run = requireToken(request.runId(), request.executionToken());
+        Run run = requireActiveExecution(request.runId(), request.executionToken(), true);
         AgentRelease release = agents.release(run.agentReleaseId());
         AgentManifest manifest = release.manifest();
         AgentManifest.McpBinding binding = manifest.mcp().stream()
@@ -312,6 +330,16 @@ public class RuntimeRunCoordinator {
                 mcps.findRelease(binding.key(), binding.version()).orElse(null);
         if (mcpRelease == null || "REVOKED".equals(mcpRelease.state())) {
             return denied(run, ErrorCodes.TOOL_DENIED, "MCP 版本已停用");
+        }
+        AgentManifest.McpToolBinding boundTool = binding.tools().stream()
+                .filter(tool -> tool.alias().equals(request.toolAlias()))
+                .findFirst()
+                .orElse(null);
+        if (boundTool == null
+                || !mcps.toolCategories(mcpRelease.componentId())
+                        .getOrDefault(boundTool.name(), top.yealike.ipe.ai.contract.McpToolExecutionCategory.UNKNOWN)
+                        .readOnly()) {
+            return denied(run, ErrorCodes.TOOL_DENIED, "一期仅允许调用平台审核通过的只读工具");
         }
         long storedVersion = run.actorAuthVersion() == null ? 0 : run.actorAuthVersion();
         UserIdentity identity;
@@ -334,7 +362,8 @@ public class RuntimeRunCoordinator {
     public CredentialResolveResponse resolveCredential(CredentialResolveRequest request) {
         Set<String> allowedRefs = new java.util.HashSet<>();
         if (request.runId() != null) {
-            Run run = requireToken(request.runId(), request.executionToken());
+            requireActiveExecution(request.runId(), request.executionToken(), true);
+            Run run = runs.find(request.runId()).orElseThrow(() -> AiExceptions.notFound("Run 不存在"));
             AgentRelease release = agents.release(run.agentReleaseId());
             collectManifestCredentials(release.manifest(), allowedRefs);
         } else if (request.publicationId() != null) {
@@ -396,6 +425,25 @@ public class RuntimeRunCoordinator {
         Run run = runs.find(runId).orElseThrow(() -> AiExceptions.notFound("Run 不存在"));
         if (run.executionToken() != executionToken) {
             throw AiExceptions.conflict(ErrorCodes.STALE_EXECUTION_TOKEN, "执行令牌已过期");
+        }
+        return run;
+    }
+
+    private Run requireActiveExecution(UUID runId, long executionToken, boolean allowCancellationPending) {
+        Run run = requireToken(runId, executionToken);
+        if (run.runtimeInstanceId() != null
+                && !"direct".equals(run.runtimeInstanceId())
+                && !Objects.equals(run.runtimeInstanceId(), run.leaseOwner())) {
+            throw AiExceptions.conflict(ErrorCodes.STALE_EXECUTION_TOKEN, "执行实例已失去该 Run 的所有权");
+        }
+        if (run.deadlineAt() != null && !run.deadlineAt().isAfter(Instant.now())) {
+            throw AiExceptions.conflict("RUN_TIMEOUT", "Run 已超过执行截止时间");
+        }
+        boolean active = RunRecords.DISPATCHING.equals(run.status())
+                || RunRecords.RUNNING.equals(run.status())
+                || (allowCancellationPending && RunRecords.CANCEL_REQUESTED.equals(run.status()));
+        if (!active || run.leaseUntil() == null || !run.leaseUntil().isAfter(Instant.now())) {
+            throw AiExceptions.conflict(ErrorCodes.STALE_EXECUTION_TOKEN, "Run 执行权已失效或已终结");
         }
         return run;
     }

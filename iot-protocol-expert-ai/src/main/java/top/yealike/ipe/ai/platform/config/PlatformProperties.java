@@ -45,5 +45,6 @@ public record PlatformProperties(
             String modelApiKey,
             String modelBaseUrl,
             String modelName,
-            String skillVersion) {}
+            String skillVersion,
+            java.util.List<String> reviewedReadOnlyTools) {}
 }

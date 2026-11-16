@@ -181,6 +181,17 @@ public class PlatformAdminController {
         return mcps.latestTools(id);
     }
 
+    @GetMapping("/mcps/{id}/tool-policies")
+    public Object mcpToolPolicies(@PathVariable UUID id) {
+        return mcps.toolPolicies(id);
+    }
+
+    @PutMapping("/mcps/{id}/tool-policies")
+    public Object reviewMcpTool(@PathVariable UUID id, @RequestBody McpToolPolicyUpdate request) {
+        UserIdentity actor = CurrentUser.require();
+        return mcps.reviewTool(actor, id, request.toolName(), request.executionCategory());
+    }
+
     @GetMapping("/mcps/{id}/releases")
     public List<McpRelease> mcpReleases(@PathVariable UUID id) {
         return mcps.releases(id);
@@ -540,6 +551,8 @@ public class PlatformAdminController {
             boolean enabled) {}
 
     public record McpPublish(String version, UUID reportId, long expectedRevision, String idempotencyKey) {}
+
+    public record McpToolPolicyUpdate(String toolName, String executionCategory) {}
 
     public record SkillCreate(String key, String displayName, String description) {}
 

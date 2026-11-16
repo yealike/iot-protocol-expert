@@ -16,11 +16,13 @@ import top.yealike.ipe.ai.contract.Digests;
 import top.yealike.ipe.ai.contract.ErrorCodes;
 import top.yealike.ipe.ai.contract.McpDescriptor;
 import top.yealike.ipe.ai.contract.McpToolDescriptor;
+import top.yealike.ipe.ai.contract.McpToolExecutionCategory;
 import top.yealike.ipe.ai.identity.UserIdentity;
 import top.yealike.ipe.ai.platform.credential.CredentialService;
 import top.yealike.ipe.ai.platform.domain.PlatformRecords.McpComponent;
 import top.yealike.ipe.ai.platform.domain.PlatformRecords.McpRelease;
 import top.yealike.ipe.ai.platform.domain.PlatformRecords.McpTestReport;
+import top.yealike.ipe.ai.platform.domain.PlatformRecords.McpToolPolicy;
 import top.yealike.ipe.ai.platform.registry.NacosRegistryService;
 import top.yealike.ipe.ai.platform.store.CredentialStore;
 import top.yealike.ipe.ai.platform.store.McpStore;
@@ -132,15 +134,57 @@ public class McpService {
         return require(id);
     }
 
+    @Transactional
     public void delete(UUID id) {
-        require(id);
-        if (store.bindingReferences(id) > 0) {
+        McpComponent component = store.lock(id).orElseThrow(() -> AiExceptions.notFound("MCP 不存在"));
+        if (store.bindingReferences(component.id()) > 0) {
             throw AiExceptions.conflict(ErrorCodes.COMPONENT_IN_USE, "MCP 已被 Agent 发布引用");
         }
-        if (!store.releases(id).isEmpty()) {
+        if (!store.releases(component.id()).isEmpty()) {
             throw AiExceptions.conflict(ErrorCodes.COMPONENT_IN_USE, "MCP 已有发布版本，请停用而不是删除");
         }
-        store.delete(id);
+        store.deleteToolPolicies(component.id());
+        store.delete(component.id());
+    }
+
+    public List<McpToolPolicy> toolPolicies(UUID id) {
+        require(id);
+        return store.toolPolicies(id);
+    }
+
+    @Transactional
+    public McpToolPolicy reviewTool(UserIdentity actor, UUID id, String toolName, String executionCategory) {
+        McpComponent component = store.lock(id).orElseThrow(() -> AiExceptions.notFound("MCP 不存在"));
+        if (toolName == null || toolName.isBlank() || toolName.length() > 128) {
+            throw AiExceptions.badRequest("MCP 工具名不能为空且不能超过 128 字符");
+        }
+        McpToolExecutionCategory category = McpToolExecutionCategory.parse(executionCategory);
+        if (category == McpToolExecutionCategory.UNKNOWN
+                && !"UNKNOWN".equalsIgnoreCase(String.valueOf(executionCategory).strip())) {
+            throw AiExceptions.badRequest("工具执行类别只支持 READ_ONLY、WRITE、UNKNOWN");
+        }
+        if (availableTools(component).stream().noneMatch(tool -> tool.name().equals(toolName))) {
+            throw AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "MCP 当前目录中不存在该工具，请先测试");
+        }
+        store.upsertToolPolicy(component.id(), toolName, category, actor.username());
+        return store.toolPolicies(component.id()).stream()
+                .filter(policy -> policy.toolName().equals(toolName))
+                .findFirst()
+                .orElseThrow(() -> AiExceptions.unavailable("MCP 工具审核记录保存失败"));
+    }
+
+    public List<McpToolDescriptor> readOnlyTools(McpRelease release) {
+        Map<String, McpToolExecutionCategory> policies = store.toolCategories(release.componentId());
+        return release.tools().stream()
+                .filter(tool -> policies.getOrDefault(tool.name(), McpToolExecutionCategory.UNKNOWN)
+                        .readOnly())
+                .toList();
+    }
+
+    public boolean isReadOnlyApproved(UUID mcpId, String toolName) {
+        return store.toolCategories(mcpId)
+                .getOrDefault(toolName, McpToolExecutionCategory.UNKNOWN)
+                .readOnly();
     }
 
     public Map<String, Object> test(UUID id) {
@@ -211,9 +255,27 @@ public class McpService {
     public PublishResult publish(
             UserIdentity actor, UUID id, String version, UUID reportId, long expectedRevision, String idempotencyKey) {
         McpComponent component = store.lock(id).orElseThrow(() -> AiExceptions.notFound("MCP 不存在"));
+        String publicationKey = idempotencyKey == null || idempotencyKey.isBlank()
+                ? UUID.randomUUID().toString()
+                : idempotencyKey.strip();
+        var existing = publications.findByIdempotency("MCP", id, publicationKey);
+        if (existing.isPresent()) {
+            if (version != null
+                    && !version.isBlank()
+                    && !existing.get().version().equals(requireVersion(version))) {
+                throw AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "幂等键已用于不同的 MCP 发布请求");
+            }
+            McpRelease release = store.findRelease(
+                            component.key(), existing.get().version())
+                    .orElseThrow(() -> AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "发布记录与 MCP 版本不一致"));
+            return new PublishResult(release.id(), existing.get().id(), release.version(), release.catalogDigest());
+        }
         if (component.revision() != expectedRevision) {
             throw AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "MCP 已被其他请求修改，请刷新后重试");
         }
+        String resolvedVersion = version == null || version.isBlank()
+                ? nextVersion(component.publishedVersion())
+                : requireVersion(version);
         McpTestReport report = store.findTestReport(reportId)
                 .filter(item -> item.mcpId().equals(id))
                 .orElseThrow(() -> AiExceptions.unprocessable("MCP_TEST_REQUIRED", "测试报告不存在或不属于该 MCP"));
@@ -230,12 +292,10 @@ public class McpService {
         if (tools.isEmpty()) {
             throw AiExceptions.unprocessable(ErrorCodes.MCP_INIT_FAILED, "MCP 工具目录为空，禁止发布");
         }
-        String resolvedVersion = version == null || version.isBlank()
-                ? nextVersion(component.publishedVersion())
-                : requireVersion(version);
         if (store.findRelease(component.key(), resolvedVersion).isPresent()) {
             throw AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "该 MCP 版本已存在，发布内容不可覆盖");
         }
+        long generation = Math.max(component.publicationGeneration() + 1, publications.nextGeneration("MCP", id));
         String catalogDigest = ComponentDigests.mcpCatalog(tools);
         String contentDigest =
                 Digests.digest(Map.of("transport", "STREAMABLE_HTTP", "endpoint", resolved.endpoint(), "tools", tools));
@@ -248,6 +308,7 @@ public class McpService {
         UUID releaseId = store.insertRelease(
                 component.id(),
                 resolvedVersion,
+                generation,
                 "STREAMABLE_HTTP",
                 JsonSupport.write(endpointPolicy),
                 credentialId(component),
@@ -260,15 +321,13 @@ public class McpService {
                 component.id(),
                 resolvedVersion,
                 component.revision(),
-                1,
-                idempotencyKey == null || idempotencyKey.isBlank()
-                        ? UUID.randomUUID().toString()
-                        : idempotencyKey,
+                generation,
+                publicationKey,
                 Instant.now().plusSeconds(60));
         publications.insertOutbox(
                 "MCP",
                 releaseId,
-                1,
+                generation,
                 "PUBLISH_REQUESTED",
                 JsonSupport.write(
                         Map.of("releaseId", releaseId, "publicationId", publicationId, "version", resolvedVersion)));
@@ -289,6 +348,13 @@ public class McpService {
             credentialRef = credential.key();
             secretRevision = credential.currentSecretRevision();
         }
+        Map<String, McpToolExecutionCategory> policies = store.toolCategories(release.componentId());
+        List<McpToolDescriptor> tools = release.tools().stream()
+                .map(tool -> withReadOnly(
+                        tool,
+                        policies.getOrDefault(tool.name(), McpToolExecutionCategory.UNKNOWN)
+                                .readOnly()))
+                .toList();
         return new McpDescriptor(
                 release.componentKey(),
                 release.version(),
@@ -297,27 +363,43 @@ public class McpService {
                 credentialRef,
                 secretRevision,
                 release.catalogDigest(),
-                release.tools(),
+                tools,
                 release.endpointPolicy());
+    }
+
+    private List<McpToolDescriptor> availableTools(McpComponent component) {
+        return store.latestTestReport(component.id())
+                .filter(McpTestReport::success)
+                .filter(report -> report.draftRevision() == component.revision())
+                .map(report ->
+                        JsonSupport.readList(JsonSupport.write(report.result().get("tools")), McpToolDescriptor.class))
+                .orElseGet(() -> store.latestActive(component.id())
+                        .map(McpRelease::tools)
+                        .orElse(List.of()));
+    }
+
+    private static McpToolDescriptor withReadOnly(McpToolDescriptor tool, boolean readOnly) {
+        if (tool.readOnly() == readOnly) {
+            return tool;
+        }
+        return new McpToolDescriptor(
+                tool.name(),
+                tool.description(),
+                tool.inputSchema(),
+                tool.outputSchema(),
+                tool.annotations(),
+                tool.schemaDigest(),
+                readOnly);
     }
 
     public McpRelease release(UUID releaseId) {
         return store.findRelease(releaseId).orElseThrow(() -> AiExceptions.notFound("MCP 版本不存在"));
     }
 
-    public void activate(UUID releaseId, String version) {
-        McpRelease release = release(releaseId);
-        store.setReleaseState(releaseId, "ACTIVE");
-        store.publishComponent(release.componentId(), version);
-    }
-
     private String resolvePublishedEndpoint(McpRelease release) {
         String serviceName = String.valueOf(release.endpointPolicy().getOrDefault("serviceName", ""));
         String path = String.valueOf(release.endpointPolicy().getOrDefault("path", ""));
         String endpoint = String.valueOf(release.endpointPolicy().getOrDefault("endpoint", ""));
-        if (!endpoint.isBlank()) {
-            return endpoint;
-        }
         if (registry.enabled() && !serviceName.isBlank()) {
             NacosRegistryService.InstanceView instance = registry.pickHealthy(serviceName);
             if (instance == null) {
@@ -325,7 +407,7 @@ public class McpService {
             }
             return "http://" + instance.ip() + ":" + instance.port() + path;
         }
-        return String.valueOf(release.endpointPolicy().getOrDefault("endpoint", ""));
+        return endpoint;
     }
 
     private Resolved resolve(McpComponent component) {

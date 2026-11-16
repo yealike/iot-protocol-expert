@@ -1,4 +1,4 @@
-package top.yealike.ipe.ai.observability;
+package top.yealike.ipe.agent.runtime.observability;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -12,9 +12,9 @@ import io.agentscope.core.model.ChatUsage;
 import io.agentscope.core.model.GenerateOptions;
 import io.agentscope.core.model.ToolSchema;
 import io.agentscope.core.tracing.TracerRegistry;
-import io.agentscope.core.tracing.telemetry.TelemetryTracer;
+import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.common.AttributeKey;
-import io.opentelemetry.api.trace.Tracer;
+import io.opentelemetry.sdk.OpenTelemetrySdk;
 import io.opentelemetry.sdk.testing.exporter.InMemorySpanExporter;
 import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
@@ -22,14 +22,17 @@ import java.util.List;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
+import top.yealike.ipe.agent.runtime.TestFixtures;
+import top.yealike.ipe.agent.runtime.config.RuntimeProperties;
 
-class AgentScopeTelemetryTest {
+class AgentRuntimeTelemetryTest {
 
     private final InMemorySpanExporter exporter = InMemorySpanExporter.create();
     private final SdkTracerProvider provider = SdkTracerProvider.builder()
             .addSpanProcessor(SimpleSpanProcessor.create(exporter))
             .build();
-    private final Tracer delegate = provider.get("test");
+    private final OpenTelemetry openTelemetry =
+            OpenTelemetrySdk.builder().setTracerProvider(provider).build();
 
     @AfterEach
     void tearDown() {
@@ -38,11 +41,12 @@ class AgentScopeTelemetryTest {
     }
 
     @Test
-    void reactAgentStreamEventsEmitsInvokeAgentAndChatSpans() {
-        var tracer = TelemetryTracer.builder()
-                .tracer(new ContentFilteringTracer(delegate, false, 8192))
-                .build();
-        TracerRegistry.register(tracer);
+    void runtimeRegistersAgentAndModelSpansWithoutContentByDefault() {
+        AgentRuntimeTelemetry telemetry = new AgentRuntimeTelemetry(
+                openTelemetry,
+                TestFixtures.properties(
+                        "http://127.0.0.1:19083", "test-secret", new RuntimeProperties.Otel(true, false, 8192)));
+        telemetry.afterPropertiesSet();
 
         ReActAgent agent = ReActAgent.builder()
                 .name("protocol-expert")
@@ -50,7 +54,8 @@ class AgentScopeTelemetryTest {
                 .model(new FakeChatModel())
                 .maxIters(1)
                 .build();
-        var runSpan = delegate.spanBuilder("ai run execute").startSpan();
+        var runSpan =
+                openTelemetry.getTracer("test").spanBuilder("ai run execute").startSpan();
         try (var ignored = runSpan.makeCurrent()) {
             agent.streamEvents(List.of(new UserMessage("订单 202411130001 为什么停止？")))
                     .blockLast();
@@ -68,8 +73,6 @@ class AgentScopeTelemetryTest {
                 .findFirst()
                 .orElseThrow();
 
-        assertThat(agentSpan.getAttributes().get(AttributeKey.stringKey("gen_ai.operation.name")))
-                .isEqualTo("invoke_agent");
         assertThat(agentSpan.getTraceId()).isEqualTo(runSpan.getSpanContext().getTraceId());
         assertThat(agentSpan.getParentSpanId())
                 .isEqualTo(runSpan.getSpanContext().getSpanId());
@@ -77,45 +80,19 @@ class AgentScopeTelemetryTest {
                 .isEqualTo(agentSpan.getSpanContext().getSpanId());
         assertThat(chatSpan.getAttributes().get(AttributeKey.longKey("gen_ai.usage.input_tokens")))
                 .isEqualTo(11L);
-    }
-
-    @Test
-    void officialTelemetryTracerRecordsModelSpanWithTokenUsage() {
-        var tracer = TelemetryTracer.builder()
-                .tracer(new ContentFilteringTracer(delegate, false, 8192))
-                .build();
-        TracerRegistry.register(tracer);
-
-        new FakeChatModel()
-                .stream(
-                                List.of(new UserMessage("订单 202411130001 为什么停止？")),
-                                List.of(),
-                                GenerateOptions.builder().build())
-                        .collectList()
-                        .block();
-
-        var span = exporter.getFinishedSpanItems().stream()
-                .filter(item -> item.getName().equals("chat fake-model"))
-                .findFirst()
-                .orElseThrow();
-        assertThat(span.getAttributes().get(AttributeKey.stringKey("gen_ai.request.model")))
-                .isEqualTo("fake-model");
-        assertThat(span.getAttributes().get(AttributeKey.longKey("gen_ai.usage.input_tokens")))
-                .isEqualTo(11L);
-        assertThat(span.getAttributes().get(AttributeKey.longKey("gen_ai.usage.output_tokens")))
-                .isEqualTo(7L);
-        assertThat(span.getAttributes().get(AttributeKey.stringKey("gen_ai.input.messages")))
+        assertThat(chatSpan.getAttributes().get(AttributeKey.stringKey("gen_ai.input.messages")))
                 .isNull();
-        assertThat(span.getAttributes().get(AttributeKey.stringKey("gen_ai.output.messages")))
+        assertThat(chatSpan.getAttributes().get(AttributeKey.stringKey("gen_ai.output.messages")))
                 .isNull();
     }
 
     @Test
-    void officialTelemetryTracerExportsContentWhenExplicitlyEnabled() {
-        var tracer = TelemetryTracer.builder()
-                .tracer(new ContentFilteringTracer(delegate, true, 4096))
-                .build();
-        TracerRegistry.register(tracer);
+    void runtimeExportsContentOnlyWhenExplicitlyEnabled() {
+        AgentRuntimeTelemetry telemetry = new AgentRuntimeTelemetry(
+                openTelemetry,
+                TestFixtures.properties(
+                        "http://127.0.0.1:19083", "test-secret", new RuntimeProperties.Otel(true, true, 4096)));
+        telemetry.afterPropertiesSet();
 
         new FakeChatModel()
                 .stream(

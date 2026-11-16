@@ -282,6 +282,9 @@ public class AgentExecutionService {
     }
 
     private void executeTraced(RunExecution execution) {
+        if (!execution.markWorkerStarted()) {
+            return;
+        }
         MDC.put("run_id", execution.runId().toString());
         MDC.put("component_key", execution.release().manifest().agentKey());
         try {
@@ -345,6 +348,7 @@ public class AgentExecutionService {
                         // 由 doFinally 统一唤醒工作线程
                     });
             execution.subscription(disposable);
+            guard.ensureActive();
             if (guard.cancelled()) {
                 disposable.dispose();
             }
@@ -548,25 +552,16 @@ public class AgentExecutionService {
             guard.cancel(code, message);
         }
         Future<?> future = execution.future();
-        if (future != null && future.cancel(false) && !execution.terminal()) {
-            // 任务尚在等待队列，executeTraced 永远不会再运行；必须在这里释放准入与心跳，
-            // 并提交唯一终态，否则取消排队 Run 会泄漏并发槽位。
+        if (future != null && future.cancel(false) && execution.tryCancelQueued()) {
+            // 只有任务尚未离开队列时才可由取消线程提交唯一终态；已运行任务由 worker finally 收敛。
             long durationNanos = TimeUnit.MILLISECONDS.toNanos(
                     Duration.between(execution.acceptedAt(), Instant.now()).toMillis());
-            finish(execution, cancellationOutcome(code, message), "", Math.max(0L, durationNanos));
+            finish(execution, cancellationOutcome(code, message), "", Math.max(0L, durationNanos), true);
             return;
         }
         Disposable subscription = execution.subscription();
         if (subscription != null) {
             subscription.dispose();
-        }
-        ReActAgent agent = execution.agent();
-        if (agent != null) {
-            try {
-                agent.close();
-            } catch (RuntimeException ignored) {
-                // 关闭失败不阻塞终态收敛
-            }
         }
     }
 
@@ -610,7 +605,12 @@ public class AgentExecutionService {
     }
 
     private void finish(RunExecution execution, Outcome outcome, String answer, long startedNanos) {
-        if (!execution.markTerminal()) {
+        finish(execution, outcome, answer, startedNanos, false);
+    }
+
+    private void finish(
+            RunExecution execution, Outcome outcome, String answer, long startedNanos, boolean terminalAlreadyClaimed) {
+        if (!terminalAlreadyClaimed && !execution.markTerminal()) {
             return;
         }
         ScheduledFuture<?> heartbeat = execution.heartbeat();
@@ -621,6 +621,10 @@ public class AgentExecutionService {
         execution.finishedAt(Instant.now());
         if (outcome.errorCode() != null) {
             execution.error(outcome.errorCode(), outcome.errorMessage());
+        }
+        Disposable subscription = execution.subscription();
+        if (subscription != null) {
+            subscription.dispose();
         }
         ReActAgent agent = execution.agent();
         if (agent != null) {

@@ -463,6 +463,16 @@ export interface AiMcpToolDescriptor {
   readOnly?: boolean
 }
 
+export type AiMcpToolExecutionCategory = 'READ_ONLY' | 'WRITE' | 'UNKNOWN'
+
+export interface AiMcpToolPolicy {
+  mcpId: string
+  toolName: string
+  executionCategory: AiMcpToolExecutionCategory
+  reviewedBy: string
+  reviewedAt: string
+}
+
 export interface AiMcpComponent {
   id: string
   key: string

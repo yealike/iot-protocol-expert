@@ -1,21 +1,24 @@
 package top.yealike.ipe.ai.platform.store;
 
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import top.yealike.ipe.ai.contract.McpToolDescriptor;
+import top.yealike.ipe.ai.contract.McpToolExecutionCategory;
 import top.yealike.ipe.ai.platform.domain.PlatformRecords.McpComponent;
 import top.yealike.ipe.ai.platform.domain.PlatformRecords.McpRelease;
 import top.yealike.ipe.ai.platform.domain.PlatformRecords.McpTestReport;
+import top.yealike.ipe.ai.platform.domain.PlatformRecords.McpToolPolicy;
 import top.yealike.ipe.ai.support.JsonSupport;
 
 @Repository
 public class McpStore {
 
     private static final String COMPONENT_SELECT =
-            "select id, component_key, display_name, description, origin, native_registry_ref, draft_json, published_version, enabled, revision, created_by, created_at, updated_at from ai_mcp_component";
+            "select id, component_key, display_name, description, origin, native_registry_ref, draft_json, published_version, publication_generation, enabled, revision, created_by, created_at, updated_at from ai_mcp_component";
 
     private final JdbcTemplate jdbc;
 
@@ -98,6 +101,54 @@ public class McpStore {
         return jdbc.update("delete from ai_mcp_component where id = ?", id);
     }
 
+    public List<McpToolPolicy> toolPolicies(UUID mcpId) {
+        return jdbc.query(
+                """
+                select mcp_id, tool_name, execution_category, reviewed_by, reviewed_at
+                  from ai_mcp_tool_policy
+                 where mcp_id = ?
+                 order by tool_name
+                """,
+                (rows, index) -> new McpToolPolicy(
+                        JdbcRows.uuid(rows, "mcp_id"),
+                        rows.getString("tool_name"),
+                        McpToolExecutionCategory.parse(rows.getString("execution_category")),
+                        rows.getString("reviewed_by"),
+                        JdbcRows.instant(rows, "reviewed_at")),
+                mcpId);
+    }
+
+    public Map<String, McpToolExecutionCategory> toolCategories(UUID mcpId) {
+        return jdbc.query(
+                "select tool_name, execution_category from ai_mcp_tool_policy where mcp_id = ?",
+                rows -> {
+                    Map<String, McpToolExecutionCategory> result = new java.util.HashMap<>();
+                    while (rows.next()) {
+                        result.put(
+                                rows.getString("tool_name"),
+                                McpToolExecutionCategory.parse(rows.getString("execution_category")));
+                    }
+                    return Map.copyOf(result);
+                },
+                mcpId);
+    }
+
+    public void upsertToolPolicy(UUID mcpId, String toolName, McpToolExecutionCategory category, String reviewedBy) {
+        jdbc.update("""
+                insert into ai_mcp_tool_policy (
+                    mcp_id, tool_name, execution_category, reviewed_by, reviewed_at)
+                values (?, ?, ?, ?, now())
+                on conflict (mcp_id, tool_name) do update
+                   set execution_category = excluded.execution_category,
+                       reviewed_by = excluded.reviewed_by,
+                       reviewed_at = now()
+                """, mcpId, toolName, category.name(), reviewedBy);
+    }
+
+    public int deleteToolPolicies(UUID mcpId) {
+        return jdbc.update("delete from ai_mcp_tool_policy where mcp_id = ?", mcpId);
+    }
+
     public long bindingReferences(UUID componentId) {
         Long count = jdbc.queryForObject(
                 "select count(*) from ai_agent_mcp_binding b join ai_mcp_release r on r.id = b.mcp_release_id where r.component_id = ?",
@@ -109,6 +160,7 @@ public class McpStore {
     public UUID insertRelease(
             UUID componentId,
             String version,
+            long generation,
             String transport,
             String endpointPolicyJson,
             UUID credentialId,
@@ -118,10 +170,11 @@ public class McpStore {
             String actor) {
         UUID id = UUID.randomUUID();
         jdbc.update(
-                "insert into ai_mcp_release (id, component_id, version, transport, endpoint_policy, credential_id, tool_catalog, catalog_digest, content_digest, state, created_by) values (?, ?, ?, ?, cast(? as jsonb), ?, cast(? as jsonb), ?, ?, 'STAGED', ?)",
+                "insert into ai_mcp_release (id, component_id, version, generation, transport, endpoint_policy, credential_id, tool_catalog, catalog_digest, content_digest, state, created_by) values (?, ?, ?, ?, ?, cast(? as jsonb), ?, cast(? as jsonb), ?, ?, 'STAGED', ?)",
                 id,
                 componentId,
                 version,
+                generation,
                 transport,
                 endpointPolicyJson,
                 credentialId,
@@ -135,7 +188,8 @@ public class McpStore {
     public Optional<McpRelease> findRelease(UUID id) {
         return jdbc.query("""
                         select r.id, r.component_id, c.component_key, r.version, r.transport, r.endpoint_policy,
-                               r.credential_id, r.tool_catalog, r.catalog_digest, r.content_digest, r.state, r.created_at
+                               r.credential_id, r.tool_catalog, r.catalog_digest, r.content_digest, r.state,
+                               r.generation, r.created_at
                           from ai_mcp_release r join ai_mcp_component c on c.id = r.component_id
                          where r.id = ?
                         """, (rows, index) -> mapRelease(rows), id).stream().findFirst();
@@ -144,7 +198,8 @@ public class McpStore {
     public Optional<McpRelease> findRelease(String key, String version) {
         return jdbc.query("""
                         select r.id, r.component_id, c.component_key, r.version, r.transport, r.endpoint_policy,
-                               r.credential_id, r.tool_catalog, r.catalog_digest, r.content_digest, r.state, r.created_at
+                               r.credential_id, r.tool_catalog, r.catalog_digest, r.content_digest, r.state,
+                               r.generation, r.created_at
                           from ai_mcp_release r join ai_mcp_component c on c.id = r.component_id
                          where c.component_key = ? and r.version = ?
                         """, (rows, index) -> mapRelease(rows), key, version).stream()
@@ -154,7 +209,8 @@ public class McpStore {
     public Optional<McpRelease> latestActive(UUID componentId) {
         return jdbc.query("""
                         select r.id, r.component_id, c.component_key, r.version, r.transport, r.endpoint_policy,
-                               r.credential_id, r.tool_catalog, r.catalog_digest, r.content_digest, r.state, r.created_at
+                               r.credential_id, r.tool_catalog, r.catalog_digest, r.content_digest, r.state,
+                               r.generation, r.created_at
                           from ai_mcp_release r join ai_mcp_component c on c.id = r.component_id
                          where r.component_id = ? and r.state = 'ACTIVE'
                          order by r.created_at desc limit 1
@@ -165,7 +221,8 @@ public class McpStore {
     public List<McpRelease> releases(UUID componentId) {
         return jdbc.query("""
                 select r.id, r.component_id, c.component_key, r.version, r.transport, r.endpoint_policy,
-                       r.credential_id, r.tool_catalog, r.catalog_digest, r.content_digest, r.state, r.created_at
+                       r.credential_id, r.tool_catalog, r.catalog_digest, r.content_digest, r.state,
+                       r.generation, r.created_at
                   from ai_mcp_release r join ai_mcp_component c on c.id = r.component_id
                  where r.component_id = ? order by r.created_at desc
                 """, (rows, index) -> mapRelease(rows), componentId);
@@ -176,11 +233,22 @@ public class McpStore {
                 "update ai_mcp_release set state = ? where id = ? and state in ('STAGED', 'ACTIVE')", state, releaseId);
     }
 
-    public void publishComponent(UUID componentId, String version) {
-        jdbc.update(
-                "update ai_mcp_component set published_version = ?, revision = revision + 1, updated_at = now() where id = ?",
-                version,
-                componentId);
+    public boolean publishComponent(UUID componentId, String version, long expectedGeneration) {
+        return jdbc.update(
+                        """
+                        update ai_mcp_component c
+                           set published_version = ?, publication_generation = ?, revision = revision + 1, updated_at = now()
+                         where c.id = ?
+                           and publication_generation < ? and exists (
+                               select 1
+                                 from ai_mcp_release r
+                                where r.component_id = c.id
+                                  and r.version = ?
+                                  and r.generation = ?
+                                  and r.state = 'ACTIVE'
+                           )
+                        """, version, expectedGeneration, componentId, version, expectedGeneration, expectedGeneration)
+                > 0;
     }
 
     public UUID insertTestReport(
@@ -241,6 +309,7 @@ public class McpStore {
                 JdbcRows.json(rows, "native_registry_ref"),
                 JdbcRows.json(rows, "draft_json"),
                 rows.getString("published_version"),
+                rows.getLong("publication_generation"),
                 rows.getBoolean("enabled"),
                 rows.getLong("revision"),
                 rows.getString("created_by"),
@@ -262,6 +331,7 @@ public class McpStore {
                 rows.getString("catalog_digest"),
                 rows.getString("content_digest"),
                 rows.getString("state"),
+                rows.getLong("generation"),
                 JdbcRows.instant(rows, "created_at"));
     }
 }

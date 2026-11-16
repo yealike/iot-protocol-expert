@@ -4,11 +4,11 @@ import jakarta.annotation.PreDestroy;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,7 +16,6 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
 import top.yealike.ipe.ai.config.AiProperties;
-import top.yealike.ipe.ai.contract.McpToolDescriptor;
 import top.yealike.ipe.ai.identity.UserIdentity;
 import top.yealike.ipe.ai.platform.agent.AgentService;
 import top.yealike.ipe.ai.platform.config.PlatformProperties;
@@ -58,11 +57,18 @@ public class PlatformBootstrap {
     private final SkillService skills;
     private final AgentService agents;
     private final PublicationStore publications;
-    private final ExecutorService executor = Executors.newSingleThreadExecutor(runnable -> {
-        Thread thread = new Thread(runnable, "ai-platform-bootstrap");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private final ExecutorService executor = new ThreadPoolExecutor(
+            1,
+            1,
+            0L,
+            TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(1),
+            runnable -> {
+                Thread thread = new Thread(runnable, "ai-platform-bootstrap");
+                thread.setDaemon(true);
+                return thread;
+            },
+            new ThreadPoolExecutor.AbortPolicy());
 
     public PlatformBootstrap(
             PlatformProperties properties,
@@ -107,7 +113,7 @@ public class PlatformBootstrap {
             return;
         }
         ModelProfile model = ensureModel(config, credential);
-        McpRelease mcp = ensureMcp();
+        McpRelease mcp = ensureMcp(config);
         List<SkillRelease> skillReleases = ensureSkills(config);
         ensureAgent(model, mcp, skillReleases, config);
     }
@@ -156,7 +162,7 @@ public class PlatformBootstrap {
                 model.enabled());
     }
 
-    private McpRelease ensureMcp() {
+    private McpRelease ensureMcp(PlatformProperties.Bootstrap config) {
         McpComponent component = mcps.list().stream()
                 .filter(item -> item.key().equals("ops"))
                 .findFirst()
@@ -167,6 +173,7 @@ public class PlatformBootstrap {
         }
         McpRelease active = activeMcp(component.id());
         if (active != null && (mcpCredential == null || active.credentialId() != null)) {
+            approveConfiguredTools(component, config);
             return active;
         }
         if (!properties.registry().enabled()) {
@@ -181,6 +188,7 @@ public class PlatformBootstrap {
         if (!(reportId instanceof UUID id)) {
             throw new IllegalStateException("MCP 测试未返回报告编号");
         }
+        approveConfiguredTools(component, config);
         String version = active == null ? "1.0.0" : nextPatchVersion(active.version());
         McpService.PublishResult published =
                 mcps.publish(SYSTEM, component.id(), version, id, component.revision(), "bootstrap-mcp-ops-" + version);
@@ -188,6 +196,27 @@ public class PlatformBootstrap {
             throw new IllegalStateException("MCP ops 发布未在时限内完成");
         }
         return activeMcp(component.id());
+    }
+
+    private void approveConfiguredTools(McpComponent component, PlatformProperties.Bootstrap config) {
+        if (config.reviewedReadOnlyTools() == null
+                || config.reviewedReadOnlyTools().isEmpty()) {
+            log.warn(
+                    "AI platform bootstrap: 未配置 ipe.ai.platform.bootstrap.reviewed-read-only-tools，MCP {} 没有自动批准的工具",
+                    component.key());
+            return;
+        }
+        java.util.Set<String> approved = mcps.toolPolicies(component.id()).stream()
+                .filter(policy -> policy.executionCategory().readOnly())
+                .map(policy -> policy.toolName())
+                .collect(java.util.stream.Collectors.toSet());
+        for (String toolName : config.reviewedReadOnlyTools()) {
+            if (toolName == null || toolName.isBlank() || approved.contains(toolName.strip())) {
+                continue;
+            }
+            mcps.reviewTool(SYSTEM, component.id(), toolName.strip(), "READ_ONLY");
+            log.info("AI platform bootstrap approved read-only tool: mcp={} tool={}", component.key(), toolName);
+        }
     }
 
     private Credential ensureMcpCredential() {
@@ -281,7 +310,8 @@ public class PlatformBootstrap {
         }
         List<McpBindingInput> mcpBindings = mcp == null
                 ? List.of()
-                : readOnlyTools(mcp).stream()
+                : mcps.readOnlyTools(mcp).stream()
+                        .limit(16)
                         .map(tool -> new McpBindingInput(mcp.id(), tool.name(), true, 0))
                         .toList();
         List<SkillBindingInput> skillBindings = new java.util.ArrayList<>();
@@ -314,29 +344,6 @@ public class PlatformBootstrap {
                 version,
                 mcpBindings.size(),
                 skillBindings.size());
-    }
-
-    private List<McpToolDescriptor> readOnlyTools(McpRelease release) {
-        List<McpToolDescriptor> readOnly = release.tools().stream()
-                .filter(McpToolDescriptor::readOnly)
-                .limit(16)
-                .toList();
-        if (!readOnly.isEmpty()) {
-            return readOnly;
-        }
-        return release.tools().stream()
-                .filter(tool -> {
-                    String name = tool.name() == null ? "" : tool.name().toLowerCase(Locale.ROOT);
-                    return name.startsWith("get_")
-                            || name.startsWith("list_")
-                            || name.startsWith("read_")
-                            || name.startsWith("query_")
-                            || name.startsWith("search_")
-                            || name.startsWith("describe_")
-                            || name.startsWith("find_");
-                })
-                .limit(16)
-                .toList();
     }
 
     private McpRelease activeMcp(UUID componentId) {

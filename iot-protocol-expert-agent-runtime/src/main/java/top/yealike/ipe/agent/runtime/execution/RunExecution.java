@@ -7,7 +7,6 @@ import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.Future;
 import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
 import reactor.core.Disposable;
@@ -31,7 +30,8 @@ public final class RunExecution {
     private final AtomicReference<ScheduledFuture<?>> heartbeat = new AtomicReference<>();
     private final AtomicReference<Future<?>> future = new AtomicReference<>();
     private final AtomicReference<String> status = new AtomicReference<>("QUEUED");
-    private final AtomicBoolean terminal = new AtomicBoolean();
+    private boolean workerStarted;
+    private boolean terminal;
     private final AtomicLong inputTokens = new AtomicLong();
     private final AtomicLong outputTokens = new AtomicLong();
     private final AtomicLong modelCalls = new AtomicLong();
@@ -185,12 +185,36 @@ public final class RunExecution {
         maxIterations = value;
     }
 
-    public boolean markTerminal() {
-        return terminal.compareAndSet(false, true);
+    public synchronized boolean markTerminal() {
+        if (terminal) {
+            return false;
+        }
+        terminal = true;
+        return true;
     }
 
-    public boolean terminal() {
-        return terminal.get();
+    public synchronized boolean markWorkerStarted() {
+        if (terminal || workerStarted) {
+            return false;
+        }
+        workerStarted = true;
+        return true;
+    }
+
+    public synchronized boolean workerStarted() {
+        return workerStarted;
+    }
+
+    public synchronized boolean tryCancelQueued() {
+        if (terminal || workerStarted) {
+            return false;
+        }
+        terminal = true;
+        return true;
+    }
+
+    public synchronized boolean terminal() {
+        return terminal;
     }
 
     public List<String> warnings() {

@@ -20,6 +20,10 @@ public final class TestFixtures {
     }
 
     public static RuntimeProperties properties(String controlBaseUrl, String serviceKey) {
+        return properties(controlBaseUrl, serviceKey, new RuntimeProperties.Otel(false, false, 8192));
+    }
+
+    public static RuntimeProperties properties(String controlBaseUrl, String serviceKey, RuntimeProperties.Otel otel) {
         return new RuntimeProperties(
                 19084,
                 controlBaseUrl,
@@ -32,7 +36,8 @@ public final class TestFixtures {
                 new RuntimeProperties.Nacos("127.0.0.1:8848", "", "", "public", "IPE_AI_COMPONENTS", false),
                 new RuntimeProperties.Run(4, 8, 12, 32, 300_000L, 5_000L, 10_000L),
                 new RuntimeProperties.Mcp(3_000, 10_000, 20_000, 32, 300, 4, 32, 65_536),
-                new RuntimeProperties.Skills(12_000));
+                new RuntimeProperties.Skills(12_000),
+                new RuntimeProperties.Observability(otel));
     }
 
     public static McpToolDescriptor mcpTool() {

@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
 import top.yealike.ipe.ai.run.RunRecords.Run;
 import top.yealike.ipe.ai.run.RunRecords.RunEvent;
+import top.yealike.ipe.ai.run.RunRecords.RuntimeEventFingerprint;
 import top.yealike.ipe.ai.run.RunRecords.RuntimeEventInsert;
 import top.yealike.ipe.ai.run.RunRecords.ToolCall;
 
@@ -31,6 +32,8 @@ public interface RunMapper {
             @Param("createdAt") Instant createdAt);
 
     List<Run> find(@Param("id") UUID id);
+
+    List<Run> lockRun(@Param("id") UUID id);
 
     List<Run> findByIdempotency(
             @Param("conversationId") UUID conversationId, @Param("idempotencyKey") String idempotencyKey);
@@ -83,8 +86,6 @@ public interface RunMapper {
 
     int transition(@Param("next") String next, @Param("id") UUID id, @Param("expected") String expected);
 
-    int requestPause(@Param("id") UUID id);
-
     int markCompleted(@Param("usageJson") String usageJson, @Param("id") UUID id);
 
     int markFailed(
@@ -115,17 +116,27 @@ public interface RunMapper {
             @Param("executionToken") long executionToken,
             @Param("instanceId") String instanceId);
 
-    int markPaused(@Param("usageJson") String usageJson, @Param("id") UUID id);
-
-    int requeuePaused(@Param("id") UUID id);
-
     int requestCancel(@Param("id") UUID id);
 
     int cancelQueued(@Param("id") UUID id);
 
     Integer countRunning();
 
+    Integer countQueued();
+
+    Integer countUserQueued(@Param("actor") String actor, @Param("excludeConversationId") UUID excludeConversationId);
+
+    Integer countUserInFlight(@Param("actor") String actor, @Param("excludeConversationId") UUID excludeConversationId);
+
+    Integer lockQuota(@Param("scope") String scope);
+
     List<String> selectStatus(@Param("id") UUID id);
+
+    Integer lockRuntimeEventRun(
+            @Param("id") UUID id, @Param("executionToken") long executionToken, @Param("instanceId") String instanceId);
+
+    List<RuntimeEventFingerprint> runtimeEventFingerprints(
+            @Param("runId") UUID runId, @Param("sourceSeqs") List<Long> sourceSeqs);
 
     List<Run> selectExpiredLeases(@Param("limit") int limit);
 

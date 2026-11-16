@@ -12,6 +12,7 @@ import top.yealike.ipe.ai.conversation.ConversationRepository;
 import top.yealike.ipe.ai.identity.UserIdentity;
 import top.yealike.ipe.ai.observability.AiObservability;
 import top.yealike.ipe.ai.platform.agent.AgentService;
+import top.yealike.ipe.ai.platform.config.PlatformProperties;
 import top.yealike.ipe.ai.platform.dispatch.RuntimeDispatchClient;
 import top.yealike.ipe.ai.platform.domain.PlatformRecords.AgentRelease;
 import top.yealike.ipe.ai.policy.PolicyService;
@@ -19,7 +20,7 @@ import top.yealike.ipe.ai.run.RunRecords.Run;
 import top.yealike.ipe.ai.run.RunRecords.RunView;
 import top.yealike.ipe.ai.support.AiExceptions;
 
-/** Run 生命周期：提交、暂停、恢复、取消。提交与消息落库在同一事务，网络重试由幂等键去重。 */
+/** Run 生命周期：提交与取消。提交与消息落库在同一事务，网络重试由幂等键去重。 */
 @Service
 public class RunService {
 
@@ -33,6 +34,7 @@ public class RunService {
     private final RuntimeDispatchClient runtime;
     private final io.micrometer.core.instrument.MeterRegistry metrics;
     private final AiObservability observability;
+    private final PlatformProperties platform;
 
     public RunService(
             ConversationRepository conversations,
@@ -42,7 +44,8 @@ public class RunService {
             AgentService agents,
             RuntimeDispatchClient runtime,
             io.micrometer.core.instrument.MeterRegistry metrics,
-            AiObservability observability) {
+            AiObservability observability,
+            PlatformProperties platform) {
         this.conversations = conversations;
         this.runs = runs;
         this.events = events;
@@ -51,6 +54,7 @@ public class RunService {
         this.runtime = runtime;
         this.metrics = metrics;
         this.observability = observability;
+        this.platform = platform;
     }
 
     @Transactional
@@ -73,6 +77,9 @@ public class RunService {
         if (key.length() > 120) {
             throw AiExceptions.badRequest("幂等键过长");
         }
+        if (priority != null && priority != 100) {
+            throw AiExceptions.badRequest("当前一期不支持优先级控制，priority 仅允许 100");
+        }
         var existing = observability.observeSupplier(
                 "ai run idempotency lookup", () -> runs.findByIdempotency(conversationId, key));
         if (existing.isPresent()) {
@@ -86,6 +93,13 @@ public class RunService {
         existing = observability.observeSupplier(
                 "ai run idempotency lookup", () -> runs.findByIdempotency(conversationId, key));
         if (existing.isPresent()) return existing.get();
+        runs.lockQuota("ai-run-quota:global");
+        runs.lockQuota("ai-run-quota:user:" + identity.actor());
+        // 配额锁会串行化同用户并发提交；拿到锁后再次检查，已提交的重试直接返回原 Run。
+        existing = observability.observeSupplier(
+                "ai run idempotency lookup", () -> runs.findByIdempotency(conversationId, key));
+        if (existing.isPresent()) return existing.get();
+        enforceQuota(identity, conversationId);
         Instant now = Instant.now();
         conversations.insertMessage(messageId, conversationId, runId, "user", question, List.of(), "FINAL", seq, now);
 
@@ -113,7 +127,7 @@ public class RunService {
                 key,
                 policy.version(),
                 observability.traceparent(),
-                priority != null && priority > 100 ? 200 : 100,
+                100,
                 now);
 
         metrics.counter("ai_runs_created_total", "agent", conversation.agentKey())
@@ -123,24 +137,7 @@ public class RunService {
         messagePayload.put("seq", seq);
         messagePayload.put("content", question);
         events.publish(conversationId, runId, "message.user", messagePayload);
-        events.publish(
-                conversationId,
-                runId,
-                "run.queued",
-                Map.of("runId", runId.toString(), "priority", priority != null && priority > 100 ? 200 : 100));
-        if (priority != null && priority > 100) {
-            runs.current(conversationId)
-                    .filter(active -> RunRecords.RUNNING.equals(active.status()))
-                    .ifPresent(active -> {
-                        if (runs.requestPause(active.id())) {
-                            events.publish(
-                                    conversationId,
-                                    active.id(),
-                                    "run.pause_requested",
-                                    Map.of("status", RunRecords.PAUSE_REQUESTED, "reason", "PRIORITY_RUN"));
-                        }
-                    });
-        }
+        events.publish(conversationId, runId, "run.queued", Map.of("runId", runId.toString(), "priority", 100));
         return runs.find(runId).orElseThrow(() -> AiExceptions.unavailable("Run 创建失败"));
     }
 
@@ -200,6 +197,22 @@ public class RunService {
                 .find(conversationId)
                 .filter(conversation -> conversation.userId().equals(identity.actor()))
                 .orElseThrow(() -> AiExceptions.notFound("会话不存在"));
+    }
+
+    private void enforceQuota(UserIdentity identity, UUID conversationId) {
+        PlatformProperties.Runtime quota = platform.runtime();
+        int globalQueued = runs.countQueued();
+        if (globalQueued >= quota.queueLimit()) {
+            throw new AiExceptions.AiException(429, "RUN_QUEUE_FULL", "全局排队任务已达上限，请稍后重试");
+        }
+        int userQueued = runs.countUserQueued(identity.actor(), null);
+        if (userQueued >= quota.perUserQueued()) {
+            throw new AiExceptions.AiException(429, "USER_QUEUE_FULL", "当前账号排队任务已达上限，请稍后重试");
+        }
+        int userInFlight = runs.countUserInFlight(identity.actor(), null);
+        if (userInFlight >= quota.perUserInFlight()) {
+            throw new AiExceptions.AiException(429, "USER_RUN_BUSY", "当前账号已有任务在途，请等待完成后再提交");
+        }
     }
 
     public Run requireRun(UserIdentity identity, UUID runId) {

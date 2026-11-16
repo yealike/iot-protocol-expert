@@ -9,9 +9,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import top.yealike.ipe.ai.contract.ErrorCodes;
 import top.yealike.ipe.ai.contract.RunEvent;
 import top.yealike.ipe.ai.contract.RunEventAck;
 import top.yealike.ipe.ai.contract.RunEventBatch;
@@ -25,6 +28,7 @@ import top.yealike.ipe.ai.support.JsonSupport;
 @Service
 public class RuntimeEventIngestService {
 
+    private static final Logger log = LoggerFactory.getLogger(RuntimeEventIngestService.class);
     private static final int MAX_EVENTS = 32;
     private static final int MAX_EVENT_BYTES = 64 * 1024;
 
@@ -62,6 +66,10 @@ public class RuntimeEventIngestService {
         List<RunRecords.RunEvent> acceptedEvents = new ArrayList<>();
         List<Long> acceptedSeq = new ArrayList<>();
         transactions.executeWithoutResult(status -> {
+            if (!runs.lockRuntimeEventRun(batch.runId(), batch.executionToken(), batch.instanceId())) {
+                throw AiExceptions.conflict(ErrorCodes.STALE_EXECUTION_TOKEN, "Run 执行权已失效或已终结");
+            }
+            rejectContentConflicts(batch);
             int count = batch.events().size();
             long lastCursor = runs.reserveEventCursors(conversationId, count);
             long firstCursor = lastCursor - count + 1;
@@ -86,11 +94,13 @@ public class RuntimeEventIngestService {
             }
             Set<Long> inserted = runs.insertRuntimeEvents(List.copyOf(inserts.values()));
             for (RunRecords.RuntimeEventInsert insert : inserts.values()) {
-                if (!inserted.contains(insert.sourceSeq())) {
-                    continue;
-                }
                 RunEvent source = sourceEvents.get(insert.sourceSeq());
                 acceptedSeq.add(insert.sourceSeq());
+                if (!inserted.contains(insert.sourceSeq())) {
+                    log.debug(
+                            "runtime event already persisted: run={} sourceSeq={}", batch.runId(), insert.sourceSeq());
+                    continue;
+                }
                 acceptedEvents.add(new RunRecords.RunEvent(
                         insert.cursor(),
                         insert.conversationId(),
@@ -105,6 +115,28 @@ public class RuntimeEventIngestService {
         long lastCursor =
                 acceptedEvents.isEmpty() ? 0 : acceptedEvents.getLast().cursor();
         return new RunEventAck(List.copyOf(acceptedSeq), lastCursor);
+    }
+
+    private void rejectContentConflicts(RunEventBatch batch) {
+        Map<Long, RunEvent> incoming = new LinkedHashMap<>();
+        for (RunEvent event : batch.events()) {
+            incoming.put(event.sourceSeq(), event);
+        }
+        for (RunRecords.RuntimeEventFingerprint existing :
+                runs.runtimeEventFingerprints(batch.runId(), List.copyOf(incoming.keySet()))) {
+            RunEvent event = incoming.get(existing.sourceSeq());
+            if (event == null) {
+                continue;
+            }
+            boolean sameType = event.type().equals(existing.type());
+            boolean samePayload = JsonSupport.mapper()
+                    .readTree(JsonSupport.write(event.payload()))
+                    .equals(JsonSupport.mapper().readTree(JsonSupport.write(existing.payload())));
+            if (!sameType || !samePayload) {
+                throw AiExceptions.conflict(
+                        ErrorCodes.EVENT_CONFLICT, "sourceSeq " + existing.sourceSeq() + " 已持久化为不同内容，拒绝覆盖");
+            }
+        }
     }
 
     private void recordToolCall(RunEventBatch batch, RunRecords.RunEvent event) {

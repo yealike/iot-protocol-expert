@@ -66,6 +66,15 @@ public class PublicationStore {
                 .findFirst();
     }
 
+    public long nextGeneration(String resourceType, UUID resourceId) {
+        Long value = jdbc.queryForObject(
+                "select coalesce(max(generation), 0) + 1 from ai_publication where resource_type = ? and resource_id = ?",
+                Long.class,
+                resourceType,
+                resourceId);
+        return value == null ? 1 : value;
+    }
+
     public List<Publication> claimPending(String worker, int leaseSeconds, int limit) {
         jdbc.update("""
                 update ai_publication
@@ -86,6 +95,22 @@ public class PublicationStore {
                 worker);
     }
 
+    /** 认领指定发布意图；outbox 路径也必须先取得租约，避免与轮询 worker 并发执行同一阶段。 */
+    public Optional<Publication> claim(UUID id, String worker, int leaseSeconds) {
+        int changed = jdbc.update("""
+                update ai_publication
+                   set lease_owner = ?, lease_until = now() + make_interval(secs => ?), updated_at = now()
+                 where id = ?
+                   and state in ('VALIDATING', 'PREPARING', 'REGISTERING')
+                   and next_attempt_at <= now()
+                   and (lease_until is null or lease_until < now())
+                """, worker, leaseSeconds, id);
+        if (changed == 0) {
+            return Optional.empty();
+        }
+        return find(id);
+    }
+
     public boolean advance(
             UUID id, String expectedState, String nextState, String nextPhase, String errorCode, String errorMessage) {
         return jdbc.update(
@@ -99,13 +124,18 @@ public class PublicationStore {
                 > 0;
     }
 
-    public void fail(UUID id, String code, String message, Instant nextAttemptAt) {
-        jdbc.update(
+    /** @return 是否已达到最大重试次数并进入 FAILED 终态。 */
+    public boolean fail(UUID id, String code, String message, Instant nextAttemptAt) {
+        int changed = jdbc.update(
                 "update ai_publication set state = case when attempts + 1 >= 5 then 'FAILED' else state end, error_code = ?, error_message = ?, attempts = attempts + 1, next_attempt_at = ?, lease_owner = null, lease_until = null, updated_at = now() where id = ?",
                 code,
                 message,
                 Timestamp.from(nextAttemptAt),
                 id);
+        if (changed == 0) {
+            return false;
+        }
+        return find(id).map(publication -> "FAILED".equals(publication.state())).orElse(false);
     }
 
     public void retry(UUID id) {
@@ -114,11 +144,12 @@ public class PublicationStore {
                 id);
     }
 
-    public void expire(UUID id, Instant deadline) {
-        jdbc.update(
-                "update ai_publication set state = 'FAILED', error_code = 'PUBLICATION_TIMEOUT', error_message = '发布超时，请检查注册或运行时状态后重试', lease_owner = null, lease_until = null, updated_at = now() where id = ? and state in ('VALIDATING', 'PREPARING', 'REGISTERING') and deadline_at < ?",
-                id,
-                Timestamp.from(deadline));
+    public boolean expire(UUID id, Instant deadline) {
+        return jdbc.update(
+                        "update ai_publication set state = 'FAILED', error_code = 'PUBLICATION_TIMEOUT', error_message = '发布超时，请检查注册或运行时状态后重试', lease_owner = null, lease_until = null, updated_at = now() where id = ? and state in ('VALIDATING', 'PREPARING', 'REGISTERING') and deadline_at < ?",
+                        id,
+                        Timestamp.from(deadline))
+                > 0;
     }
 
     public void markFailed(UUID id, String code, String message) {

@@ -20,6 +20,7 @@ public final class ErrorCodes {
     public static final String EXECUTION_LOST = "EXECUTION_LOST";
     public static final String STALE_EXECUTION_TOKEN = "STALE_EXECUTION_TOKEN";
     public static final String EVENT_CURSOR_EXPIRED = "EVENT_CURSOR_EXPIRED";
+    public static final String EVENT_CONFLICT = "EVENT_CONFLICT";
     public static final String INTERNAL_SIGNATURE_INVALID = "INTERNAL_SIGNATURE_INVALID";
     public static final String CREDENTIAL_UNAVAILABLE = "CREDENTIAL_UNAVAILABLE";
 }

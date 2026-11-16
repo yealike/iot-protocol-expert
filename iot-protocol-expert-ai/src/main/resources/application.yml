@@ -116,6 +116,8 @@ ipe:
         model-base-url: ${IPE_MODEL_BASE_URL:https://api.deepseek.com}
         model-name: ${IPE_MODEL_NAME:deepseek-chat}
         skill-version: ${IPE_BOOTSTRAP_SKILL_VERSION:1.0.0}
+        # 由部署管理员显式列出的只读工具名，逗号分隔；留空表示不自动批准任何工具。
+        reviewed-read-only-tools: ${IPE_AI_BOOTSTRAP_REVIEWED_READ_ONLY_TOOLS:}
     mcp:
       # 与 ops 共享的请求签名密钥，只放环境变量
       token: ${IPE_AI_MCP_TOKEN:}

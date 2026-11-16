@@ -75,6 +75,10 @@ public final class InternalPaths {
         return CONTROL_BASE + "/runtime/desired-releases";
     }
 
+    public static String controlDesiredReleases(long cursor, int limit) {
+        return controlDesiredReleases() + "?cursor=" + cursor + "&limit=" + limit;
+    }
+
     public static String controlReadiness() {
         return CONTROL_BASE + "/runtime/readiness";
     }

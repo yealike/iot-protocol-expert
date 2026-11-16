@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class RuntimeObservability {
 
-    private static final Pattern TRACEPARENT = Pattern.compile("^00-([0-9a-f]{32})-([0-9a-f]{16})-([01])$");
+    private static final Pattern TRACEPARENT = Pattern.compile("^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$");
 
     private final ObjectProvider<ObservationRegistry> observations;
     private final ObjectProvider<Tracer> tracers;
@@ -80,10 +80,17 @@ public class RuntimeObservability {
         if (!match.matches()) {
             return null;
         }
+        if (isZero(match.group(1)) || isZero(match.group(2))) {
+            return null;
+        }
         return tracer.traceContextBuilder()
                 .traceId(match.group(1))
                 .spanId(match.group(2))
-                .sampled("01".equals(match.group(3)))
+                .sampled((Integer.parseInt(match.group(3), 16) & 1) == 1)
                 .build();
+    }
+
+    private static boolean isZero(String value) {
+        return value.chars().allMatch(character -> character == '0');
     }
 }

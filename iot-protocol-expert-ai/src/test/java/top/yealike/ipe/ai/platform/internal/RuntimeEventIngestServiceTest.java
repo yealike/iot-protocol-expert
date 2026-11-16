@@ -42,6 +42,7 @@ class RuntimeEventIngestServiceTest {
         Instant startedAt = Instant.parse("2026-11-16T05:00:00Z");
         Instant finishedAt = Instant.parse("2026-11-16T05:00:01Z");
         when(runs.reserveEventCursors(conversationId, 2)).thenReturn(10L);
+        when(runs.lockRuntimeEventRun(runId, 7L, "runtime-test")).thenReturn(true);
         when(runs.insertRuntimeEvents(anyList())).thenReturn(Set.of(1L, 2L));
 
         RunEvent started = new RunEvent(
@@ -88,5 +89,28 @@ class RuntimeEventIngestServiceTest {
                         eq(startedAt));
         verify(runs)
                 .finishRuntimeToolCall(eq(toolCallId), eq(runId), eq("SUCCEEDED"), anyMap(), eq(25), eq(finishedAt));
+    }
+
+    @Test
+    void duplicateBatchStillAcknowledgesPersistedSourceSequences() {
+        RunRepository runs = mock(RunRepository.class);
+        ConversationChannels channels = mock(ConversationChannels.class);
+        PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
+        TransactionStatus status = mock(TransactionStatus.class);
+        when(transactions.getTransaction(any())).thenReturn(status);
+
+        UUID conversationId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        RunEvent event = new RunEvent("assistant.delta", Map.of("delta", "a"), 1L, UUID.randomUUID(), Instant.now());
+        RunEventBatch batch = new RunEventBatch(runId, 7L, "runtime-test", "request-1", List.of(event));
+        when(runs.reserveEventCursors(conversationId, 1)).thenReturn(8L);
+        when(runs.lockRuntimeEventRun(runId, 7L, "runtime-test")).thenReturn(true);
+        when(runs.insertRuntimeEvents(anyList())).thenReturn(Set.of());
+
+        RunEventAck ack = new RuntimeEventIngestService(runs, channels, transactions).ingest(conversationId, batch);
+
+        assertThat(ack.acceptedSourceSeq()).containsExactly(1L);
+        verify(channels, org.mockito.Mockito.never()).publish(any());
+        verify(transactions).commit(status);
     }
 }

@@ -72,7 +72,14 @@ public class RuntimeExecutors {
 
     @Bean(destroyMethod = "")
     public ExecutorService runtimeReconcileExecutor() {
-        reconcileExecutor = java.util.concurrent.Executors.newSingleThreadExecutor(named("ai-reconcile-"));
+        reconcileExecutor = new ThreadPoolExecutor(
+                1,
+                1,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(1),
+                named("ai-reconcile-"),
+                new ThreadPoolExecutor.AbortPolicy());
         return reconcileExecutor;
     }
 

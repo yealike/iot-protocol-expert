@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 import top.yealike.ipe.ai.contract.AgentManifest;
 import top.yealike.ipe.ai.contract.McpToolDescriptor;
+import top.yealike.ipe.ai.contract.McpToolExecutionCategory;
 import top.yealike.ipe.ai.contract.SkillBundle;
 
 /** 控制面领域记录；JSONB 字段在存储层解析为 Map/记录。 */
@@ -52,6 +53,7 @@ public final class PlatformRecords {
             Map<String, Object> nativeRegistryRef,
             Map<String, Object> draft,
             String publishedVersion,
+            long publicationGeneration,
             boolean enabled,
             long revision,
             String createdBy,
@@ -70,6 +72,7 @@ public final class PlatformRecords {
             String catalogDigest,
             String contentDigest,
             String state,
+            long generation,
             Instant createdAt) {}
 
     public record McpTestReport(
@@ -81,6 +84,13 @@ public final class PlatformRecords {
             boolean success,
             Instant createdAt) {}
 
+    public record McpToolPolicy(
+            UUID mcpId,
+            String toolName,
+            McpToolExecutionCategory executionCategory,
+            String reviewedBy,
+            Instant reviewedAt) {}
+
     public record SkillComponent(
             UUID id,
             String key,
@@ -88,6 +98,7 @@ public final class PlatformRecords {
             String description,
             long draftRevision,
             String publishedVersion,
+            long publicationGeneration,
             boolean enabled,
             long revision,
             String createdBy,
@@ -107,6 +118,7 @@ public final class PlatformRecords {
             SkillBundle bundle,
             String bundleDigest,
             String state,
+            long generation,
             Instant createdAt) {}
 
     public record AgentComponent(
@@ -119,6 +131,7 @@ public final class PlatformRecords {
             Map<String, Object> modelOptions,
             Map<String, Object> budget,
             String publishedVersion,
+            long publicationGeneration,
             boolean enabled,
             long revision,
             String createdBy,
@@ -153,6 +166,7 @@ public final class PlatformRecords {
             String manifestDigest,
             String state,
             long generation,
+            long releaseCursor,
             Instant createdAt) {}
 
     public record Publication(

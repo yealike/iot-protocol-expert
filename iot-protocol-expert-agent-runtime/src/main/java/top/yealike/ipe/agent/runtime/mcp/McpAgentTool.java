@@ -34,6 +34,7 @@ public final class McpAgentTool implements AgentTool {
     private final RunGuard guard;
     private final ControlClient control;
     private final McpConnectionPool pool;
+    private final McpEndpointResolver endpoints;
     private final MeterRegistry metrics;
     private final RuntimeObservability observability;
 
@@ -43,6 +44,7 @@ public final class McpAgentTool implements AgentTool {
             RunGuard guard,
             ControlClient control,
             McpConnectionPool pool,
+            McpEndpointResolver endpoints,
             MeterRegistry metrics,
             RuntimeObservability observability) {
         this.tool = tool;
@@ -50,6 +52,7 @@ public final class McpAgentTool implements AgentTool {
         this.guard = guard;
         this.control = control;
         this.pool = pool;
+        this.endpoints = endpoints;
         this.metrics = metrics;
         this.observability = observability;
     }
@@ -97,6 +100,9 @@ public final class McpAgentTool implements AgentTool {
         }
         if (input != null && input.containsKey(OpsMcpInvocationAdapter.CONTEXT_FIELD)) {
             return failure(ErrorCodes.TOOL_DENIED, "模型不得提交保留字段 _ipe_context", descriptor.key());
+        }
+        if (!tool.descriptor().readOnly()) {
+            return failure(ErrorCodes.TOOL_DENIED, "一期仅允许调用只读工具", descriptor.key());
         }
         String requestId = UUID.randomUUID().toString();
         String actor = null;
@@ -147,9 +153,10 @@ public final class McpAgentTool implements AgentTool {
                     return failure(ErrorCodes.CREDENTIAL_UNAVAILABLE, "工具凭据不可用", descriptor.key());
                 }
             }
-            connection = pool.acquire(descriptor, secret);
+            McpDescriptor resolvedDescriptor = endpoints.resolve(descriptor);
+            connection = pool.acquire(resolvedDescriptor, secret);
             Map<String, Object> arguments = new LinkedHashMap<>(input == null ? Map.of() : input);
-            if (OpsMcpInvocationAdapter.applies(descriptor)) {
+            if (OpsMcpInvocationAdapter.applies(resolvedDescriptor)) {
                 if (secret == null || secret.isBlank()) {
                     log.warn(
                             "mcp tool credential unavailable: mcp={} alias={} credentialRef={}",

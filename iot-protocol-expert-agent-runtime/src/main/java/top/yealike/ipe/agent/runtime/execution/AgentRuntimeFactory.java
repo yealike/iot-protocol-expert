@@ -11,6 +11,7 @@ import org.springframework.stereotype.Component;
 import top.yealike.ipe.agent.runtime.control.ControlClient;
 import top.yealike.ipe.agent.runtime.mcp.McpAgentTool;
 import top.yealike.ipe.agent.runtime.mcp.McpConnectionPool;
+import top.yealike.ipe.agent.runtime.mcp.McpEndpointResolver;
 import top.yealike.ipe.agent.runtime.observability.RuntimeObservability;
 import top.yealike.ipe.agent.runtime.prepare.PreparedRelease;
 import top.yealike.ipe.agent.runtime.prepare.PreparedTool;
@@ -25,6 +26,7 @@ public class AgentRuntimeFactory {
     private final PromptAssembler prompts;
     private final SkillToolFactory skills;
     private final McpConnectionPool pool;
+    private final McpEndpointResolver endpoints;
     private final ControlClient control;
     private final MeterRegistry metrics;
     private final RuntimeObservability observability;
@@ -33,12 +35,14 @@ public class AgentRuntimeFactory {
             PromptAssembler prompts,
             SkillToolFactory skills,
             McpConnectionPool pool,
+            McpEndpointResolver endpoints,
             ControlClient control,
             MeterRegistry metrics,
             RuntimeObservability observability) {
         this.prompts = prompts;
         this.skills = skills;
         this.pool = pool;
+        this.endpoints = endpoints;
         this.control = control;
         this.metrics = metrics;
         this.observability = observability;
@@ -50,7 +54,8 @@ public class AgentRuntimeFactory {
         for (PreparedTool tool : release.tools()) {
             McpDescriptor descriptor = release.mcps().get(tool.mcpKey());
             toolkit.registration()
-                    .agentTool(new McpAgentTool(tool, descriptor, guard, control, pool, metrics, observability))
+                    .agentTool(
+                            new McpAgentTool(tool, descriptor, guard, control, pool, endpoints, metrics, observability))
                     .apply();
         }
         for (var skillTool : skills.tools(release, sink, guard)) {

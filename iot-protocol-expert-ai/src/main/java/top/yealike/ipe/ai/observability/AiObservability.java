@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
 /** Propagates observations across the database-backed AI run queue. */
 @Component
 public class AiObservability {
-    private static final Pattern TRACEPARENT = Pattern.compile("^00-([0-9a-f]{32})-([0-9a-f]{16})-([01])$");
+    private static final Pattern TRACEPARENT = Pattern.compile("^00-([0-9a-f]{32})-([0-9a-f]{16})-([0-9a-f]{2})$");
 
     private final ObservationRegistry observations;
     private final Tracer tracer;
@@ -87,10 +87,15 @@ public class AiObservability {
         if (value == null) return null;
         var match = TRACEPARENT.matcher(value);
         if (!match.matches()) return null;
+        if (isZero(match.group(1)) || isZero(match.group(2))) return null;
         return tracer.traceContextBuilder()
                 .traceId(match.group(1))
-                .spanId(match.group(3))
-                .sampled("01".equals(match.group(4)))
+                .spanId(match.group(2))
+                .sampled((Integer.parseInt(match.group(3), 16) & 1) == 1)
                 .build();
+    }
+
+    private static boolean isZero(String value) {
+        return value.chars().allMatch(character -> character == '0');
     }
 }

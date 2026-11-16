@@ -155,18 +155,21 @@ public class AgentService {
     public PublishResult publish(
             UserIdentity actor, UUID id, String version, long expectedRevision, String idempotencyKey) {
         AgentComponent component = agents.lock(id).orElseThrow(() -> AiExceptions.notFound("Agent 不存在"));
-        if (component.revision() != expectedRevision) {
-            throw AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "Agent 已被其他请求修改，请刷新后重试");
-        }
         String key = blank(idempotencyKey) ? UUID.randomUUID().toString() : idempotencyKey.strip();
         var existing = publications.findByIdempotency("AGENT", id, key);
         if (existing.isPresent()) {
             Publication publication = existing.get();
+            if (!blank(version) && !publication.version().equals(requireVersion(version))) {
+                throw AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "幂等键已用于不同的 Agent 发布请求");
+            }
             AgentRelease release = agents.releases(id).stream()
                     .filter(item -> item.version().equals(publication.version()))
                     .findFirst()
                     .orElseThrow(() -> AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "发布记录与版本不一致"));
             return new PublishResult(release.id(), publication.id(), release.version(), release.manifestDigest());
+        }
+        if (component.revision() != expectedRevision) {
+            throw AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "Agent 已被其他请求修改，请刷新后重试");
         }
         String resolvedVersion = blank(version) ? nextVersion(component.publishedVersion()) : requireVersion(version);
         if (agents.findRelease(component.key(), resolvedVersion).isPresent()) {
@@ -180,7 +183,7 @@ public class AgentService {
                             ? "Agent 编译失败"
                             : result.errors().getFirst().message());
         }
-        long generation = agents.nextGeneration(id);
+        long generation = Math.max(agents.nextGeneration(id), publications.nextGeneration("AGENT", id));
         UUID releaseId = agents.insertRelease(
                 id, resolvedVersion, result.manifest(), result.manifestDigest(), generation, actor.username());
         UUID publicationId = publications.insert(
@@ -212,21 +215,32 @@ public class AgentService {
         if ("REVOKED".equals(target.state()) || "FAILED".equals(target.state())) {
             throw AiExceptions.conflict(ErrorCodes.RELEASE_NOT_ACTIVE, "目标版本已废止或发布失败，不能回滚");
         }
-        if (registry.enabled()
-                && !registry.hasHealthy(
-                        ComponentNames.serviceName(ComponentType.AGENT, target.agentKey(), target.version()))) {
-            throw AiExceptions.unprocessable(ErrorCodes.NO_HEALTHY_RUNTIME, "目标版本没有健康 Runtime，不能回滚");
-        }
-        if (!"ACTIVE".equals(target.state())) {
-            agents.forceReleaseState(target.id(), "ACTIVE");
-        }
-        agents.publishComponent(id, target.version());
-        return agents.findRelease(target.id()).orElse(target);
+        long generation = Math.max(
+                component.publicationGeneration() + 1,
+                Math.max(agents.nextGeneration(id), publications.nextGeneration("AGENT", id)));
+        UUID publicationId = publications.insert(
+                "AGENT",
+                id,
+                target.version(),
+                component.revision(),
+                generation,
+                "rollback-" + UUID.randomUUID(),
+                Instant.now().plusSeconds(60));
+        publications.insertOutbox(
+                "AGENT",
+                target.id(),
+                generation,
+                "ROLLBACK_REQUESTED",
+                JsonSupport.write(Map.of(
+                        "releaseId", target.id(),
+                        "publicationId", publicationId,
+                        "version", target.version())));
+        return target;
     }
 
     @Transactional
     public void delete(UUID id) {
-        AgentComponent component = require(id);
+        AgentComponent component = agents.lock(id).orElseThrow(() -> AiExceptions.notFound("Agent 不存在"));
         if (agents.releaseCount(id) > 0) {
             throw AiExceptions.conflict(ErrorCodes.COMPONENT_IN_USE, "Agent 已有发布版本，请停用而不是删除");
         }
@@ -303,6 +317,13 @@ public class AgentService {
             }
             if (release.tools().stream().noneMatch(tool -> tool.name().equals(binding.toolName()))) {
                 throw AiExceptions.badRequest("MCP 版本没有该工具：" + binding.toolName());
+            }
+            if (!mcps.toolCategories(release.componentId())
+                    .getOrDefault(binding.toolName(), top.yealike.ipe.ai.contract.McpToolExecutionCategory.UNKNOWN)
+                    .readOnly()) {
+                throw AiExceptions.forbidden(
+                        ErrorCodes.TOOL_DENIED,
+                        "一期仅允许绑定平台审核通过的只读工具：" + release.componentKey() + "." + binding.toolName());
             }
         }
         for (SkillBindingInput binding : skillBindings) {

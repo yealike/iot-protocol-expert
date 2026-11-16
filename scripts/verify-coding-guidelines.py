@@ -27,7 +27,7 @@ for module in sorted(ROOT.glob("iot-protocol-expert-*")):
         if path.suffix == ".java":
             text = re.sub(r"//[^\n]*", "", text)
             rules = {
-                "explicit-executor": r"Executors\.new(?:Fixed|Cached|Single|Scheduled|WorkStealing)\w*Pool\s*\(",
+                "explicit-executor": r"Executors\.new\w+\s*\(",
                 "explicit-locale": r"\.to(?:Lower|Upper)Case\(\)",
                 "no-console-stacktrace": r"\.printStackTrace\s*\(",
                 "thread-safe-date-format": r"new\s+SimpleDateFormat\s*\(",

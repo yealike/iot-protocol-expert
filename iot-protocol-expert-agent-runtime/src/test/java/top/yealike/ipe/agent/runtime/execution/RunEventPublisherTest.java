@@ -10,7 +10,9 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import top.yealike.ipe.agent.runtime.control.ControlClient;
@@ -21,19 +23,23 @@ import top.yealike.ipe.ai.contract.RunEventBatch;
 class RunEventPublisherTest {
 
     @Test
-    void sourceSeqStartsAtOneAndDuplicateAckClearsWholeBatch() {
+    void duplicateAndInFlightEventsAreAcknowledgedIndependently() throws Exception {
         ControlClient control = mock(ControlClient.class);
         AtomicInteger calls = new AtomicInteger();
         List<RunEventBatch> batches = new ArrayList<>();
+        CountDownLatch firstRequestStarted = new CountDownLatch(1);
+        CountDownLatch secondEventQueued = new CountDownLatch(1);
         when(control.events(any())).thenAnswer(invocation -> {
             RunEventBatch batch = invocation.getArgument(0);
             batches.add(batch);
             if (calls.getAndIncrement() == 0) {
+                firstRequestStarted.countDown();
+                secondEventQueued.await(2, TimeUnit.SECONDS);
                 return new RunEventAck(
                         batch.events().stream().map(RunEvent::sourceSeq).toList(), 42L);
             }
-            // Control 对已经落库批次的去重重试返回空 acceptedSourceSeq，必须视为已确认。
-            return new RunEventAck(List.of(), 0L);
+            return new RunEventAck(
+                    batch.events().stream().map(RunEvent::sourceSeq).toList(), 43L);
         });
 
         ScheduledThreadPoolExecutor scheduler = new ScheduledThreadPoolExecutor(1);
@@ -43,15 +49,20 @@ class RunEventPublisherTest {
         try {
             publisher.emit("run.started", java.util.Map.of("runId", "r"));
             publisher.emit("assistant.delta", java.util.Map.of("delta", "a"));
+            Thread sender = new Thread(() -> publisher.flushAndAwait(Duration.ofSeconds(2)));
+            sender.start();
+            assertThat(firstRequestStarted.await(2, TimeUnit.SECONDS)).isTrue();
             publisher.emit("assistant.delta", java.util.Map.of("delta", "b"));
+            secondEventQueued.countDown();
+            sender.join(3_000);
 
             assertThat(publisher.flushAndAwait(Duration.ofSeconds(2))).isTrue();
             assertThat(publisher.pendingCount()).isZero();
-            assertThat(batches).hasSize(1);
-            assertThat(batches.getFirst().events())
-                    .extracting(RunEvent::sourceSeq)
-                    .containsExactly(1L, 2L, 3L);
+            assertThat(batches).hasSize(2);
+            assertThat(batches.get(0).events()).extracting(RunEvent::sourceSeq).containsExactly(1L, 2L);
+            assertThat(batches.get(1).events()).extracting(RunEvent::sourceSeq).containsExactly(3L);
         } finally {
+            secondEventQueued.countDown();
             publisher.close();
             scheduler.shutdownNow();
         }

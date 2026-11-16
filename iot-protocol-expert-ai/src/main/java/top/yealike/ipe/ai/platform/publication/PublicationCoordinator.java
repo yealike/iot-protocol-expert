@@ -12,6 +12,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import top.yealike.ipe.ai.contract.ComponentNames;
 import top.yealike.ipe.ai.contract.ComponentType;
 import top.yealike.ipe.ai.contract.ErrorCodes;
@@ -46,6 +48,7 @@ public class PublicationCoordinator {
     private final NacosRegistryService registry;
     private final RegistryProjectionService projections;
     private final String worker;
+    private final TransactionTemplate transactions;
 
     public PublicationCoordinator(
             PublicationStore publications,
@@ -54,7 +57,8 @@ public class PublicationCoordinator {
             AgentStore agents,
             RuntimeDispatchClient runtime,
             NacosRegistryService registry,
-            RegistryProjectionService projections) {
+            RegistryProjectionService projections,
+            PlatformTransactionManager transactionManager) {
         this.publications = publications;
         this.mcps = mcps;
         this.skills = skills;
@@ -62,6 +66,7 @@ public class PublicationCoordinator {
         this.runtime = runtime;
         this.registry = registry;
         this.projections = projections;
+        this.transactions = new TransactionTemplate(transactionManager);
         this.worker = "publication-" + ManagementFactory.getRuntimeMXBean().getName() + "-"
                 + UUID.randomUUID().toString().substring(0, 8);
     }
@@ -158,6 +163,15 @@ public class PublicationCoordinator {
                     publications.completeOutbox(event.id());
                     continue;
                 }
+                if ("PUBLISHED".equals(publication.state()) || "FAILED".equals(publication.state())) {
+                    publications.completeOutbox(event.id());
+                    continue;
+                }
+                publication = publications.claim(publicationId, worker, 30).orElse(null);
+                if (publication == null) {
+                    publications.retryOutbox(event.id(), Instant.now().plusSeconds(2));
+                    continue;
+                }
                 Step step = process(publication);
                 if (step == Step.DONE) {
                     publications.completeOutbox(event.id());
@@ -178,7 +192,9 @@ public class PublicationCoordinator {
             return Step.DONE;
         }
         if (publication.deadlineAt() != null && publication.deadlineAt().isBefore(Instant.now())) {
-            publications.expire(publication.id(), Instant.now());
+            if (publications.expire(publication.id(), Instant.now())) {
+                cleanupFailed(publication);
+            }
             return Step.DONE;
         }
         if (publication.nextAttemptAt() != null && publication.nextAttemptAt().isAfter(Instant.now())) {
@@ -241,7 +257,9 @@ public class PublicationCoordinator {
             failPermanent(publication, ErrorCodes.MISSING_DEPENDENCY, "Agent 发布版本不存在");
             return Step.DONE;
         }
-        if ("ACTIVE".equals(release.state())) {
+        String serviceName = ComponentNames.serviceName(ComponentType.AGENT, release.agentKey(), release.version());
+        boolean healthy = !registry.enabled() || registry.hasHealthy(serviceName);
+        if ("ACTIVE".equals(release.state()) && healthy) {
             publications.advance(publication.id(), "PREPARING", "REGISTERING", "REGISTERING", null, null);
             return Step.WAIT;
         }
@@ -296,12 +314,27 @@ public class PublicationCoordinator {
             failPermanent(publication, ErrorCodes.MISSING_DEPENDENCY, "MCP 发布版本不存在");
             return Step.DONE;
         }
-        mcps.setReleaseState(release.id(), "ACTIVE");
-        mcps.publishComponent(release.componentId(), release.version());
         String serviceName = ComponentNames.serviceName(ComponentType.MCP, release.componentKey(), release.version());
-        registerMcpProjection(release);
-        projections.ready("MCP", release.id(), serviceName, "control");
-        complete(publication);
+        if (registry.enabled()) {
+            registerMcpProjection(release);
+            if (!registry.hasHealthy(serviceName)) {
+                retry(publication, ErrorCodes.REGISTRY_UNAVAILABLE, "MCP 注册中心没有健康实例");
+                return Step.RETRY;
+            }
+        }
+        boolean completed = transactions.execute(status -> {
+            if ((mcps.setReleaseState(release.id(), "ACTIVE") == 0)
+                    || !mcps.publishComponent(release.componentId(), release.version(), publication.generation())) {
+                status.setRollbackOnly();
+                return false;
+            }
+            projections.ready("MCP", release.id(), serviceName, "control");
+            return complete(publication);
+        });
+        if (!completed) {
+            retry(publication, ErrorCodes.REVISION_CONFLICT, "MCP 默认版本已被更新的发布意图修改");
+            return Step.RETRY;
+        }
         return Step.DONE;
     }
 
@@ -314,12 +347,27 @@ public class PublicationCoordinator {
             failPermanent(publication, ErrorCodes.MISSING_DEPENDENCY, "Skill 发布版本不存在");
             return Step.DONE;
         }
-        skills.setReleaseState(release.id(), "ACTIVE");
-        skills.publishComponent(release.skillId(), release.version());
         String serviceName = ComponentNames.serviceName(ComponentType.SKILL, release.componentKey(), release.version());
-        registerSkillProjection(release);
-        projections.ready("SKILL", release.id(), serviceName, "control");
-        complete(publication);
+        if (registry.enabled()) {
+            registerSkillProjection(release);
+            if (!registry.hasHealthy(serviceName)) {
+                retry(publication, ErrorCodes.REGISTRY_UNAVAILABLE, "Skill 注册中心没有健康实例");
+                return Step.RETRY;
+            }
+        }
+        boolean completed = transactions.execute(status -> {
+            if ((skills.setReleaseState(release.id(), "ACTIVE") == 0)
+                    || !skills.publishComponent(release.skillId(), release.version(), publication.generation())) {
+                status.setRollbackOnly();
+                return false;
+            }
+            projections.ready("SKILL", release.id(), serviceName, "control");
+            return complete(publication);
+        });
+        if (!completed) {
+            retry(publication, ErrorCodes.REVISION_CONFLICT, "Skill 默认版本已被更新的发布意图修改");
+            return Step.RETRY;
+        }
         return Step.DONE;
     }
 
@@ -391,23 +439,96 @@ public class PublicationCoordinator {
             retry(publication, ErrorCodes.REGISTRY_UNAVAILABLE, "注册中心未发现该 Agent 版本的健康实例");
             return Step.RETRY;
         }
-        agents.forceReleaseState(release.id(), "ACTIVE");
-        agents.publishComponent(release.agentId(), release.version());
-        projections.ready("AGENT", release.id(), serviceName, "runtime");
-        complete(publication);
+        boolean completed = transactions.execute(status -> {
+            if ((agents.setReleaseState(release.id(), "ACTIVE") == 0)
+                    || !agents.publishComponent(release.agentId(), release.version(), publication.generation())) {
+                status.setRollbackOnly();
+                return false;
+            }
+            projections.ready("AGENT", release.id(), serviceName, "runtime");
+            return complete(publication);
+        });
+        if (!completed) {
+            retry(publication, ErrorCodes.REVISION_CONFLICT, "Agent 默认版本已被更新的发布意图修改");
+            return Step.RETRY;
+        }
         return Step.DONE;
     }
 
-    private void complete(Publication publication) {
-        publications.advance(publication.id(), publication.state(), "PUBLISHED", "PUBLISHED", null, null);
+    private boolean complete(Publication publication) {
+        return publications.advance(publication.id(), publication.state(), "PUBLISHED", "PUBLISHED", null, null);
     }
 
     private void retry(Publication publication, String code, String message) {
-        publications.fail(publication.id(), code, message, nextAttempt(publication));
+        if (publications.fail(publication.id(), code, message, nextAttempt(publication))) {
+            cleanupFailed(publication);
+        }
     }
 
     private void failPermanent(Publication publication, String code, String message) {
         publications.markFailed(publication.id(), code, message);
+        cleanupFailed(publication);
+    }
+
+    /**
+     * 只撤销本发布版本自己的暂存注册；已 ACTIVE 的版本由停用/撤销流程处理，绝不在这里批量清理。
+     */
+    private void cleanupFailed(Publication publication) {
+        if (!registry.enabled()) {
+            return;
+        }
+        try {
+            switch (publication.resourceType()) {
+                case "MCP" -> cleanupMcp(publication);
+                case "SKILL" -> cleanupSkill(publication);
+                default -> {
+                    // Agent 注册由 Runtime 负责，发布失败不会在 Control 留下命名实例。
+                }
+            }
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "publication cleanup failed: id={} type={} reason={}",
+                    publication.id(),
+                    publication.resourceType(),
+                    safeMessage(exception));
+        }
+    }
+
+    private void cleanupMcp(Publication publication) {
+        McpRelease release = mcps.releases(publication.resourceId()).stream()
+                .filter(item -> item.version().equals(publication.version()))
+                .findFirst()
+                .orElse(null);
+        if (release == null || !"STAGED".equals(release.state())) {
+            return;
+        }
+        String serviceName = String.valueOf(release.endpointPolicy().getOrDefault("serviceName", ""));
+        if (serviceName.isBlank()) {
+            return;
+        }
+        String endpoint = String.valueOf(release.endpointPolicy().getOrDefault("endpoint", ""));
+        try {
+            URI uri = URI.create(endpoint);
+            String ip = uri.getHost();
+            int port = uri.getPort() < 0 ? ("https".equalsIgnoreCase(uri.getScheme()) ? 443 : 80) : uri.getPort();
+            registry.deregister(serviceName, ip, port);
+        } catch (IllegalArgumentException exception) {
+            log.debug("skip MCP deregister with invalid endpoint: release={}", release.id());
+        }
+        projections.revoked("MCP", release.id(), serviceName, "control");
+    }
+
+    private void cleanupSkill(Publication publication) {
+        SkillRelease release = skills.releases(publication.resourceId()).stream()
+                .filter(item -> item.version().equals(publication.version()))
+                .findFirst()
+                .orElse(null);
+        if (release == null || !"STAGED".equals(release.state())) {
+            return;
+        }
+        String serviceName = ComponentNames.serviceName(ComponentType.SKILL, release.componentKey(), release.version());
+        registry.deregister(serviceName, registry.advertiseIp(), registry.serverPort());
+        projections.revoked("SKILL", release.id(), serviceName, "control");
     }
 
     private Instant nextAttempt(Publication publication) {

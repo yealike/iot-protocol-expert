@@ -20,7 +20,8 @@ public record RuntimeProperties(
         Nacos nacos,
         Run run,
         Mcp mcp,
-        Skills skills) {
+        Skills skills,
+        Observability observability) {
 
     public RuntimeProperties {
         port = port <= 0 ? 19084 : port;
@@ -36,6 +37,7 @@ public record RuntimeProperties(
         run = run == null ? Run.defaults() : run;
         mcp = mcp == null ? Mcp.defaults() : mcp;
         skills = skills == null ? Skills.defaults() : skills;
+        observability = observability == null ? Observability.defaults() : observability;
     }
 
     /** 优先环境变量，其次只读秘密文件；文件内容不得被日志打印。 */
@@ -159,6 +161,20 @@ public record RuntimeProperties(
 
         static Skills defaults() {
             return new Skills(12_000);
+        }
+    }
+
+    public record Observability(Otel otel) {
+
+        static Observability defaults() {
+            return new Observability(Otel.defaults());
+        }
+    }
+
+    public record Otel(boolean enabled, boolean contentEnabled, int maxContentChars) {
+
+        static Otel defaults() {
+            return new Otel(false, false, 8192);
         }
     }
 }

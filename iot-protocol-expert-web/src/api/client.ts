@@ -16,6 +16,8 @@ import type {
   AiMcpRelease,
   AiMcpTestResult,
   AiMcpToolCatalog,
+  AiMcpToolExecutionCategory,
+  AiMcpToolPolicy,
   AiMcpUpdate,
   AiModelCreate,
   AiModelProfile,
@@ -333,6 +335,16 @@ export const api = {
   aiTestMcp: (id: string) =>
     aiRequest<AiMcpTestResult>(`/mcps/${encodeURIComponent(id)}/test`, { method: 'POST' }),
   aiMcpTools: (id: string) => aiRequest<AiMcpToolCatalog>(`/mcps/${encodeURIComponent(id)}/tools`),
+  aiMcpToolPolicies: (id: string) =>
+    aiRequest<AiMcpToolPolicy[]>(`/mcps/${encodeURIComponent(id)}/tool-policies`),
+  aiReviewMcpTool: (
+    id: string,
+    body: { toolName: string; executionCategory: AiMcpToolExecutionCategory }
+  ) =>
+    aiRequest<AiMcpToolPolicy>(
+      `/mcps/${encodeURIComponent(id)}/tool-policies`,
+      aiJson(body, 'PUT')
+    ),
   aiMcpReleases: (id: string) =>
     aiRequest<AiMcpRelease[]>(`/mcps/${encodeURIComponent(id)}/releases`),
   aiPublishMcp: (

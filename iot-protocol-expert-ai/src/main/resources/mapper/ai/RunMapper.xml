@@ -96,6 +96,10 @@
         select <include refid="RunColumns"/> from ai_run where id = #{id}
     </select>
 
+    <select id="lockRun" resultMap="RunMap">
+        select <include refid="RunColumns"/> from ai_run where id = #{id} for update
+    </select>
+
     <select id="findByIdempotency" resultMap="RunMap">
         select <include refid="RunColumns"/> from ai_run where conversation_id = #{conversationId} and idempotency_key = #{idempotencyKey}
     </select>
@@ -106,8 +110,8 @@
 
     <select id="current" resultMap="RunMap">
         select <include refid="RunColumns"/> from ai_run where conversation_id = #{conversationId} and status in ('QUEUED', 'DISPATCHING', 'RUNNING',
-            'PAUSE_REQUESTED', 'PAUSED', 'CANCEL_REQUESTED') order by case when status in ('DISPATCHING', 'RUNNING', 'PAUSE_REQUESTED',
-            'CANCEL_REQUESTED') then 0 when status = 'PAUSED' then 1 else 2 end, priority desc, queue_seq asc limit 1
+            'CANCEL_REQUESTED') order by case when status in ('DISPATCHING', 'RUNNING',
+            'CANCEL_REQUESTED') then 0 else 1 end, priority desc, queue_seq asc limit 1
     </select>
 
     <select id="listByConversation" resultMap="RunMap">
@@ -121,7 +125,7 @@
           and not exists (
               select 1 from ai_run x
               where x.conversation_id = c.conversation_id
-                and x.status in ('DISPATCHING', 'RUNNING', 'PAUSE_REQUESTED', 'CANCEL_REQUESTED'))
+                and x.status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED'))
         order by c.priority desc, c.queue_seq asc
         limit 1
     </select>
@@ -182,31 +186,29 @@
           and (runtime_instance_id = #{instanceId}
                or ((runtime_instance_id is null or runtime_instance_id = 'direct') and status = 'DISPATCHING'))
           and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+          and (lease_until is null or lease_until &gt; now())
+          and (deadline_at is null or deadline_at &gt; now())
     </update>
 
     <update id="renewLease">
         update ai_run set lease_until = now() + make_interval(secs => #{leaseSeconds}), updated_at = now() where id =
-            #{id} and lease_owner = #{leaseOwner} and status in ('RUNNING', 'PAUSE_REQUESTED')
+            #{id} and lease_owner = #{leaseOwner} and status in ('RUNNING')
     </update>
 
     <update id="transition">
         update ai_run set status = #{next}, updated_at = now() where id = #{id} and status = #{expected}
     </update>
 
-    <update id="requestPause">
-        update ai_run set status = 'PAUSE_REQUESTED', updated_at = now() where id = #{id} and status = 'RUNNING'
-    </update>
-
     <update id="markCompleted">
         update ai_run set status = 'COMPLETED', usage_json = cast(#{usageJson} as jsonb), finished_at = now(),
             updated_at = now(), lease_owner = null, lease_until = null where id = #{id} and status in ('RUNNING',
-            'PAUSE_REQUESTED', 'QUEUED')
+            'QUEUED')
     </update>
 
     <update id="markFailed">
         update ai_run set status = 'FAILED', error_code = #{code}, error_message = #{message}, usage_json =
             cast(#{usageJson} as jsonb), finished_at = now(), updated_at = now(), lease_owner = null, lease_until = null
-            where id = #{id} and status in ('RUNNING', 'PAUSE_REQUESTED')
+            where id = #{id} and status in ('RUNNING')
     </update>
 
     <update id="markCancelled">
@@ -222,6 +224,8 @@
         where id = #{id} and execution_token = #{executionToken}
           and (runtime_instance_id = #{instanceId} or (runtime_instance_id is null and #{instanceId} is null))
           and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+          and (lease_until is null or lease_until &gt; now())
+          and (deadline_at is null or deadline_at &gt; now())
     </update>
 
     <update id="markFailedWithToken">
@@ -232,6 +236,8 @@
         where id = #{id} and execution_token = #{executionToken}
           and (runtime_instance_id = #{instanceId} or (runtime_instance_id is null and #{instanceId} is null))
           and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+          and (lease_until is null or lease_until &gt; now())
+          and (deadline_at is null or deadline_at &gt; now())
     </update>
 
     <update id="markCancelledWithToken">
@@ -243,23 +249,13 @@
           and status not in ('COMPLETED', 'FAILED', 'CANCELLED')
     </update>
 
-    <update id="markPaused">
-        update ai_run set status = 'PAUSED', usage_json = cast(#{usageJson} as jsonb), updated_at = now(), lease_owner =
-            null, lease_until = null where id = #{id} and status = 'PAUSE_REQUESTED'
-    </update>
-
-    <update id="requeuePaused">
-        update ai_run set status = 'QUEUED', error_code = null, error_message = null, updated_at = now() where id =
-            #{id} and status = 'PAUSED'
-    </update>
-
     <update id="requestCancel">
-        update ai_run set status = case when status in ('DISPATCHING', 'RUNNING', 'PAUSE_REQUESTED')
+        update ai_run set status = case when status in ('DISPATCHING', 'RUNNING')
             then 'CANCEL_REQUESTED' else 'CANCELLED' end,
-            finished_at = case when status in ('QUEUED', 'PAUSED') then now() else finished_at end,
-            cancel_requested_at = case when status in ('DISPATCHING', 'RUNNING', 'PAUSE_REQUESTED') then now() else cancel_requested_at end,
+            finished_at = case when status = 'QUEUED' then now() else finished_at end,
+            cancel_requested_at = case when status in ('DISPATCHING', 'RUNNING') then now() else cancel_requested_at end,
             updated_at = now()
-        where id = #{id} and status in ('QUEUED', 'DISPATCHING', 'RUNNING', 'PAUSE_REQUESTED', 'PAUSED')
+        where id = #{id} and status in ('QUEUED', 'DISPATCHING', 'RUNNING')
     </update>
 
     <update id="cancelQueued">
@@ -268,7 +264,29 @@
     </update>
 
     <select id="countRunning" resultType="java.lang.Integer">
-        select count(*) from ai_run where status in ('DISPATCHING', 'RUNNING', 'PAUSE_REQUESTED', 'CANCEL_REQUESTED')
+        select count(*) from ai_run where status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+    </select>
+
+    <select id="countQueued" resultType="java.lang.Integer">
+        select count(*) from ai_run where status = 'QUEUED'
+    </select>
+
+    <select id="countUserQueued" resultType="java.lang.Integer">
+        select count(*) from ai_run
+        where actor = #{actor} and status = 'QUEUED'
+          and (conversation_id != #{excludeConversationId} or #{excludeConversationId} is null)
+    </select>
+
+    <select id="countUserInFlight" resultType="java.lang.Integer">
+        select count(*) from ai_run
+        where actor = #{actor}
+          and status in ('QUEUED', 'DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+          and (conversation_id != #{excludeConversationId} or #{excludeConversationId} is null)
+    </select>
+
+    <select id="lockQuota" resultType="java.lang.Integer">
+        select 1
+          from (select pg_advisory_xact_lock(hashtextextended(#{scope}, 0))) lock_guard
     </select>
 
     <select id="selectExpiredLeases" resultMap="RunMap">
@@ -297,6 +315,37 @@
 
     <select id="selectStatus" resultType="java.lang.String">
         select status from ai_run where id = #{id}
+    </select>
+
+    <select id="lockRuntimeEventRun" resultType="java.lang.Integer">
+        select 1
+          from ai_run
+         where id = #{id}
+           and execution_token = #{executionToken}
+           and runtime_instance_id = #{instanceId}
+           and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+           and lease_until is not null
+           and lease_until &gt; now()
+           and (deadline_at is null or deadline_at &gt; now())
+           for update
+    </select>
+
+    <resultMap id="RuntimeEventFingerprintMap" type="top.yealike.ipe.ai.run.RunRecords$RuntimeEventFingerprint">
+        <constructor>
+            <arg column="source_seq" javaType="_long"/>
+            <arg column="type" javaType="java.lang.String"/>
+            <arg column="payload" javaType="java.util.Map" typeHandler="top.yealike.ipe.ai.mybatis.JsonMapTypeHandler"/>
+        </constructor>
+    </resultMap>
+
+    <select id="runtimeEventFingerprints" resultMap="RuntimeEventFingerprintMap">
+        select source_seq, type, payload
+          from ai_run_event
+         where run_id = #{runId}
+           and source_seq in
+           <foreach collection="sourceSeqs" item="sourceSeq" open="(" separator="," close=")">
+               #{sourceSeq}
+           </foreach>
     </select>
 
 

@@ -16,7 +16,7 @@ import top.yealike.ipe.ai.support.JsonSupport;
 public class AgentStore {
 
     private static final String SELECT =
-            "select id, component_key, display_name, description, model_profile_id, system_prompt, model_options, budget_json, published_version, enabled, revision, created_by, created_at, updated_at from ai_agent_component";
+            "select id, component_key, display_name, description, model_profile_id, system_prompt, model_options, budget_json, published_version, publication_generation, enabled, revision, created_by, created_at, updated_at from ai_agent_component";
 
     private final JdbcTemplate jdbc;
 
@@ -186,7 +186,7 @@ public class AgentStore {
     public Optional<AgentRelease> findRelease(UUID id) {
         return jdbc.query("""
                         select r.id, r.agent_id, c.component_key, r.version, r.manifest_json, r.manifest_digest,
-                               r.state, r.generation, r.created_at
+                               r.state, r.generation, r.release_cursor, r.created_at
                           from ai_agent_release r join ai_agent_component c on c.id = r.agent_id
                          where r.id = ?
                         """, (rows, index) -> mapRelease(rows), id).stream().findFirst();
@@ -195,7 +195,7 @@ public class AgentStore {
     public Optional<AgentRelease> findRelease(String key, String version) {
         return jdbc.query("""
                         select r.id, r.agent_id, c.component_key, r.version, r.manifest_json, r.manifest_digest,
-                               r.state, r.generation, r.created_at
+                               r.state, r.generation, r.release_cursor, r.created_at
                           from ai_agent_release r join ai_agent_component c on c.id = r.agent_id
                          where c.component_key = ? and r.version = ?
                         """, (rows, index) -> mapRelease(rows), key, version).stream()
@@ -205,7 +205,7 @@ public class AgentStore {
     public Optional<AgentRelease> latestActive(UUID agentId) {
         return jdbc.query("""
                         select r.id, r.agent_id, c.component_key, r.version, r.manifest_json, r.manifest_digest,
-                               r.state, r.generation, r.created_at
+                               r.state, r.generation, r.release_cursor, r.created_at
                           from ai_agent_release r join ai_agent_component c on c.id = r.agent_id
                          where r.agent_id = ? and r.state = 'ACTIVE'
                          order by r.created_at desc limit 1
@@ -216,7 +216,7 @@ public class AgentStore {
     public List<AgentRelease> releases(UUID agentId) {
         return jdbc.query("""
                 select r.id, r.agent_id, c.component_key, r.version, r.manifest_json, r.manifest_digest,
-                       r.state, r.generation, r.created_at
+                       r.state, r.generation, r.release_cursor, r.created_at
                   from ai_agent_release r join ai_agent_component c on c.id = r.agent_id
                  where r.agent_id = ? order by r.created_at desc
                 """, (rows, index) -> mapRelease(rows), agentId);
@@ -225,27 +225,36 @@ public class AgentStore {
     public List<AgentRelease> activeReleases() {
         return jdbc.query("""
                 select r.id, r.agent_id, c.component_key, r.version, r.manifest_json, r.manifest_digest,
-                       r.state, r.generation, r.created_at
+                       r.state, r.generation, r.release_cursor, r.created_at
                   from ai_agent_release r join ai_agent_component c on c.id = r.agent_id
                  where r.state = 'ACTIVE' and c.enabled = true order by c.component_key
                 """, (rows, index) -> mapRelease(rows));
     }
 
-    /** 只返回组件 published_version 指针指向的 ACTIVE 版本，供对话目录使用。 */
+    /** 返回默认版本和仍被会话或在途 Run 引用的可服务历史版本。 */
     public List<AgentRelease> publishedReleases() {
         return jdbc.query("""
                 select r.id, r.agent_id, c.component_key, r.version, r.manifest_json, r.manifest_digest,
-                       r.state, r.generation, r.created_at
+                       r.state, r.generation, r.release_cursor, r.created_at
                   from ai_agent_release r join ai_agent_component c on c.id = r.agent_id
-                 where r.state = 'ACTIVE' and c.enabled = true and c.published_version = r.version
-                 order by c.component_key
+                 where c.enabled = true and r.state = 'ACTIVE' and (
+                       c.published_version = r.version
+                       or r.id in (
+                           select agent_release_id from ai_conversation where agent_release_id is not null
+                           union all
+                           select agent_release_id
+                             from ai_run
+                            where agent_release_id is not null
+                              and status in ('QUEUED', 'DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+                       ))
+                 order by r.release_cursor
                 """, (rows, index) -> mapRelease(rows));
     }
 
     public Optional<AgentRelease> findPublishedRelease(String agentKey) {
         return jdbc.query("""
                         select r.id, r.agent_id, c.component_key, r.version, r.manifest_json, r.manifest_digest,
-                               r.state, r.generation, r.created_at
+                               r.state, r.generation, r.release_cursor, r.created_at
                           from ai_agent_release r join ai_agent_component c on c.id = r.agent_id
                          where c.component_key = ? and c.enabled = true and c.published_version = r.version
                            and r.state = 'ACTIVE'
@@ -278,20 +287,26 @@ public class AgentStore {
 
     public int setReleaseState(UUID releaseId, String state) {
         return jdbc.update(
-                "update ai_agent_release set state = ? where id = ? and state in ('STAGED', 'ACTIVE')",
+                "update ai_agent_release set state = ? where id = ? and state in ('STAGED', 'ACTIVE', 'RETIRED')",
                 state,
                 releaseId);
     }
 
-    public int forceReleaseState(UUID releaseId, String state) {
-        return jdbc.update("update ai_agent_release set state = ? where id = ?", state, releaseId);
-    }
-
-    public void publishComponent(UUID agentId, String version) {
-        jdbc.update(
-                "update ai_agent_component set published_version = ?, revision = revision + 1, updated_at = now() where id = ?",
-                version,
-                agentId);
+    public boolean publishComponent(UUID agentId, String version, long expectedGeneration) {
+        return jdbc.update("""
+                        update ai_agent_component c
+                           set published_version = ?, publication_generation = ?,
+                               revision = revision + 1, updated_at = now()
+                         where c.id = ?
+                           and publication_generation < ?
+                           and exists (
+                               select 1
+                                 from ai_agent_release r
+                                where r.agent_id = c.id
+                                  and r.version = ?
+                                  and r.state = 'ACTIVE'
+                           )
+                        """, version, expectedGeneration, agentId, expectedGeneration, version) > 0;
     }
 
     public Optional<String> publishedVersion(String agentKey) {
@@ -316,6 +331,7 @@ public class AgentStore {
                 JsonSupport.readMap(rows.getString("model_options")),
                 JsonSupport.readMap(rows.getString("budget_json")),
                 rows.getString("published_version"),
+                rows.getLong("publication_generation"),
                 rows.getBoolean("enabled"),
                 rows.getLong("revision"),
                 rows.getString("created_by"),
@@ -333,6 +349,7 @@ public class AgentStore {
                 rows.getString("manifest_digest"),
                 rows.getString("state"),
                 rows.getLong("generation"),
+                rows.getLong("release_cursor"),
                 JdbcRows.instant(rows, "created_at"));
     }
 

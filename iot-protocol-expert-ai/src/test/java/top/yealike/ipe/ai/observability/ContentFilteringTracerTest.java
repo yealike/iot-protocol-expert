@@ -9,6 +9,7 @@ import io.opentelemetry.sdk.trace.SdkTracerProvider;
 import io.opentelemetry.sdk.trace.export.SimpleSpanProcessor;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import top.yealike.ipe.observability.ContentFilteringTracer;
 
 class ContentFilteringTracerTest {
 

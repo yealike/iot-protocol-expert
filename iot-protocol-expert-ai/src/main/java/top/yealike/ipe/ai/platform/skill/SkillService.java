@@ -65,15 +65,17 @@ public class SkillService {
         return require(id);
     }
 
+    @Transactional
     public void delete(UUID id) {
-        require(id);
-        if (store.bindingReferences(id) > 0) {
+        SkillComponent component = store.lock(id).orElseThrow(() -> AiExceptions.notFound("Skill 不存在"));
+        if (store.bindingReferences(component.id()) > 0) {
             throw AiExceptions.conflict(ErrorCodes.COMPONENT_IN_USE, "Skill 已被 Agent 发布引用");
         }
-        if (!store.releases(id).isEmpty()) {
+        if (!store.releases(component.id()).isEmpty()) {
             throw AiExceptions.conflict(ErrorCodes.COMPONENT_IN_USE, "Skill 已有发布版本，请停用而不是删除");
         }
-        store.delete(id);
+        store.deleteDraftFiles(component.id());
+        store.delete(component.id());
     }
 
     public List<Map<String, Object>> fileList(UUID id) {
@@ -142,9 +144,27 @@ public class SkillService {
     public PublishResult publish(
             UserIdentity actor, UUID id, String version, long expectedRevision, String idempotencyKey) {
         SkillComponent component = store.lock(id).orElseThrow(() -> AiExceptions.notFound("Skill 不存在"));
+        String publicationKey = idempotencyKey == null || idempotencyKey.isBlank()
+                ? UUID.randomUUID().toString()
+                : idempotencyKey.strip();
+        var existing = publications.findByIdempotency("SKILL", id, publicationKey);
+        if (existing.isPresent()) {
+            if (version != null
+                    && !version.isBlank()
+                    && !existing.get().version().equals(requireVersion(version))) {
+                throw AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "幂等键已用于不同的 Skill 发布请求");
+            }
+            SkillRelease release = store.findRelease(
+                            component.key(), existing.get().version())
+                    .orElseThrow(() -> AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "发布记录与 Skill 版本不一致"));
+            return new PublishResult(release.id(), existing.get().id(), release.version(), release.bundleDigest());
+        }
         if (component.revision() != expectedRevision) {
             throw AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "Skill 已被其他请求修改，请刷新后重试");
         }
+        String resolvedVersion = version == null || version.isBlank()
+                ? nextVersion(component.publishedVersion())
+                : requireVersion(version);
         recomputeDraftDigests(id);
         List<SkillFile> files = draftFiles(id);
         SkillValidator.Validation validation = validator.validate(component.key(), files);
@@ -154,12 +174,10 @@ public class SkillService {
                     "SKILL_INVALID",
                     "Skill 校验未通过：" + validation.errors().getFirst().message());
         }
-        String resolvedVersion = version == null || version.isBlank()
-                ? nextVersion(component.publishedVersion())
-                : requireVersion(version);
         if (store.findRelease(component.key(), resolvedVersion).isPresent()) {
             throw AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "该 Skill 版本已存在，发布内容不可覆盖");
         }
+        long generation = Math.max(component.publicationGeneration() + 1, publications.nextGeneration("SKILL", id));
         SkillBundle bundle = new SkillBundle(
                 component.key(),
                 resolvedVersion,
@@ -178,6 +196,7 @@ public class SkillService {
         UUID releaseId = store.insertRelease(
                 id,
                 resolvedVersion,
+                generation,
                 validation.metadata().name(),
                 validation.metadata().description(),
                 bundle,
@@ -188,15 +207,13 @@ public class SkillService {
                 id,
                 resolvedVersion,
                 component.revision(),
-                1,
-                idempotencyKey == null || idempotencyKey.isBlank()
-                        ? UUID.randomUUID().toString()
-                        : idempotencyKey,
+                generation,
+                publicationKey,
                 Instant.now().plusSeconds(60));
         publications.insertOutbox(
                 "SKILL",
                 releaseId,
-                1,
+                generation,
                 "PUBLISH_REQUESTED",
                 JsonSupport.write(
                         Map.of("releaseId", releaseId, "publicationId", publicationId, "version", resolvedVersion)));
@@ -261,12 +278,6 @@ public class SkillService {
             }
         }
         return changed;
-    }
-
-    public void activate(UUID releaseId, String version) {
-        SkillRelease release = release(releaseId);
-        store.setReleaseState(releaseId, "ACTIVE");
-        store.publishComponent(release.skillId(), version);
     }
 
     private List<SkillFile> draftFiles(UUID id) {

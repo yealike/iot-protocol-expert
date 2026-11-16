@@ -16,6 +16,7 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import tools.jackson.databind.ObjectMapper;
@@ -205,26 +206,33 @@ public final class RunEventPublisher implements RunEventSink {
             return;
         }
         Set<Long> accepted = new HashSet<>(ack.acceptedSourceSeq());
-        // Control 对已落库批次的去重重试返回空 acceptedSourceSeq（lastCursor 为会话游标，不能与
-        // sourceSeq 混用）。2xx ACK 且列表为空时，说明 Control 已识别整批事件，允许确认整批。
-        boolean wholeBatchAcknowledged = accepted.isEmpty();
+        if (accepted.isEmpty()) {
+            log.warn(
+                    "run event ack contains no source sequence: run={} batch={}",
+                    runId,
+                    batch.stream().map(item -> item.event().sourceSeq()).toList());
+            return;
+        }
+        Set<Long> batchSequences =
+                batch.stream().map(item -> item.event().sourceSeq()).collect(Collectors.toUnmodifiableSet());
+        if (!batchSequences.containsAll(accepted)) {
+            throw new ControlException(409, "EVENT_ACK_CONFLICT", "ACK 确认的 sourceSeq 不属于本次发送批次");
+        }
+        if (!accepted.containsAll(batchSequences)) {
+            throw new ControlException(409, "EVENT_ACK_INCOMPLETE", "ACK 未确认完整发送批次");
+        }
         synchronized (monitor) {
-            while (!pending.isEmpty()) {
-                QueuedEvent head = pending.peekFirst();
-                long sequence = head.event().sourceSeq();
-                if (!wholeBatchAcknowledged && !accepted.contains(sequence)) {
-                    break;
+            for (QueuedEvent queued : batch) {
+                if (!pending.contains(queued)) {
+                    continue;
                 }
                 pending.removeFirst();
-                pendingBytes -= head.bytes();
+                pendingBytes -= queued.bytes();
                 if (pendingBytes < 0) {
                     pendingBytes = 0;
                 }
             }
             monitor.notifyAll();
-        }
-        if (batch.isEmpty()) {
-            return;
         }
     }
 

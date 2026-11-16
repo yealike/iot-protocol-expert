@@ -13,8 +13,6 @@ public final class RunRecords {
     public static final String QUEUED = "QUEUED";
     public static final String DISPATCHING = "DISPATCHING";
     public static final String RUNNING = "RUNNING";
-    public static final String PAUSE_REQUESTED = "PAUSE_REQUESTED";
-    public static final String PAUSED = "PAUSED";
     public static final String CANCEL_REQUESTED = "CANCEL_REQUESTED";
     public static final String COMPLETED = "COMPLETED";
     public static final String FAILED = "FAILED";
@@ -80,6 +78,8 @@ public final class RunRecords {
             long executionToken,
             long sourceSeq,
             UUID eventId) {}
+
+    public record RuntimeEventFingerprint(long sourceSeq, String type, Map<String, Object> payload) {}
 
     public record ToolCall(
             UUID id,

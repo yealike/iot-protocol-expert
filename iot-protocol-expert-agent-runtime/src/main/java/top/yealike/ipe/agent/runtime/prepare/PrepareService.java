@@ -355,6 +355,14 @@ public class PrepareService {
         if (descriptor.tools().isEmpty() || binding.tools().isEmpty()) {
             throw new PrepareException(422, ErrorCodes.MCP_INIT_FAILED, "MCP 没有可绑定工具");
         }
+        Map<String, Boolean> readOnlyTools = descriptor.tools().stream()
+                .collect(java.util.stream.Collectors.toMap(McpToolDescriptor::name, McpToolDescriptor::readOnly));
+        for (AgentManifest.McpToolBinding tool : binding.tools()) {
+            if (!Boolean.TRUE.equals(readOnlyTools.get(tool.name()))) {
+                throw new PrepareException(
+                        403, ErrorCodes.TOOL_DENIED, "一期仅允许准备只读工具：" + binding.key() + "." + tool.name());
+            }
+        }
     }
 
     private void validateManifest(AgentManifest manifest) {

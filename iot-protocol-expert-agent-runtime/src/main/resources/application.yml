@@ -61,6 +61,11 @@ ipe:
       max-result-chars: 65536
     skills:
       max-read-chars: 12000
+    observability:
+      otel:
+        enabled: ${IPE_RUNTIME_OTEL_ENABLED:${IPE_OTLP_ENABLED:true}}
+        content-enabled: ${IPE_RUNTIME_OTEL_CONTENT_ENABLED:false}
+        max-content-chars: ${IPE_RUNTIME_OTEL_MAX_CONTENT_CHARS:8192}
 
 logging:
   structured:

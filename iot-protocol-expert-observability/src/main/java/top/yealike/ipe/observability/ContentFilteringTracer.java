@@ -1,4 +1,4 @@
-package top.yealike.ipe.ai.observability;
+package top.yealike.ipe.observability;
 
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.api.common.Attributes;
@@ -19,7 +19,7 @@ import java.util.regex.Pattern;
  * <p>默认只保留 GenAI 元数据与 token 用量，丢弃 prompt / response / 工具参数正文；只有显式开启内容采集时才写入，
  * 并在写入前做常见凭据脱敏与长度截断，避免把完整业务数据或密钥带进 Trace。
  */
-final class ContentFilteringTracer implements Tracer {
+public final class ContentFilteringTracer implements Tracer {
 
     private static final Set<String> CONTENT_KEYS = Set.of(
             "gen_ai.input.messages",
@@ -42,7 +42,7 @@ final class ContentFilteringTracer implements Tracer {
     private final boolean contentEnabled;
     private final int maxContentChars;
 
-    ContentFilteringTracer(Tracer delegate, boolean contentEnabled, int maxContentChars) {
+    public ContentFilteringTracer(Tracer delegate, boolean contentEnabled, int maxContentChars) {
         this.delegate = delegate;
         this.contentEnabled = contentEnabled;
         this.maxContentChars = Math.max(0, maxContentChars);

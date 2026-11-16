@@ -298,6 +298,15 @@ public class AgentCompiler {
                             "mcp.tools"));
                     continue;
                 }
+                if (!mcps.toolCategories(release.componentId())
+                        .getOrDefault(binding.toolName(), top.yealike.ipe.ai.contract.McpToolExecutionCategory.UNKNOWN)
+                        .readOnly()) {
+                    errors.add(new CompileIssue(
+                            "MCP_TOOL_NOT_READ_ONLY",
+                            "一期仅允许绑定已审核的只读工具：" + release.componentKey() + "." + binding.toolName(),
+                            "mcp.tools"));
+                    continue;
+                }
                 tools.add(new AgentManifest.McpToolBinding(
                         binding.toolName(),
                         ToolAliasCodec.alias(release.componentKey(), binding.toolName()),

@@ -15,7 +15,7 @@ import top.yealike.ipe.ai.support.JsonSupport;
 public class SkillStore {
 
     private static final String COMPONENT_SELECT =
-            "select id, component_key, display_name, description, draft_revision, published_version, enabled, revision, created_by, created_at, updated_at from ai_skill_component";
+            "select id, component_key, display_name, description, draft_revision, published_version, publication_generation, enabled, revision, created_by, created_at, updated_at from ai_skill_component";
 
     private final JdbcTemplate jdbc;
 
@@ -84,6 +84,10 @@ public class SkillStore {
 
     public int delete(UUID id) {
         return jdbc.update("delete from ai_skill_component where id = ?", id);
+    }
+
+    public int deleteDraftFiles(UUID id) {
+        return jdbc.update("delete from ai_skill_draft_file where skill_id = ?", id);
     }
 
     public long bindingReferences(UUID skillId) {
@@ -155,6 +159,7 @@ public class SkillStore {
     public UUID insertRelease(
             UUID skillId,
             String version,
+            long generation,
             String name,
             String description,
             SkillBundle bundle,
@@ -162,10 +167,11 @@ public class SkillStore {
             String actor) {
         UUID id = UUID.randomUUID();
         jdbc.update(
-                "insert into ai_skill_release (id, skill_id, version, name, description, bundle_json, bundle_digest, state, created_by) values (?, ?, ?, ?, ?, cast(? as jsonb), ?, 'STAGED', ?)",
+                "insert into ai_skill_release (id, skill_id, version, generation, name, description, bundle_json, bundle_digest, state, created_by) values (?, ?, ?, ?, ?, ?, cast(? as jsonb), ?, 'STAGED', ?)",
                 id,
                 skillId,
                 version,
+                generation,
                 name,
                 description,
                 JsonSupport.write(bundle),
@@ -177,7 +183,7 @@ public class SkillStore {
     public Optional<SkillRelease> findRelease(UUID id) {
         return jdbc.query("""
                         select r.id, r.skill_id, c.component_key, r.version, r.name, r.description, r.bundle_json,
-                               r.bundle_digest, r.state, r.created_at
+                               r.bundle_digest, r.state, r.generation, r.created_at
                           from ai_skill_release r join ai_skill_component c on c.id = r.skill_id
                          where r.id = ?
                         """, (rows, index) -> mapRelease(rows), id).stream().findFirst();
@@ -186,7 +192,7 @@ public class SkillStore {
     public Optional<SkillRelease> findRelease(String key, String version) {
         return jdbc.query("""
                         select r.id, r.skill_id, c.component_key, r.version, r.name, r.description, r.bundle_json,
-                               r.bundle_digest, r.state, r.created_at
+                               r.bundle_digest, r.state, r.generation, r.created_at
                           from ai_skill_release r join ai_skill_component c on c.id = r.skill_id
                          where c.component_key = ? and r.version = ?
                         """, (rows, index) -> mapRelease(rows), key, version).stream()
@@ -196,7 +202,7 @@ public class SkillStore {
     public List<SkillRelease> releases(UUID skillId) {
         return jdbc.query("""
                 select r.id, r.skill_id, c.component_key, r.version, r.name, r.description, r.bundle_json,
-                       r.bundle_digest, r.state, r.created_at
+                       r.bundle_digest, r.state, r.generation, r.created_at
                   from ai_skill_release r join ai_skill_component c on c.id = r.skill_id
                  where r.skill_id = ? order by r.created_at desc
                 """, (rows, index) -> mapRelease(rows), skillId);
@@ -209,11 +215,21 @@ public class SkillStore {
                 releaseId);
     }
 
-    public void publishComponent(UUID skillId, String version) {
-        jdbc.update(
-                "update ai_skill_component set published_version = ?, revision = revision + 1, updated_at = now() where id = ?",
-                version,
-                skillId);
+    public boolean publishComponent(UUID skillId, String version, long expectedGeneration) {
+        return jdbc.update("""
+                        update ai_skill_component c
+                           set published_version = ?, publication_generation = ?, revision = revision + 1, updated_at = now()
+                         where c.id = ?
+                           and publication_generation < ? and exists (
+                               select 1
+                                 from ai_skill_release r
+                                where r.skill_id = c.id
+                                  and r.version = ?
+                                  and r.generation = ?
+                                  and r.state = 'ACTIVE'
+                           )
+                        """, version, expectedGeneration, skillId, version, expectedGeneration, expectedGeneration)
+                > 0;
     }
 
     private SkillComponent mapComponent(java.sql.ResultSet rows) throws java.sql.SQLException {
@@ -224,6 +240,7 @@ public class SkillStore {
                 rows.getString("description"),
                 rows.getLong("draft_revision"),
                 rows.getString("published_version"),
+                rows.getLong("publication_generation"),
                 rows.getBoolean("enabled"),
                 rows.getLong("revision"),
                 rows.getString("created_by"),
@@ -242,6 +259,7 @@ public class SkillStore {
                 JsonSupport.read(rows.getString("bundle_json"), SkillBundle.class),
                 rows.getString("bundle_digest"),
                 rows.getString("state"),
+                rows.getLong("generation"),
                 JdbcRows.instant(rows, "created_at"));
     }
 }

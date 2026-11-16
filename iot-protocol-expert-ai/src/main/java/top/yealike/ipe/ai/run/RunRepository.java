@@ -66,6 +66,10 @@ public class RunRepository {
         return mapper.find(id).stream().findFirst();
     }
 
+    public Optional<Run> lock(UUID id) {
+        return mapper.lockRun(id).stream().findFirst();
+    }
+
     public Optional<Run> findByIdempotency(UUID conversationId, String idempotencyKey) {
         return mapper.findByIdempotency(conversationId, idempotencyKey).stream().findFirst();
     }
@@ -128,10 +132,6 @@ public class RunRepository {
         return mapper.transition(next, id, expected) > 0;
     }
 
-    public boolean requestPause(UUID id) {
-        return mapper.requestPause(id) > 0;
-    }
-
     public boolean markCompleted(UUID id, Map<String, Object> usage) {
         return mapper.markCompleted(JsonSupport.write(usage), id) > 0;
     }
@@ -169,15 +169,6 @@ public class RunRepository {
         return mapper.selectCancelPending(seconds, limit);
     }
 
-    public boolean markPaused(UUID id, Map<String, Object> usage) {
-        return mapper.markPaused(JsonSupport.write(usage), id) > 0;
-    }
-
-    /** 恢复：PAUSED → QUEUED，保留原 queue_seq，使其排在恢复之后提交的新问题之前。 */
-    public boolean requeuePaused(UUID id) {
-        return mapper.requeuePaused(id) > 0;
-    }
-
     public void requestCancel(UUID id) {
         mapper.requestCancel(id);
     }
@@ -191,14 +182,36 @@ public class RunRepository {
         return count == null ? 0 : count;
     }
 
+    public int countQueued() {
+        Integer count = mapper.countQueued();
+        return count == null ? 0 : count;
+    }
+
+    public int countUserQueued(String actor, UUID excludeConversationId) {
+        Integer count = mapper.countUserQueued(actor, excludeConversationId);
+        return count == null ? 0 : count;
+    }
+
+    public int countUserInFlight(String actor, UUID excludeConversationId) {
+        Integer count = mapper.countUserInFlight(actor, excludeConversationId);
+        return count == null ? 0 : count;
+    }
+
+    public void lockQuota(String scope) {
+        mapper.lockQuota(scope);
+    }
+
     public boolean isCancellationRequested(UUID id) {
         String status = mapper.selectStatus(id).stream().findFirst().orElse(null);
         return RunRecords.CANCEL_REQUESTED.equals(status) || RunRecords.CANCELLED.equals(status);
     }
 
-    public boolean isPauseRequested(UUID id) {
-        String status = mapper.selectStatus(id).stream().findFirst().orElse(null);
-        return RunRecords.PAUSE_REQUESTED.equals(status);
+    public boolean lockRuntimeEventRun(UUID id, long executionToken, String instanceId) {
+        return mapper.lockRuntimeEventRun(id, executionToken, instanceId) != null;
+    }
+
+    public List<RunRecords.RuntimeEventFingerprint> runtimeEventFingerprints(UUID runId, List<Long> sourceSeqs) {
+        return mapper.runtimeEventFingerprints(runId, sourceSeqs);
     }
 
     // ---------------------------------------------------------------- events

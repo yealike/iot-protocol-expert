@@ -15,6 +15,7 @@ import java.util.Properties;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
@@ -69,6 +70,34 @@ public class NacosRuntimeRegistry {
 
     public String advertiseIp() {
         return advertiseIp;
+    }
+
+    /** 从当前环境的 Nacos 健康实例中解析组件入口；未启用或无实例时返回 null。 */
+    public String discoverBaseUrl(String serviceName) {
+        if (!properties.nacos().enabled() || serviceName == null || serviceName.isBlank()) {
+            return null;
+        }
+        try {
+            ensureNamingService();
+            var instances = namingService.selectInstances(
+                    serviceName, properties.nacos().group(), true);
+            var healthy = instances.stream()
+                    .filter(Instance::isHealthy)
+                    .filter(Instance::isEnabled)
+                    .toList();
+            if (healthy.isEmpty()) {
+                return null;
+            }
+            Instance instance = healthy.get(ThreadLocalRandom.current().nextInt(healthy.size()));
+            String scheme = instance.getMetadata() == null
+                    ? null
+                    : instance.getMetadata().get("scheme");
+            String resolvedScheme = scheme == null || scheme.isBlank() ? "http" : scheme;
+            return resolvedScheme + "://" + instance.getIp() + ":" + instance.getPort();
+        } catch (NacosException | RuntimeException exception) {
+            log.debug("component discovery failed: service={} reason={}", serviceName, exception.getMessage());
+            return null;
+        }
     }
 
     @EventListener(ApplicationReadyEvent.class)

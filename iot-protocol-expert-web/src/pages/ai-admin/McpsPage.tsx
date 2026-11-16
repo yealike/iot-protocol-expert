@@ -25,7 +25,9 @@ import type {
   AiComponentOrigin,
   AiMcpComponent,
   AiMcpTestResult,
-  AiMcpToolDescriptor
+  AiMcpToolDescriptor,
+  AiMcpToolExecutionCategory,
+  AiMcpToolPolicy
 } from '../../api/types'
 import { formatDateTime } from '../../utils/dateTime'
 import { enabledTag, ErrorAlert, jsonText, rememberPublication } from './shared'
@@ -75,6 +77,11 @@ export default function McpsPage() {
   const toolCatalog = useQuery({
     queryKey: ['ai-mcp-tools', toolMcp?.id],
     queryFn: () => api.aiMcpTools(toolMcp!.id),
+    enabled: !!toolMcp
+  })
+  const toolPolicies = useQuery({
+    queryKey: ['ai-mcp-tool-policies', toolMcp?.id],
+    queryFn: () => api.aiMcpToolPolicies(toolMcp!.id),
     enabled: !!toolMcp
   })
 
@@ -167,6 +174,24 @@ export default function McpsPage() {
       void queryClient.invalidateQueries({ queryKey: ['ai-mcps'] })
       void queryClient.invalidateQueries({ queryKey: ['ai-mcp-tools', mcp.id] })
       navigate(`/ai-admin/publications/${publicationId}`)
+    },
+    onError: (error: Error) => message.error(error.message)
+  })
+
+  const reviewTool = useMutation({
+    mutationFn: ({
+      mcp,
+      toolName,
+      executionCategory
+    }: {
+      mcp: AiMcpComponent
+      toolName: string
+      executionCategory: AiMcpToolExecutionCategory
+    }) => api.aiReviewMcpTool(mcp.id, { toolName, executionCategory }),
+    onSuccess: (_, { mcp }) => {
+      message.success('工具执行类别已更新')
+      void queryClient.invalidateQueries({ queryKey: ['ai-mcp-tool-policies', mcp.id] })
+      void queryClient.invalidateQueries({ queryKey: ['ai-mcp-tools', mcp.id] })
     },
     onError: (error: Error) => message.error(error.message)
   })
@@ -596,8 +621,24 @@ export default function McpsPage() {
             {(toolCatalog.data.warnings ?? []).map((warning) => (
               <Alert key={warning} type="warning" showIcon message={warning} />
             ))}
+            <Alert
+              type="warning"
+              showIcon
+              message="只读边界由平台审核决定"
+              description="Provider 的 readOnlyHint 只作参考。只有平台审核为 READ_ONLY 的工具才能被 Agent 绑定和调用；WRITE 与 UNKNOWN 一律拒绝。"
+            />
             <Card size="small" title="最近测试工具">
-              <ToolTable tools={toolCatalog.data.tools} />
+              <ToolTable
+                tools={toolCatalog.data.tools}
+                policyMap={
+                  new Map((toolPolicies.data ?? []).map((policy) => [policy.toolName, policy]))
+                }
+                reviewingTool={reviewTool.isPending ? reviewTool.variables?.toolName : undefined}
+                onReview={(toolName, executionCategory) =>
+                  toolMcp &&
+                  reviewTool.mutate({ mcp: toolMcp, toolName, executionCategory })
+                }
+              />
             </Card>
             <Card size="small" title="当前发布工具目录">
               <ToolTable tools={toolCatalog.data.publishedTools} />
@@ -609,7 +650,17 @@ export default function McpsPage() {
   )
 }
 
-function ToolTable({ tools }: { tools?: AiMcpToolDescriptor[] }) {
+function ToolTable({
+  tools,
+  policyMap,
+  reviewingTool,
+  onReview
+}: {
+  tools?: AiMcpToolDescriptor[]
+  policyMap?: Map<string, AiMcpToolPolicy>
+  reviewingTool?: string
+  onReview?: (toolName: string, category: AiMcpToolExecutionCategory) => void
+}) {
   if (!tools?.length) {
     return <Alert type="info" showIcon message="暂无工具目录" />
   }
@@ -651,6 +702,32 @@ function ToolTable({ tools }: { tools?: AiMcpToolDescriptor[] }) {
             </Space>
           )
         },
+        ...(onReview
+          ? [
+              {
+                title: '平台执行类别',
+                dataIndex: 'name',
+                width: 150,
+                render: (name: string) => {
+                  const category = policyMap?.get(name)?.executionCategory ?? 'UNKNOWN'
+                  return (
+                    <Select<AiMcpToolExecutionCategory>
+                      size="small"
+                      value={category}
+                      loading={reviewingTool === name}
+                      style={{ width: 120 }}
+                      onChange={(value) => onReview(name, value)}
+                      options={[
+                        { value: 'READ_ONLY', label: '只读（批准）' },
+                        { value: 'WRITE', label: '写入' },
+                        { value: 'UNKNOWN', label: '未确认' }
+                      ]}
+                    />
+                  )
+                }
+              }
+            ]
+          : []),
         {
           title: '说明',
           dataIndex: 'description',

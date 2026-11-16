@@ -7,6 +7,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
@@ -14,7 +15,10 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.ObjectMapper;
 import top.yealike.ipe.agent.runtime.config.RuntimeProperties;
+import top.yealike.ipe.agent.runtime.registry.NacosRuntimeRegistry;
 import top.yealike.ipe.ai.contract.AgentManifest;
+import top.yealike.ipe.ai.contract.ComponentNames;
+import top.yealike.ipe.ai.contract.ComponentType;
 import top.yealike.ipe.ai.contract.CredentialResolveRequest;
 import top.yealike.ipe.ai.contract.CredentialResolveResponse;
 import top.yealike.ipe.ai.contract.InternalPaths;
@@ -44,13 +48,28 @@ public class ControlClient {
     private final RestClient http;
     private final ObjectMapper json;
     private final RuntimeProperties properties;
+    private final NacosRuntimeRegistry registry;
     private final String secret;
 
-    public ControlClient(RestClient controlRestClient, ObjectMapper json, RuntimeProperties properties) {
+    @Autowired
+    public ControlClient(
+            RestClient controlRestClient,
+            ObjectMapper json,
+            RuntimeProperties properties,
+            NacosRuntimeRegistry registry) {
         this.http = controlRestClient;
         this.json = json;
         this.properties = properties;
+        this.registry = registry;
         this.secret = properties.resolvedServiceKey();
+        warnIfSecretMissing();
+    }
+
+    public ControlClient(RestClient controlRestClient, ObjectMapper json, RuntimeProperties properties) {
+        this(controlRestClient, json, properties, null);
+    }
+
+    private void warnIfSecretMissing() {
         if (secret.isBlank()) {
             log.warn("内部服务密钥未配置，Runtime 无法调用 Control；请注入 IPE_INTERNAL_SERVICE_KEY 或密钥文件");
         }
@@ -65,11 +84,17 @@ public class ControlClient {
     }
 
     public SkillDescriptor skillDescriptor(String key, String version) {
-        return get(InternalPaths.controlSkill(key, version), SkillDescriptor.class);
+        return get(
+                ComponentNames.serviceName(ComponentType.SKILL, key, version),
+                InternalPaths.controlSkill(key, version),
+                SkillDescriptor.class);
     }
 
     public SkillFile skillFile(String key, String version, String path) {
-        return get(InternalPaths.controlSkillFile(key, version, path), SkillFile.class);
+        return get(
+                ComponentNames.serviceName(ComponentType.SKILL, key, version),
+                InternalPaths.controlSkillFile(key, version, path),
+                SkillFile.class);
     }
 
     public RunClaimResponse claim(RunClaimRequest request) {
@@ -101,7 +126,11 @@ public class ControlClient {
     }
 
     public DesiredReleasePage desiredReleases() {
-        return get(InternalPaths.controlDesiredReleases(), DesiredReleasePage.class);
+        return desiredReleases(0L);
+    }
+
+    public DesiredReleasePage desiredReleases(long cursor) {
+        return get(InternalPaths.controlDesiredReleases(cursor, 200), DesiredReleasePage.class);
     }
 
     public boolean readiness() {
@@ -114,14 +143,18 @@ public class ControlClient {
     }
 
     private <T> T get(String path, Class<T> type) {
-        return execute("GET", path, null, type);
+        return execute(properties.controlServiceName(), properties.controlBaseUrl(), "GET", path, null, type);
+    }
+
+    private <T> T get(String serviceName, String path, Class<T> type) {
+        return execute(serviceName, baseUrl(serviceName), "GET", path, null, type);
     }
 
     private <T> T post(String path, Object body, Class<T> type) {
-        return execute("POST", path, body, type);
+        return execute(properties.controlServiceName(), properties.controlBaseUrl(), "POST", path, body, type);
     }
 
-    private <T> T execute(String method, String path, Object body, Class<T> type) {
+    private <T> T execute(String serviceName, String baseUrl, String method, String path, Object body, Class<T> type) {
         byte[] payload =
                 body == null ? new byte[0] : json.writeValueAsString(body).getBytes(StandardCharsets.UTF_8);
         String timestamp = String.valueOf(Instant.now().getEpochSecond());
@@ -129,7 +162,7 @@ public class ControlClient {
         String signature = InternalSignature.sign(secret, method, path, payload, timestamp, nonce, "control");
         try {
             RestClient.RequestBodySpec request = http.method(org.springframework.http.HttpMethod.valueOf(method))
-                    .uri(URI.create(properties.controlBaseUrl() + path))
+                    .uri(URI.create(baseUrl + path))
                     .header(InternalSignature.HEADER_SERVICE, properties.serviceName())
                     .header(InternalSignature.HEADER_KEY_ID, properties.serviceKeyId())
                     .header(InternalSignature.HEADER_TIMESTAMP, timestamp)
@@ -140,12 +173,27 @@ public class ControlClient {
                 request.contentType(MediaType.APPLICATION_JSON).body(new String(payload, StandardCharsets.UTF_8));
             }
             return request.retrieve().body(type);
+        } catch (ControlException exception) {
+            throw exception;
         } catch (RestClientResponseException exception) {
             throw translate(exception);
         } catch (RuntimeException exception) {
             log.warn("control call failed: method={} path={} reason={}", method, path, safeMessage(exception));
             throw new ControlException(502, "CONTROL_UNAVAILABLE", "控制面暂时不可用：" + safeMessage(exception));
         }
+    }
+
+    private String baseUrl(String serviceName) {
+        if (registry != null && registry.enabled()) {
+            String discovered = registry.discoverBaseUrl(serviceName);
+            if (discovered != null) {
+                return discovered;
+            }
+            if (!properties.controlServiceName().equals(serviceName)) {
+                throw new ControlException(503, "COMPONENT_UNAVAILABLE", "注册中心没有可用的组件实例：" + serviceName);
+            }
+        }
+        return properties.controlBaseUrl();
     }
 
     private ControlException translate(RestClientResponseException exception) {
