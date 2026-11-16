@@ -26,16 +26,19 @@ public class ChargerFleet {
     private final ProtocolTelemetry telemetry;
     private final OpsDeviceClient opsDevices;
     private final SimulatorRuntime interactive;
+    private final SimulatorStateStore stateStore;
 
     public ChargerFleet(
             SimulatorProperties defaults,
             ProtocolTelemetry telemetry,
             OpsDeviceClient opsDevices,
-            SimulatorRuntime interactive) {
+            SimulatorRuntime interactive,
+            SimulatorStateStore stateStore) {
         this.defaults = defaults;
         this.telemetry = telemetry;
         this.opsDevices = opsDevices;
         this.interactive = interactive;
+        this.stateStore = stateStore;
     }
 
     public synchronized Map<String, Object> start(Long id) {
@@ -50,7 +53,7 @@ public class ChargerFleet {
         config.setPileCode("00000000000000");
         config.setGunCount(1);
         config.setProtocol("ykc16");
-        SimulatorRuntime runtime = new SimulatorRuntime(config, telemetry);
+        SimulatorRuntime runtime = new SimulatorRuntime(config, telemetry, stateStore);
         runtime.setOpsDevices(opsDevices);
         try {
             runtime.init(false);

@@ -17,7 +17,7 @@ AI 服务复用运营平台的数据库实例（独立 `ipe_ai` schema），身�
 
 ## 本地运行
 
-需要 JDK 21、Maven、PostgreSQL 和 TDengine 3.x。应用数据库账号需有创建 `ipe_ops` 和 `ipe_ai` schema 的权限。将 `.env.example` 复制为 `.env-local` 并填写本地连接、令牌和 JDK 路径；启动脚本会读取它，IDE 启动时需自行加载。订单时序使用 TDengine WebSocket 接口，应用账号需有创建数据库和表的权限。然后运行：
+需要 JDK 21、Maven、PostgreSQL 和 TDengine 3.x。应用数据库账号需有创建 `ipe_ops`、`ipe_ai` 和 `ipe_simulator` schema 的权限。将 `.env.example` 复制为 `.env.local` 并填写本地连接、令牌和 JDK 路径；启动脚本会读取它，IDE 启动时需自行加载。订单时序使用 TDengine WebSocket 接口，应用账号需有创建数据库和表的权限。然后运行：
 
 ```powershell
 $env:JAVA_HOME='D:\develop\jdk\jdk-21'
@@ -36,6 +36,10 @@ AI 服务应用账号需要创建 `ipe_ai` schema 的权限；可用 `IPE_AI_DB_
 
 登录运营平台后从「充电模拟器」进入。模拟器服务仍需启动，运营平台通过 `IPE_SIMULATOR_BASE_URL`（默认 `http://127.0.0.1:19081`）连接模拟器。
 
-设备列表由运营平台提供，选择设备后使用其协议和协议设备编号。主界面支持插枪、启动、停止、实时上报和故障模拟；云快充故障值为 16 位故障位图，OCPP 为标准 `StatusNotification.errorCode`。并发模拟区域可添加其他设备，分别控制枪和上报数据；同一设备不能同时出现在主模拟器和并发列表。状态与待补传账单按设备 ID 分文件保存。
+设备列表由运营平台提供，选择设备后使用其协议和协议设备编号。主界面支持插枪、启动、停止、实时上报和故障模拟；云快充故障值为 16 位故障位图，OCPP 为标准 `StatusNotification.errorCode`。并发模拟区域可添加其他设备，分别控制枪和上报数据；同一设备不能同时出现在主模拟器和并发列表。
+
+模拟器使用独立 PostgreSQL schema `ipe_simulator`，不在 `ipe_ops` 或 `ipe_ai` 中建表。默认复用 `IPE_OPS_DB_*` 连接，可通过 `IPE_SIMULATOR_DB_URL/USER/PASSWORD` 单独指定。Flyway 使用专属 `db/simulator-migration` 目录与 `ipe_simulator.flyway_schema_history`。`device_state` 按设备 ID、协议及协议设备编号保存电表、费率、充电检查点、已完成会话与云快充待补传账单；`charging_record` 永久归档完整充电账单（电量、费用、起止时间、停止原因及尖峰平谷明细），页面仍只展示最近 100 条。状态和账单在同一事务中保存，重复保存不会新增重复账单；数据库短暂不可用时保留内存数据并在模拟周期重试。
+
+首次恢复每台设备时，若数据库还没有对应快照，会只读导入 `data/simulator-state-<设备ID>.properties`；未选设备的配置模式使用 `data/simulator-state.properties`，可用 `IPE_SIMULATOR_LEGACY_STATE_FILE` 指定旧文件基准路径。旧文件保留备查，不再写入；已有数据库快照后不重复导入。重启时完成会话可恢复显示，未完成会话按最后检查点以断电原因结算。数据库集成测试需显式提供 `IPE_SIMULATOR_TEST_DB_URL/USER/PASSWORD`，仅在模拟器 schema 内创建与清理随机测试记录。
 
 具体协议能力和已知限制见 `docs/ocpp16.md`、`docs/protocol-coverage.md` 和 `docs/protocol-decisions.md`。
