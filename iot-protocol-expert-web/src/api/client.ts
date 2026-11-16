@@ -1,8 +1,38 @@
 import type {
-  AiAgent,
+  AiAgentBindingsUpdate,
+  AiAgentCatalogItem,
+  AiAgentCompileResult,
+  AiAgentComponent,
+  AiAgentCreate,
+  AiAgentDetail,
+  AiAgentRelease,
+  AiAgentUpdate,
   AiConversation,
   AiConversationDetail,
+  AiCredential,
+  AiCredentialCreate,
+  AiMcpComponent,
+  AiMcpCreate,
+  AiMcpRelease,
+  AiMcpTestResult,
+  AiMcpToolCatalog,
+  AiMcpUpdate,
+  AiModelCreate,
+  AiModelProfile,
+  AiModelTestResult,
+  AiModelUpdate,
+  AiPublication,
+  AiPublishReceipt,
+  AiRegistryComponent,
+  AiRegistryVersionDetail,
   AiRun,
+  AiSkillComponent,
+  AiSkillCreate,
+  AiSkillDraftFile,
+  AiSkillFileInfo,
+  AiSkillRelease,
+  AiSkillUpdate,
+  AiSkillValidation,
   AiStreamEvent,
   AlarmView,
   BusinessOverview,
@@ -33,32 +63,59 @@ import type {
 export class ApiError extends Error {
   constructor(
     public status: number,
-    message: string
+    message: string,
+    public code?: string,
+    public traceId?: string
   ) {
     super(message)
   }
 }
 
-async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
+type RequestClient = 'ops' | 'ai'
+
+async function request<T>(
+  path: string,
+  init: RequestInit = {},
+  client: RequestClient = 'ops'
+): Promise<T> {
+  const { headers: initialHeaders, body, ...rest } = init
+  const headers = new Headers(initialHeaders)
+  if (body != null && !(body instanceof FormData) && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json')
+  }
+  if (client === 'ai') {
+    headers.set('X-AI-Client', 'web')
+  } else if (body != null && !headers.has('X-OPS-Client')) {
+    headers.set('X-OPS-Client', '1')
+  }
   const response = await fetch(path, {
+    ...rest,
+    body,
     credentials: 'include',
-    headers: init.body
-      ? { 'Content-Type': 'application/json', 'X-OPS-Client': '1', ...(init.headers ?? {}) }
-      : init.headers,
-    ...init
+    headers
   })
   if (response.status === 401) {
     throw new ApiError(401, '未登录或会话已过期')
   }
   if (!response.ok) {
     let message = `请求失败 HTTP ${response.status}`
+    let code: string | undefined
+    let traceId: string | undefined
     try {
-      const body = await response.json()
-      message = body.message ?? body.detail ?? body.title ?? message
+      const errorBody = (await response.json()) as {
+        error?: string
+        message?: string
+        detail?: string
+        title?: string
+        traceId?: string
+      }
+      message = errorBody.message ?? errorBody.detail ?? errorBody.title ?? message
+      code = errorBody.error
+      traceId = errorBody.traceId
     } catch {
       /* 非 JSON 响应保持默认文案 */
     }
-    throw new ApiError(response.status, message)
+    throw new ApiError(response.status, message, code, traceId)
   }
   if (response.status === 204) {
     return undefined as T
@@ -69,15 +126,30 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 
 const json = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body) })
 
+const AI_API = '/api/ai/v1'
+
+const aiRequest = <T>(path: string, init: RequestInit = {}) =>
+  request<T>(`${AI_API}${path}`, init, 'ai')
+
+const aiJson = (body: unknown, method: 'POST' | 'PUT' | 'DELETE' = 'POST'): RequestInit => ({
+  method,
+  body: JSON.stringify(body)
+})
+
 export const api = {
   // ---------------------------------------------------------------- 会话
 
   roles: () => request<ManagedRole[]>('/api/ops/users/roles'),
-  updateRole: (code: string, permissions: string[]) => request<ManagedRole>(`/api/ops/users/roles/${code}`, { method: 'PUT', body: JSON.stringify({ permissions }) }),
+  updateRole: (code: string, permissions: string[]) =>
+    request<ManagedRole>(`/api/ops/users/roles/${code}`, {
+      method: 'PUT',
+      body: JSON.stringify({ permissions })
+    }),
   users: () => request<ManagedUser[]>('/api/ops/users'),
   stations: () => request<Array<{ id: number; name: string }>>('/api/ops/stations'),
   createUser: (value: UserChange) => request<ManagedUser>('/api/ops/users', json(value)),
-  updateUser: (id: number, value: UserChange) => request<ManagedUser>(`/api/ops/users/${id}`, { method: 'PUT', body: JSON.stringify(value) }),
+  updateUser: (id: number, value: UserChange) =>
+    request<ManagedUser>(`/api/ops/users/${id}`, { method: 'PUT', body: JSON.stringify(value) }),
   me: () => request<CurrentUser>('/api/ops/auth/me'),
 
   login: async (username: string, password: string) => {
@@ -203,54 +275,188 @@ export const api = {
 
   // ---------------------------------------------------------------- AI 助手
 
-  aiAgents: () => request<AiAgent[]>('/api/ai/agents'),
+  aiKnowledgeDocuments: () =>
+    aiRequest<
+      Array<{
+        id: string
+        title: string
+        protocolCode: string
+        protocolVersion: string
+        status: string
+        chunkCount: number
+        updatedAt: string
+      }>
+    >('/knowledge/documents'),
+  aiKnowledgePreview: (id: string) =>
+    aiRequest<
+      Array<{
+        chunkNo: number
+        sectionPath: string | null
+        pageNo: number | null
+        content: string
+      }>
+    >(`/knowledge/documents/${encodeURIComponent(id)}/preview`),
+  aiKnowledgeIndex: () =>
+    aiRequest<{ total: number; indexed: number; skipped: number; failed: number }>(
+      '/knowledge/index',
+      aiJson({ publish: false })
+    ),
+  aiKnowledgeAction: (id: string, action: 'publish' | 'archive') =>
+    aiRequest<unknown>(`/knowledge/documents/${encodeURIComponent(id)}/${action}`, {
+      method: 'POST'
+    }),
 
-  aiKnowledgeDocuments: () => request<Array<{ id: string; title: string; protocolCode: string; protocolVersion: string; status: string; chunkCount: number; updatedAt: string }>>('/api/ai/knowledge/documents'),
-  aiKnowledgePreview: (id: string) => request<Array<{ chunkNo: number; sectionPath: string | null; pageNo: number | null; content: string }>>(`/api/ai/knowledge/documents/${id}/preview`),
-  aiKnowledgeIndex: () => request<{ total: number; indexed: number; skipped: number; failed: number }>('/api/ai/knowledge/index', {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'X-AI-Client': 'assistant' }, body: JSON.stringify({ publish: false })
-  }),
-  aiKnowledgeAction: (id: string, action: 'publish' | 'archive') => request<unknown>(`/api/ai/knowledge/documents/${id}/${action}`, {
-    method: 'POST', headers: { 'X-AI-Client': 'assistant' }
-  }),
+  // ---------------------------------------------------------------- AI 管理：模型与凭据
+
+  aiModels: () => aiRequest<AiModelProfile[]>('/models'),
+  aiCreateModel: (body: AiModelCreate) => aiRequest<AiModelProfile>('/models', aiJson(body)),
+  aiUpdateModel: (id: string, body: AiModelUpdate) =>
+    aiRequest<AiModelProfile>(`/models/${encodeURIComponent(id)}`, aiJson(body, 'PUT')),
+  aiTestModel: (id: string) =>
+    aiRequest<AiModelTestResult>(`/models/${encodeURIComponent(id)}/test`, {
+      method: 'POST'
+    }),
+  aiCredentials: () => aiRequest<AiCredential[]>('/credentials'),
+  aiCreateCredential: (body: AiCredentialCreate) =>
+    aiRequest<AiCredential>('/credentials', aiJson(body)),
+  aiRotateCredential: (id: string, secret: string) =>
+    aiRequest<AiCredential>(`/credentials/${encodeURIComponent(id)}`, aiJson({ secret }, 'PUT')),
+
+  // ---------------------------------------------------------------- AI 管理：MCP
+
+  aiMcps: () => aiRequest<AiMcpComponent[]>('/mcps'),
+  aiCreateMcp: (body: AiMcpCreate) => aiRequest<AiMcpComponent>('/mcps', aiJson(body)),
+  aiUpdateMcp: (id: string, body: AiMcpUpdate) =>
+    aiRequest<AiMcpComponent>(`/mcps/${encodeURIComponent(id)}`, aiJson(body, 'PUT')),
+  aiDeleteMcp: (id: string) =>
+    aiRequest<void>(`/mcps/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  aiTestMcp: (id: string) =>
+    aiRequest<AiMcpTestResult>(`/mcps/${encodeURIComponent(id)}/test`, { method: 'POST' }),
+  aiMcpTools: (id: string) => aiRequest<AiMcpToolCatalog>(`/mcps/${encodeURIComponent(id)}/tools`),
+  aiMcpReleases: (id: string) =>
+    aiRequest<AiMcpRelease[]>(`/mcps/${encodeURIComponent(id)}/releases`),
+  aiPublishMcp: (
+    id: string,
+    body: {
+      version?: string
+      reportId: string
+      expectedRevision: number
+      idempotencyKey: string
+    }
+  ) => aiRequest<AiPublishReceipt>(`/mcps/${encodeURIComponent(id)}/publish`, aiJson(body)),
+
+  // ---------------------------------------------------------------- AI 管理：Skill
+
+  aiSkills: () => aiRequest<AiSkillComponent[]>('/skills'),
+  aiCreateSkill: (body: AiSkillCreate) => aiRequest<AiSkillComponent>('/skills', aiJson(body)),
+  aiUpdateSkill: (id: string, body: AiSkillUpdate) =>
+    aiRequest<AiSkillComponent>(`/skills/${encodeURIComponent(id)}`, aiJson(body, 'PUT')),
+  aiDeleteSkill: (id: string) =>
+    aiRequest<void>(`/skills/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  aiSkillFiles: (id: string) =>
+    aiRequest<AiSkillFileInfo[]>(`/skills/${encodeURIComponent(id)}/files`),
+  aiSkillFile: (id: string, path: string) =>
+    aiRequest<AiSkillDraftFile>(
+      `/skills/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`
+    ),
+  aiSaveSkillFile: (id: string, path: string, expectedRevision: number, content: string) =>
+    aiRequest<AiSkillDraftFile>(
+      `/skills/${encodeURIComponent(id)}/file?path=${encodeURIComponent(path)}`,
+      aiJson({ content, expectedRevision }, 'PUT')
+    ),
+  aiDeleteSkillFile: (id: string, path: string, expectedRevision: number) =>
+    aiRequest<void>(
+      `/skills/${encodeURIComponent(id)}/file?path=${encodeURIComponent(
+        path
+      )}&expectedRevision=${expectedRevision}`,
+      { method: 'DELETE' }
+    ),
+  aiValidateSkill: (id: string) =>
+    aiRequest<AiSkillValidation>(`/skills/${encodeURIComponent(id)}/validate`, {
+      method: 'POST'
+    }),
+  aiSkillReleases: (id: string) =>
+    aiRequest<AiSkillRelease[]>(`/skills/${encodeURIComponent(id)}/releases`),
+  aiPublishSkill: (
+    id: string,
+    body: {
+      version?: string
+      expectedRevision: number
+      idempotencyKey: string
+    }
+  ) => aiRequest<AiPublishReceipt>(`/skills/${encodeURIComponent(id)}/publish`, aiJson(body)),
+
+  // ---------------------------------------------------------------- AI 管理：Agent
+
+  aiAgents: () => aiRequest<AiAgentComponent[]>('/agents'),
+  aiAgent: (id: string) => aiRequest<AiAgentDetail>(`/agents/${encodeURIComponent(id)}`),
+  aiAgentReleases: (id: string) =>
+    aiRequest<AiAgentRelease[]>(`/agents/${encodeURIComponent(id)}/releases`),
+  aiCreateAgent: (body: AiAgentCreate) => aiRequest<AiAgentComponent>('/agents', aiJson(body)),
+  aiUpdateAgent: (id: string, body: AiAgentUpdate) =>
+    aiRequest<AiAgentComponent>(`/agents/${encodeURIComponent(id)}`, aiJson(body, 'PUT')),
+  aiDeleteAgent: (id: string) =>
+    aiRequest<void>(`/agents/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  aiUpdateAgentBindings: (id: string, body: AiAgentBindingsUpdate) =>
+    aiRequest<AiAgentDetail>(`/agents/${encodeURIComponent(id)}/bindings`, aiJson(body, 'PUT')),
+  aiValidateAgent: (id: string) =>
+    aiRequest<AiAgentCompileResult>(`/agents/${encodeURIComponent(id)}/validate`, {
+      method: 'POST'
+    }),
+  aiPublishAgent: (
+    id: string,
+    body: {
+      version?: string
+      expectedRevision: number
+      idempotencyKey: string
+    }
+  ) => aiRequest<AiPublishReceipt>(`/agents/${encodeURIComponent(id)}/publish`, aiJson(body)),
+  aiRollbackAgent: (id: string, body: { targetVersion: string; expectedRevision: number }) =>
+    aiRequest<AiAgentComponent>(`/agents/${encodeURIComponent(id)}/rollback`, aiJson(body)),
+
+  // ---------------------------------------------------------------- AI 管理：发布与注册
+
+  aiPublication: (id: string) =>
+    aiRequest<AiPublication>(`/publications/${encodeURIComponent(id)}`),
+  aiRetryPublication: (id: string) =>
+    aiRequest<AiPublication>(`/publications/${encodeURIComponent(id)}/retry`, {
+      method: 'POST'
+    }),
+  aiRegistryComponents: () => aiRequest<AiRegistryComponent[]>('/registry/components'),
+  aiRegistryVersionDetail: (type: string, key: string, version: string) =>
+    aiRequest<AiRegistryVersionDetail>(
+      `/registry/components/${encodeURIComponent(type)}/${encodeURIComponent(
+        key
+      )}/versions/${encodeURIComponent(version)}`
+    ),
+
+  // ---------------------------------------------------------------- 对话
+
+  aiAgentCatalog: () => aiRequest<AiAgentCatalogItem[]>('/agent-catalog'),
 
   aiConversations: (page = 0, size = 30) =>
-    request<PageResult<AiConversation>>(`/api/ai/conversations?page=${page}&size=${size}`),
+    aiRequest<PageResult<AiConversation>>(`/conversations?page=${page}&size=${size}`),
 
-  aiCreateConversation: (agentKey: string, title?: string) =>
-    request<AiConversation>('/api/ai/conversations', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-AI-Client': 'assistant' },
-      body: JSON.stringify({ agentKey, title })
-    }),
+  aiCreateConversation: (agentKey: string, version?: string, title?: string) =>
+    aiRequest<AiConversation>('/conversations', aiJson({ agentKey, version, title })),
 
   aiConversation: (id: string) =>
-    request<AiConversationDetail>(`/api/ai/conversations/${id}`),
+    aiRequest<AiConversationDetail>(`/conversations/${encodeURIComponent(id)}`),
 
-  aiSubmitRun: (conversationId: string, question: string, idempotencyKey: string, priority = 100) =>
-    request<AiRun>(`/api/ai/conversations/${conversationId}/runs`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-AI-Client': 'assistant' },
-      body: JSON.stringify({ question, idempotencyKey, priority })
-    }),
-
-  aiPauseRun: (runId: string) =>
-    request<unknown>(`/api/ai/runs/${runId}/pause`, {
-      method: 'POST',
-      headers: { 'X-AI-Client': 'assistant' }
-    }),
-
-  aiResumeRun: (runId: string) =>
-    request<unknown>(`/api/ai/runs/${runId}/resume`, {
-      method: 'POST',
-      headers: { 'X-AI-Client': 'assistant' }
-    }),
+  aiSubmitRun: (conversationId: string, content: string, idempotencyKey: string) =>
+    aiRequest<AiRun>(
+      `/conversations/${encodeURIComponent(conversationId)}/runs`,
+      aiJson({ content, idempotencyKey })
+    ),
 
   aiCancelRun: (runId: string) =>
-    request<unknown>(`/api/ai/runs/${runId}/cancel`, {
-      method: 'POST',
-      headers: { 'X-AI-Client': 'assistant' }
-    })
+    aiRequest<{ ok?: boolean; status?: string; note?: string }>(
+      `/runs/${encodeURIComponent(runId)}/cancel`,
+      {
+        method: 'POST'
+      }
+    ),
+  aiRun: (runId: string) => aiRequest<AiRun>(`/runs/${encodeURIComponent(runId)}`)
 }
 
 /**
@@ -259,21 +465,38 @@ export const api = {
  */
 export function openAiEventStream(
   conversationId: string,
-  after: number,
+  afterCursor: number,
   onEvent: (event: AiStreamEvent) => void,
-  onState?: (state: 'open' | 'closed') => void
+  onState?: (state: 'open' | 'closed') => void,
+  onError?: (error: ApiError) => void
 ): () => void {
   const controller = new AbortController()
-  let cursor = after
+  let cursor = Math.max(0, afterCursor)
   const run = async () => {
     while (!controller.signal.aborted) {
       try {
         const response = await fetch(
-          `/api/ai/conversations/${conversationId}/events?after=${cursor}`,
-          { credentials: 'include', signal: controller.signal, headers: { Accept: 'text/event-stream' } }
+          `${AI_API}/conversations/${encodeURIComponent(
+            conversationId
+          )}/events?afterCursor=${cursor}`,
+          {
+            credentials: 'include',
+            signal: controller.signal,
+            headers: {
+              Accept: 'text/event-stream',
+              'X-AI-Client': 'web'
+            }
+          }
         )
         if (!response.ok || !response.body) {
-          if (response.status === 401 || response.status === 403 || response.status === 404) return
+          if (response.status === 410) {
+            onError?.(new ApiError(410, '事件游标已过期，请刷新会话快照'))
+            return
+          }
+          if (response.status === 401 || response.status === 403 || response.status === 404) {
+            onError?.(new ApiError(response.status, '事件连接不可用'))
+            return
+          }
           throw new Error('事件连接不可用')
         }
         onState?.('open')
@@ -318,17 +541,39 @@ function parseSseBlock(raw: string): AiStreamEvent | null {
     } else if (line.startsWith('event:')) {
       type = line.slice(6).trim()
     } else if (line.startsWith('data:')) {
-      dataLines.push(line.slice(5).trim())
+      dataLines.push(line.slice(5).replace(/^ /, ''))
     }
   })
   if (dataLines.length === 0) {
     return null
   }
-  let data: Record<string, unknown> = {}
+  let envelope: Record<string, unknown> = {}
   try {
-    data = JSON.parse(dataLines.join('\n')) as Record<string, unknown>
+    envelope = JSON.parse(dataLines.join('\n')) as Record<string, unknown>
   } catch {
-    data = { raw: dataLines.join('\n') }
+    envelope = { raw: dataLines.join('\n') }
   }
-  return { cursor, type, data }
+  if (!cursor && typeof envelope.cursor === 'number') {
+    cursor = envelope.cursor
+  }
+  const eventType =
+    type !== 'message' ? type : typeof envelope.type === 'string' ? envelope.type : 'message'
+  const payload =
+    envelope.payload && typeof envelope.payload === 'object' && !Array.isArray(envelope.payload)
+      ? (envelope.payload as Record<string, unknown>)
+      : envelope
+  const runId =
+    typeof envelope.runId === 'string'
+      ? envelope.runId
+      : typeof payload.runId === 'string'
+        ? payload.runId
+        : undefined
+  return {
+    cursor,
+    type: eventType,
+    eventId: typeof envelope.eventId === 'string' ? envelope.eventId : undefined,
+    runId,
+    createdAt: typeof envelope.createdAt === 'string' ? envelope.createdAt : undefined,
+    data: payload
+  }
 }

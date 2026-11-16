@@ -16,6 +16,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.filter.OncePerRequestFilter;
 import top.yealike.ipe.ai.identity.IdentityFilter;
 import top.yealike.ipe.ai.identity.IdentityService;
+import top.yealike.ipe.ai.platform.internal.InternalSignatureFilter;
 
 /**
  * AI 服务不提供登录入口：身份一律由 ops 认证服务校验。
@@ -27,9 +28,13 @@ import top.yealike.ipe.ai.identity.IdentityService;
 public class SecurityConfig {
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, IdentityService identities) throws Exception {
+    SecurityFilterChain securityFilterChain(
+            HttpSecurity http, IdentityService identities, InternalSignatureFilter internalSignatureFilter)
+            throws Exception {
         http.csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth.requestMatchers("/actuator/**", "/error")
+                        .permitAll()
+                        .requestMatchers("/internal/ai/**")
                         .permitAll()
                         .requestMatchers("/api/ai/**")
                         .hasAuthority("ai:use")
@@ -39,6 +44,7 @@ public class SecurityConfig {
                         (request, response, authException) -> response.sendError(HttpStatus.UNAUTHORIZED.value())))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .addFilterBefore(new IdentityFilter(identities), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(internalSignatureFilter, IdentityFilter.class)
                 .addFilterAfter(new ClientHeaderFilter(), IdentityFilter.class);
         return http.build();
     }

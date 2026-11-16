@@ -71,6 +71,51 @@ ipe:
   ai:
     environment: ${IPE_ENVIRONMENT:local}
     request-timeout-ms: ${IPE_AI_REQUEST_TIMEOUT_MS:8000}
+    platform:
+      registry:
+        # 控制面与 Runtime 的 Nacos 注册发现；本地不启动 Nacos 时关闭
+        enabled: ${IPE_AI_REGISTRY_ENABLED:false}
+        server-addr: ${IPE_NACOS_SERVER_ADDR:127.0.0.1:8848}
+        username: ${IPE_NACOS_USERNAME:}
+        password: ${IPE_NACOS_PASSWORD:}
+        namespace: ${IPE_NACOS_NAMESPACE:public}
+        group: ${IPE_AI_COMPONENT_GROUP:IPE_AI_COMPONENTS}
+        advertise-ip: ${IPE_AI_ADVERTISE_IP:}
+        control-service-name: ${IPE_CONTROL_SERVICE_NAME:ipe-ai-control}
+        mcp-gateway-base: ${IPE_AI_MCP_GATEWAY_BASE:}
+        cache-seconds: ${IPE_AI_REGISTRY_CACHE_SECONDS:5}
+      security:
+        # 凭据加密主密钥与内部 HMAC 密钥只从环境变量或挂载文件读取
+        master-key: ${IPE_CREDENTIAL_MASTER_KEY:}
+        master-key-file: ${IPE_CREDENTIAL_MASTER_KEY_FILE:}
+        internal-service-name: ${IPE_INTERNAL_SERVICE_NAME:control}
+        runtime-service-name: ${IPE_RUNTIME_SERVICE_NAME:runtime}
+        internal-service-key: ${IPE_INTERNAL_SERVICE_KEY:}
+        internal-key-id: ${IPE_INTERNAL_KEY_ID:control}
+        clock-skew-seconds: ${IPE_INTERNAL_CLOCK_SKEW_SECONDS:30}
+      runtime:
+        max-dispatch-attempts: ${IPE_RUNTIME_MAX_DISPATCH_ATTEMPTS:3}
+        lease-seconds: ${IPE_RUNTIME_LEASE_SECONDS:30}
+        queue-limit: ${IPE_RUNTIME_QUEUE_LIMIT:100}
+        per-user-queued: ${IPE_RUNTIME_PER_USER_QUEUED:2}
+        per-user-in-flight: ${IPE_RUNTIME_PER_USER_IN_FLIGHT:1}
+        # 仅本地无 Nacos 调试时显式开启；生产默认关闭，禁止无健康实例时直连回退
+        direct-fallback-enabled: ${IPE_RUNTIME_DIRECT_FALLBACK_ENABLED:false}
+        base-url: ${IPE_AGENT_RUNTIME_BASE_URL:http://127.0.0.1:19084}
+      identity:
+        service-name: ${IPE_OPS_SERVICE_NAME:ipe-ops}
+        namespace: ${IPE_NACOS_NAMESPACE:public}
+        group: ${IPE_OPS_SERVICE_GROUP:DEFAULT_GROUP}
+        base-url: ${IPE_OPS_BASE_URL:http://127.0.0.1:19082}
+        service-token: ${IPE_OPS_SERVICE_TOKEN:}
+      bootstrap:
+        # 只有显式开启时才在启动后补齐演示组件，失败不影响管理面启动
+        enabled: ${IPE_AI_BOOTSTRAP_ENABLED:false}
+        model-credential-key: ${IPE_MODEL_CREDENTIAL_KEY:model-default}
+        model-api-key: ${IPE_MODEL_API_KEY:}
+        model-base-url: ${IPE_MODEL_BASE_URL:https://api.deepseek.com}
+        model-name: ${IPE_MODEL_NAME:deepseek-chat}
+        skill-version: ${IPE_BOOTSTRAP_SKILL_VERSION:1.0.0}
     mcp:
       # 与 ops 共享的请求签名密钥，只放环境变量
       token: ${IPE_AI_MCP_TOKEN:}

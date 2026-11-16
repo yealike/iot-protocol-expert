@@ -24,7 +24,9 @@
         <module>iot-protocol-expert-protocol</module>
         <module>iot-protocol-expert-ops</module>
         <module>iot-protocol-expert-simulator</module>
+        <module>iot-protocol-expert-ai-contract</module>
         <module>iot-protocol-expert-ai</module>
+        <module>iot-protocol-expert-agent-runtime</module>
     </modules>
 
     <properties>

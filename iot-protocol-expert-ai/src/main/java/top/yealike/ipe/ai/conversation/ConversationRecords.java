@@ -16,6 +16,8 @@ public final class ConversationRecords {
             String title,
             String agentKey,
             String agentVersion,
+            UUID agentReleaseId,
+            String manifestDigest,
             String status,
             long eventCursor,
             Instant createdAt,

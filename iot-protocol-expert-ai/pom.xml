@@ -18,9 +18,16 @@
         <!-- AgentScope Java：一期基线固定 2.0.4（发布页最新稳定版），不使用 SNAPSHOT / 预发布 -->
         <agentscope.version>2.0.4</agentscope.version>
         <pdfbox.version>3.0.5</pdfbox.version>
+        <mcp-sdk.version>0.17.2</mcp-sdk.version>
     </properties>
 
     <dependencies>
+        <!-- Control 与 Agent Runtime 共享的纯 Java 契约 -->
+        <dependency>
+            <groupId>top.yealike.ipe</groupId>
+            <artifactId>iot-protocol-expert-ai-contract</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <!-- Nacos：标准服务注册/发现 starter（内置 nacos-client 3.1.1，含 AI/MCP 目录 API） -->
         <dependency>
             <groupId>com.alibaba.cloud</groupId>
@@ -95,6 +102,19 @@
             <groupId>io.agentscope</groupId>
             <artifactId>agentscope-extensions-studio</artifactId>
             <version>${agentscope.version}</version>
+        </dependency>
+
+        <!-- 官方 MCP Java SDK：在线工具探测与运行时共用同一协议实现 -->
+        <dependency>
+            <groupId>io.modelcontextprotocol.sdk</groupId>
+            <artifactId>mcp</artifactId>
+            <version>${mcp-sdk.version}</version>
+        </dependency>
+
+        <!-- Skill frontmatter 安全解析：限制别名、嵌套深度与文档大小 -->
+        <dependency>
+            <groupId>org.yaml</groupId>
+            <artifactId>snakeyaml</artifactId>
         </dependency>
 
         <!-- 协议文档解析：仅文本抽取，不执行宏与脚本 -->

@@ -6,11 +6,12 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
-import top.yealike.ipe.ai.agent.AgentCatalog;
 import top.yealike.ipe.ai.conversation.ConversationRecords.Conversation;
 import top.yealike.ipe.ai.conversation.ConversationRecords.ConversationView;
 import top.yealike.ipe.ai.conversation.ConversationRecords.Message;
 import top.yealike.ipe.ai.identity.UserIdentity;
+import top.yealike.ipe.ai.platform.agent.AgentService;
+import top.yealike.ipe.ai.platform.domain.PlatformRecords.AgentRelease;
 import top.yealike.ipe.ai.policy.PolicyService;
 import top.yealike.ipe.ai.run.RunRepository;
 import top.yealike.ipe.ai.support.AiExceptions;
@@ -25,29 +26,30 @@ public class ConversationService {
     private final ConversationRepository conversations;
     private final RunRepository runs;
     private final PolicyService policy;
-    private final AgentCatalog catalog;
+    private final AgentService agents;
 
     public ConversationService(
-            ConversationRepository conversations, RunRepository runs, PolicyService policy, AgentCatalog catalog) {
+            ConversationRepository conversations, RunRepository runs, PolicyService policy, AgentService agents) {
         this.conversations = conversations;
         this.runs = runs;
         this.policy = policy;
-        this.catalog = catalog;
+        this.agents = agents;
     }
 
-    public Conversation create(UserIdentity identity, String agentKey, String title) {
-        String key = agentKey == null || agentKey.isBlank() ? AgentCatalog.TEAM_LEADER : agentKey;
+    public Conversation create(UserIdentity identity, String agentKey, String version, String title) {
+        if (agentKey == null || agentKey.isBlank()) {
+            throw AiExceptions.badRequest("必须指定 Agent");
+        }
+        String key = agentKey;
         PolicyService.Decision decision = policy.canUseAgent(identity, key);
         if (!decision.allowed()) {
             throw AiExceptions.forbidden("AGENT_DENIED", decision.reason());
         }
-        AgentCatalog.Definition definition = catalog.find(key);
-        if (definition == null) {
-            throw AiExceptions.notFound("Agent 未发布：" + key);
-        }
+        AgentRelease release = agents.requirePublishedRelease(key, version);
         Instant now = Instant.now();
-        String finalTitle =
-                title == null || title.isBlank() ? definition.name() + " · " + TITLE_TIME.format(now) : title.strip();
+        String finalTitle = title == null || title.isBlank()
+                ? release.manifest().displayName() + " · " + TITLE_TIME.format(now)
+                : title.strip();
         if (finalTitle.length() > 200) {
             finalTitle = finalTitle.substring(0, 200);
         }
@@ -56,8 +58,10 @@ public class ConversationService {
                 identity.actor(),
                 null,
                 finalTitle,
-                definition.agentKey(),
-                definition.version(),
+                release.agentKey(),
+                release.version(),
+                release.id(),
+                release.manifestDigest(),
                 "ACTIVE",
                 0,
                 now,

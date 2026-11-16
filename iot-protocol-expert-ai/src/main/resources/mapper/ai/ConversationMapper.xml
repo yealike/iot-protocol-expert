@@ -10,6 +10,8 @@
             <arg column="title" javaType="java.lang.String"/>
             <arg column="agent_key" javaType="java.lang.String"/>
             <arg column="agent_version" javaType="java.lang.String"/>
+            <arg column="agent_release_id" javaType="java.util.UUID" typeHandler="top.yealike.ipe.ai.mybatis.UuidTypeHandler"/>
+            <arg column="manifest_digest" javaType="java.lang.String"/>
             <arg column="status" javaType="java.lang.String"/>
             <arg column="event_cursor" javaType="_long"/>
             <arg column="created_at" javaType="java.time.Instant"/>
@@ -34,17 +36,18 @@
 
     <insert id="insert">
         insert into ai_conversation
-            (id, user_id, org_id, title, agent_key, agent_version, status, created_at, updated_at)
-        values (#{id}, #{userId}, #{orgId}, #{title}, #{agentKey}, #{agentVersion}, #{status}, #{createdAt},
-            #{updatedAt})
+            (id, user_id, org_id, title, agent_key, agent_version, agent_release_id, manifest_digest, status,
+             created_at, updated_at)
+        values (#{id}, #{userId}, #{orgId}, #{title}, #{agentKey}, #{agentVersion}, #{agentReleaseId},
+            #{manifestDigest}, #{status}, #{createdAt}, #{updatedAt})
     </insert>
 
     <select id="find" resultMap="ConversationMap">
-        select id, user_id, org_id, title, agent_key, agent_version, status, event_cursor, created_at, updated_at, last_message_at from ai_conversation where id = #{id}
+        select id, user_id, org_id, title, agent_key, agent_version, agent_release_id, manifest_digest, status, event_cursor, created_at, updated_at, last_message_at from ai_conversation where id = #{id}
     </select>
 
     <select id="listByUser" resultMap="ConversationMap">
-        select id, user_id, org_id, title, agent_key, agent_version, status, event_cursor, created_at, updated_at, last_message_at from ai_conversation where user_id = #{userId} order by updated_at desc limit #{limit} offset #{offset}
+        select id, user_id, org_id, title, agent_key, agent_version, agent_release_id, manifest_digest, status, event_cursor, created_at, updated_at, last_message_at from ai_conversation where user_id = #{userId} order by updated_at desc limit #{limit} offset #{offset}
     </select>
 
     <select id="countByUser" resultType="java.lang.Long">

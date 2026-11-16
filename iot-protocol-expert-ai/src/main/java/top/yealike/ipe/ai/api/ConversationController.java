@@ -4,6 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -15,32 +16,42 @@ import top.yealike.ipe.ai.conversation.ConversationRecords.Conversation;
 import top.yealike.ipe.ai.conversation.ConversationService;
 import top.yealike.ipe.ai.identity.CurrentUser;
 import top.yealike.ipe.ai.identity.UserIdentity;
+import top.yealike.ipe.ai.platform.agent.AgentService;
+import top.yealike.ipe.ai.platform.domain.PlatformRecords.AgentCatalogItem;
 import top.yealike.ipe.ai.run.RunRecords.Run;
 import top.yealike.ipe.ai.run.RunService;
 
 /** 会话与 Run 的 HTTP 契约：提交与事件流分离，提交负责幂等，事件流负责续传。 */
 @RestController
-@RequestMapping("/api/ai")
+@RequestMapping("/api/ai/v1")
 public class ConversationController {
 
     private final ConversationService conversations;
     private final RunService runs;
+    private final AgentService agents;
 
-    public ConversationController(ConversationService conversations, RunService runs) {
+    public ConversationController(ConversationService conversations, RunService runs, AgentService agents) {
         this.conversations = conversations;
         this.runs = runs;
+        this.agents = agents;
     }
 
-    public record CreateConversation(String agentKey, String title) {}
+    public record CreateConversation(String agentKey, String version, String title) {}
 
-    public record SubmitRun(String question, String idempotencyKey, Integer priority) {}
+    public record SubmitRun(String content, String question, String idempotencyKey, Integer priority) {}
+
+    @GetMapping("/agent-catalog")
+    public List<AgentCatalogItem> catalog() {
+        return agents.catalog(CurrentUser.require());
+    }
 
     @PostMapping("/conversations")
     public Conversation create(@RequestBody(required = false) CreateConversation request) {
         UserIdentity identity = CurrentUser.require();
         String agentKey = request == null ? null : request.agentKey();
+        String version = request == null ? null : request.version();
         String title = request == null ? null : request.title();
-        return conversations.create(identity, agentKey, title);
+        return conversations.create(identity, agentKey, version, title);
     }
 
     @GetMapping("/conversations")
@@ -66,31 +77,21 @@ public class ConversationController {
     }
 
     @PostMapping("/conversations/{id}/runs")
-    public Object submit(@PathVariable UUID id, @RequestBody SubmitRun request) {
+    public ResponseEntity<Object> submit(@PathVariable UUID id, @RequestBody SubmitRun request) {
         UserIdentity identity = CurrentUser.require();
         if (request == null) {
             throw new IllegalArgumentException("请求体不能为空");
         }
-        Run run = runs.submit(identity, id, request.question(), request.idempotencyKey(), request.priority());
-        return runs.toView(run);
+        String content =
+                request.content() == null || request.content().isBlank() ? request.question() : request.content();
+        Run run = runs.submit(identity, id, content, request.idempotencyKey(), request.priority());
+        return ResponseEntity.accepted().body(runs.toView(run));
     }
 
     @GetMapping("/runs/{id}")
     public Object run(@PathVariable UUID id) {
         UserIdentity identity = CurrentUser.require();
         return runs.view(identity, id);
-    }
-
-    @PostMapping("/runs/{id}/pause")
-    public Map<String, Object> pause(@PathVariable UUID id) {
-        runs.pause(CurrentUser.require(), id);
-        return Map.of("ok", true, "status", "PAUSE_REQUESTED");
-    }
-
-    @PostMapping("/runs/{id}/resume")
-    public Map<String, Object> resume(@PathVariable UUID id) {
-        runs.resume(CurrentUser.require(), id);
-        return Map.of("ok", true, "status", "QUEUED");
     }
 
     @PostMapping("/runs/{id}/cancel")

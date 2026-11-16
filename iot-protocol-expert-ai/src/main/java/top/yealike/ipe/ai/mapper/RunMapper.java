@@ -6,6 +6,7 @@ import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
 import top.yealike.ipe.ai.run.RunRecords.Run;
 import top.yealike.ipe.ai.run.RunRecords.RunEvent;
+import top.yealike.ipe.ai.run.RunRecords.RuntimeEventInsert;
 import top.yealike.ipe.ai.run.RunRecords.ToolCall;
 
 public interface RunMapper {
@@ -20,6 +21,8 @@ public interface RunMapper {
             @Param("question") String question,
             @Param("agentKey") String agentKey,
             @Param("agentVersion") String agentVersion,
+            @Param("agentReleaseId") UUID agentReleaseId,
+            @Param("manifestDigest") String manifestDigest,
             @Param("modelKey") String modelKey,
             @Param("priority") int priority,
             @Param("idempotencyKey") String idempotencyKey,
@@ -40,8 +43,40 @@ public interface RunMapper {
 
     List<UUID> selectNextQueued();
 
-    int claimQueued(
-            @Param("leaseOwner") String leaseOwner, @Param("leaseSeconds") int leaseSeconds, @Param("id") UUID id);
+    int claimForDispatch(
+            @Param("dispatchOwner") String dispatchOwner,
+            @Param("leaseSeconds") int leaseSeconds,
+            @Param("deadlineAt") Instant deadlineAt,
+            @Param("id") UUID id);
+
+    int markRunning(
+            @Param("id") UUID id,
+            @Param("executionToken") long executionToken,
+            @Param("instanceId") String instanceId,
+            @Param("leaseSeconds") int leaseSeconds);
+
+    int bindDispatchTarget(
+            @Param("id") UUID id,
+            @Param("executionToken") long executionToken,
+            @Param("instanceId") String instanceId,
+            @Param("leaseSeconds") int leaseSeconds);
+
+    int deferDispatch(
+            @Param("id") UUID id,
+            @Param("executionToken") long executionToken,
+            @Param("nextAttemptAt") Instant nextAttemptAt,
+            @Param("leaseSeconds") int leaseSeconds);
+
+    int releaseDispatch(
+            @Param("id") UUID id,
+            @Param("executionToken") long executionToken,
+            @Param("nextAttemptAt") Instant nextAttemptAt);
+
+    int heartbeat(
+            @Param("id") UUID id,
+            @Param("executionToken") long executionToken,
+            @Param("instanceId") String instanceId,
+            @Param("leaseSeconds") int leaseSeconds);
 
     int renewLease(
             @Param("leaseSeconds") int leaseSeconds, @Param("id") UUID id, @Param("leaseOwner") String leaseOwner);
@@ -60,6 +95,26 @@ public interface RunMapper {
 
     int markCancelled(@Param("usageJson") String usageJson, @Param("id") UUID id);
 
+    int markCompletedWithToken(
+            @Param("usageJson") String usageJson,
+            @Param("id") UUID id,
+            @Param("executionToken") long executionToken,
+            @Param("instanceId") String instanceId);
+
+    int markFailedWithToken(
+            @Param("code") String code,
+            @Param("message") String message,
+            @Param("usageJson") String usageJson,
+            @Param("id") UUID id,
+            @Param("executionToken") long executionToken,
+            @Param("instanceId") String instanceId);
+
+    int markCancelledWithToken(
+            @Param("usageJson") String usageJson,
+            @Param("id") UUID id,
+            @Param("executionToken") long executionToken,
+            @Param("instanceId") String instanceId);
+
     int markPaused(@Param("usageJson") String usageJson, @Param("id") UUID id);
 
     int requeuePaused(@Param("id") UUID id);
@@ -72,7 +127,15 @@ public interface RunMapper {
 
     List<String> selectStatus(@Param("id") UUID id);
 
+    List<Run> selectExpiredLeases(@Param("limit") int limit);
+
+    List<Run> selectDispatchRetries(@Param("limit") int limit);
+
+    List<Run> selectCancelPending(@Param("seconds") int seconds, @Param("limit") int limit);
+
     Long nextEventCursor(@Param("conversationId") UUID conversationId);
+
+    Long reserveEventCursors(@Param("conversationId") UUID conversationId, @Param("count") int count);
 
     int insertEvent(
             @Param("conversationId") UUID conversationId,
@@ -81,6 +144,8 @@ public interface RunMapper {
             @Param("type") String type,
             @Param("payloadJson") String payloadJson,
             @Param("createdAt") Instant createdAt);
+
+    List<Long> insertRuntimeEvents(@Param("events") List<RuntimeEventInsert> events);
 
     List<RunEvent> eventsAfter(
             @Param("conversationId") UUID conversationId, @Param("cursor") long cursor, @Param("limit") int limit);
@@ -103,6 +168,27 @@ public interface RunMapper {
             @Param("resultSummaryJson") String resultSummaryJson,
             @Param("durationMs") int durationMs,
             @Param("id") UUID id);
+
+    int insertRuntimeToolCall(
+            @Param("id") UUID id,
+            @Param("runId") UUID runId,
+            @Param("conversationId") UUID conversationId,
+            @Param("toolName") String toolName,
+            @Param("toolAlias") String toolAlias,
+            @Param("componentKey") String componentKey,
+            @Param("componentVersion") String componentVersion,
+            @Param("originalToolName") String originalToolName,
+            @Param("idempotencyKey") String idempotencyKey,
+            @Param("executionToken") long executionToken,
+            @Param("createdAt") Instant createdAt);
+
+    int finishRuntimeToolCall(
+            @Param("id") UUID id,
+            @Param("runId") UUID runId,
+            @Param("status") String status,
+            @Param("resultSummaryJson") String resultSummaryJson,
+            @Param("durationMs") Integer durationMs,
+            @Param("finishedAt") Instant finishedAt);
 
     List<ToolCall> listToolCalls(@Param("runId") UUID runId);
 

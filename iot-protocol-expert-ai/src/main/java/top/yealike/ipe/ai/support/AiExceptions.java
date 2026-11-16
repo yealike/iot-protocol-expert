@@ -45,6 +45,10 @@ public final class AiExceptions {
         return new AiException(400, "BAD_REQUEST", message);
     }
 
+    public static AiException unprocessable(String code, String message) {
+        return new AiException(422, code, message);
+    }
+
     public static AiException upstream(String message) {
         return new AiException(502, "UPSTREAM_UNAVAILABLE", message);
     }

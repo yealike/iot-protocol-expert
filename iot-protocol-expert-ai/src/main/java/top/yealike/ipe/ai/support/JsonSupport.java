@@ -41,4 +41,18 @@ public final class JsonSupport {
         }
         return MAPPER.readValue(value, new TypeReference<List<String>>() {});
     }
+
+    public static <T> T read(String value, Class<T> type) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return MAPPER.readValue(value, type);
+    }
+
+    public static Map<String, Object> objectMap(Object value) {
+        if (value == null) {
+            return Map.of();
+        }
+        return MAPPER.convertValue(value, new TypeReference<Map<String, Object>>() {});
+    }
 }

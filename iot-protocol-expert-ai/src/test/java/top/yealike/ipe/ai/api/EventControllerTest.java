@@ -35,14 +35,14 @@ class EventControllerTest {
         request.addHeader("Cookie", "test");
         var id = UUID.randomUUID();
         try {
-            for (int i = 0; i < 256; i++) controller.stream(id, 0, request);
-            var rejection = assertThrows(ResponseStatusException.class, () -> controller.stream(id, 0, request));
+            for (int i = 0; i < 256; i++) controller.stream(id, 0, null, request);
+            var rejection = assertThrows(ResponseStatusException.class, () -> controller.stream(id, 0, null, request));
             assertEquals(429, rejection.getStatusCode().value());
             when(identities.resolve("test")).thenThrow(new IllegalStateException("revoked"));
             polls.getFirst().run();
             polls.getFirst().run(); // 重复结束不能重复释放配额。
-            assertDoesNotThrow(() -> controller.stream(id, 0, request));
-            assertThrows(ResponseStatusException.class, () -> controller.stream(id, 0, request));
+            assertDoesNotThrow(() -> controller.stream(id, 0, null, request));
+            assertThrows(ResponseStatusException.class, () -> controller.stream(id, 0, null, request));
         } finally {
             controller.shutdown();
             SecurityContextHolder.clearContext();

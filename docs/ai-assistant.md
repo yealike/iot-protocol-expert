@@ -1,261 +1,377 @@
-# AI 助手与 Agent 能力平台（一期落地说明）
+# AI 助手与在线 Agent 平台
 
-> 对应设计文档：`设计文档/协议专家平台-AI助手与Agent能力平台设计方案.md`（V0.1）
-> 代码模块：`iot-protocol-expert-ai`（HTTP 19083）
-> 状态：MVP 原型；数据库迁移、端到端、安全和多实例恢复尚未完成验收，不具备生产上线条件。
+> 代码模块：`iot-protocol-expert-ai`（Control，HTTP 19083）、`iot-protocol-expert-agent-runtime`（Runtime，HTTP 19084）
+> 设计基线：`设计文档/Agent在线配置、发布与运行方案.md`
+> 实施记录与 T01–T20 状态：`docs/online-agent/implementation-log.md`
+> 当前状态：在线配置、发布、MCP/Skill/Agent Nacos 注册、Runtime 执行与 SSE 重放主链路已实现；最新 Run `a567cbf1-77d8-4195-b79f-e288ac114c95` 为 COMPLETED。事件入库最终一致性仍在优化，未完成 T01–T20 全量验收，不具备生产上线结论。
 
-## 1. 落地范围
-
-| 设计文档条目 | 本次实现 | 说明 |
-|---|---|---|
-| 会话 / 消息 / Run / 事件持久化 | ✅ `ipe_ai` schema | 事件带会话内持久递增游标 |
-| SSE 流式输出与断线续传 | ✅ `GET /api/ai/conversations/{id}/events?after=` | 按游标轮询已提交事件，跨实例可见；尚需真实环境压测 |
-| 排队 / 暂停 / 继续 / 取消 | ⚠️ 部分实现 | 取消请求保留执行权直到执行器退出；暂停后重新执行，不是检查点恢复 |
-| 用户身份与数据范围 | ⚠️ 部分实现 | 执行前及工具调用前重新检查账号与策略；业务侧独立校验用户站点范围并与 AI 策略取交集 |
-| Agent / Tool / Skill 授权 | ✅ Agent 与 Tool 授权；Skill 仅预留表结构 | 一期不加载 Skill |
-| 协议知识检索（RAG） | ✅ 解析 → 分块 → 关键字索引 → 引用 | pgvector 为可选迁移，未安装自动降级 |
-| 订单 / 账单 / 设备 / 遥测工具 | ✅ 经 Higress MCP | 业务侧再次校验站点范围 |
-| Team 协作 | ✅ Leader + 协议 Agent + 订单 Agent | 通过受控分派工具，非自由组队 |
-| MCP / Nacos / Higress | ✅ 运维 MCP 已接入 | 两服务用 Spring Cloud Alibaba starter 注册与发现；AI 订阅 Nacos MCP Registry 校验入口、版本与工具清单，Higress 将 Streamable HTTP MCP 转换为运维 HTTP |
-| 可视化编排 / 写操作 | ❌ 未实现 | 属二期 |
-
-## 2. 运行架构
+## 1. 进程与职责
 
 ```text
-浏览器 → AI :19083 → Higress /ipe-mcp/ipe-ops-rest → 运维 HTTP :19082
-                             ↑
-                   Nacos 服务注册与能力目录
+浏览器/OPS Web
+  ├─ /api/ai/v1 ─────────────> Control :19083
+  └─ /api/ai/v1/.../events ──> Control SSE
 
-AI 自身状态 → ipe_ai schema
+Control
+  ├─ PostgreSQL ipe_ai
+  ├─ Nacos：Control、Runtime 基础服务、Agent/MCP/Skill 精确版本
+  │    ai_registry_projection 仅保存期望/观测投影
+  └─ 内部签名 HTTP ────────> Runtime :19084
+
+Runtime
+  ├─ 拉取 manifest/Skill/MCP 目录
+  ├─ AgentScope ReAct + 模型
+  ├─ Higress MCP ───────────> OPS :19082
+  └─ claim/heartbeat/events/complete ──> Control
 ```
 
-- AI 的订单、账单、设备、遥测、协议文档与身份校验均通过 Higress MCP。
-- 运维 HTTP 校验 AI 生成的短时加密凭据，并根据当前账号权限和 AI 策略校验站点范围。
-- 模型可见的远程工具由 MCP 工具目录与 AI 授权策略取交集。身份校验和文档导入能力仅供应用使用。
-- 服务注册、路由和本地启动配置见 [AI 跨服务调用](ai-cross-service-migration.md)。
+- Control 是唯一持久状态源：保存配置、发布、会话、Run、事件游标和聊天历史。
+- Runtime 不访问数据库，不扫描 `ai_run`；只接收 Control 派发，使用内存执行并通过内部 HTTP 回写。
+- 管理端不在 OPS 后端实现，OPS 只提供身份内部接口和业务数据工具。
+- 两进程都不直接读取运营业务表；工具数据经 Higress MCP 访问 OPS。
+- OPS 必须启用 Nacos Discovery 并注册 `iot-protocol-expert-ops`；否则 Higress 对 MCP `tools/call` 返回 503。
 
-## 3. 技术选型验证结论（切片 0）
+## 2. 前端入口
 
-在本机实测（JDK 21.0.12 + Maven 3.8.8 + Spring Boot 4.0.9）：
-
-| 验证项 | 结果 |
-|---|---|
-| `io.agentscope:agentscope-core:2.0.4` 可解析 | ✅ Maven Central 有 2.0.4（2.1.0-BETA1 为预发布，未采用） |
-| 与 Spring Boot 4 共存 | ✅ AgentScope 使用 Jackson 2.21，Boot 4 使用 Jackson 3，包名不同可并存 |
-| 应用上下文启动 | ✅ 最小工程可启动，`Toolkit` 注册与 `streamEvents` 可触发 |
-| `HarnessAgent` 适用性 | ⚠️ 默认带 shell、文件系统、子 Agent、memory、skill 工具，超出本项目只读边界 |
-| 最终选择 | `ReActAgent`（core）+ 白名单 `Toolkit`，不引入 `agentscope-harness` |
-
-结论：一期固定 `agentscope-core` / `agentscope-extensions-model-openai` 2.0.4，不使用 SNAPSHOT 或预发布。
-
-## 4. 数据模型（`ipe_ai`）
-
-迁移脚本：`iot-protocol-expert-ai/src/main/resources/db/migration/`
-
-| 表 | 用途 |
-|---|---|
-| `ai_conversation` | 会话、Agent 版本、事件游标、消息序号 |
-| `ai_message` | 原始消息与引用，`seq` 会话内递增 |
-| `ai_run` | 一次提问的执行记录、状态、优先级、租约、预算与用量 |
-| `ai_run_event` | 公开事件流，`cursor` 会话内唯一 |
-| `ai_tool_call` | 工具调用授权决策、参数摘要、状态、耗时 |
-| `ai_checkpoint` | 可恢复元信息（当前实现以消息历史恢复） |
-| `ai_context_summary` | 摘要覆盖范围与版本（预留） |
-| `ai_agent_definition` / `ai_agent_binding` | Agent 版本与工具绑定 |
-| `ai_permission_policy` | 角色 → Agent / Tool / 站点范围 |
-| `ai_document` / `ai_chunk` / `ai_index_version` | 知识源、片段与索引版本 |
-| `ai_audit_log` | AI 侧操作审计 |
-
-`V2__ai_pgvector_optional.sql` 用 PL/pgSQL 异常处理尝试安装 `vector` 扩展并添加 `vector(1024)` 与 HNSW 索引；失败只告警，不阻塞迁移。检索实现当前以关键字为准（见第 7 节）。
-
-## 5. HTTP 契约
-
-| 方法 | 路径 | 说明 |
+| 页面 | 路由 | 说明 |
 |---|---|---|
-| GET | `/api/ai/agents` | 当前用户可用的 Agent 及其可见工具 |
-| POST | `/api/ai/conversations` | 创建会话 `{agentKey,title?}` |
-| GET | `/api/ai/conversations?page&size` | 我的会话分页 |
-| GET | `/api/ai/conversations/{id}` | 会话 + 消息 + 当前 Run |
-| POST | `/api/ai/conversations/{id}/runs` | 提交问题 `{question,idempotencyKey,priority?}` |
-| GET | `/api/ai/runs/{id}` | Run 详情与工具调用 |
-| POST | `/api/ai/runs/{id}/pause` | 请求在安全点暂停 |
-| POST | `/api/ai/runs/{id}/resume` | 重新排队恢复 |
-| POST | `/api/ai/runs/{id}/cancel` | 请求停止，返回实际状态 |
-| GET | `/api/ai/conversations/{id}/events?after=N` | SSE，`id` 为事件游标 |
-| GET | `/api/ai/knowledge/stats` | 索引统计 |
-| GET | `/api/ai/knowledge/documents` | 索引文档列表 |
-| POST | `/api/ai/knowledge/index` | 管理员发起协议文档索引 `{publish}` |
-| POST | `/api/ai/knowledge/documents/{id}/publish` | 发布索引版本 |
-| POST | `/api/ai/knowledge/documents/{id}/archive` | 下线索引 |
-| GET | `/api/ai/admin/policies` | 查看授权策略（ADMIN） |
-| POST | `/api/ai/admin/policies/reload` | 重载策略（ADMIN） |
+| AI 能力管理 | `/ai-admin` | 仅 `ai:admin` 可管理 |
+| 模型配置 | `/ai-admin/models` | 模型、凭据、连通测试 |
+| MCP 服务 | `/ai-admin/mcps` | MCP 草稿、测试、工具目录和发布 |
+| Skill 编辑 | `/ai-admin/skills` | 文本文件、校验、预览、发布 |
+| Agents | `/ai-admin/agents` | 模型/提示词/预算/Skill/MCP/工具绑定、编译和发布 |
+| 发布与注册 | `/ai-admin/publications` | publication 状态、重试和 Nacos/数据库投影诊断 |
+| AI 助手 | `/assistant` | 选择可用 Agent、创建会话、SSE 对话 |
+| 知识索引 | `/ai-knowledge` | 既有协议文档索引，与 Skill 不是同一概念 |
 
-写请求必须带 `X-AI-Client` 头（前端固定发送）。服务不开放 CORS，配合该头阻断普通表单型 CSRF。
+浏览器发往 `/api/ai/**` 的写请求必须带 `X-AI-Client`。管理接口还要求 OPS 角色权限映射出 `ai:admin`；普通对话要求 `ai:use`。
 
-### 事件类型
+## 3. 数据与版本
 
-`message.user`、`run.queued`、`run.started`、`run.pause_requested`、`run.paused`、`run.cancel_requested`、`run.cancelled`、`tool.started`、`tool.finished`、`text.delta`、`run.warning`、`run.completed`、`run.failed`、`stream.ready`。
+`ipe_ai` 由 Flyway 管理，迁移目录为 `iot-protocol-expert-ai/src/main/resources/db/migration/`。
 
-不向用户暴露模型隐藏推理；只展示执行进度、已授权工具名与最终结果。
+| 范围 | 主要表 |
+|---|---|
+| 配置 | `ai_model_profile`、`ai_credential`、`ai_credential_secret`、`ai_mcp_*`、`ai_skill_*`、`ai_agent_component` |
+| 发布 | `ai_agent_mcp_binding`、`ai_agent_skill_binding`、`ai_agent_release`、`ai_publication`、`ai_registry_projection`、`ai_outbox` |
+| 运行 | `ai_conversation`、`ai_message`、`ai_run`、`ai_run_event`、`ai_tool_call`、`ai_checkpoint` |
+| 权限/知识 | `ai_permission_policy`、`ai_document`、`ai_chunk`、`ai_index_version`、`ai_audit_log` |
+| 内部安全 | `ai_internal_nonce` |
 
-## 6. Agent 与工具
+关键约定：
 
-| Agent | 可用工具 | 说明 |
-|---|---|---|
-| `team-leader` | `ask_protocol_agent`、`ask_order_agent` | 分派给成员，自己无业务数据权限 |
-| `protocol-expert` | `search_protocol_knowledge` | 只检索已发布片段，缺页码时明确写「页码不可用」 |
-| `order-service` | `get_order_detail`、`get_order_bills`、`get_device_detail`、`get_order_telemetry_summary` | 只读；结果带 `data_time/source/partial/warnings` |
+- V7 建立在线 Agent 配置与发布模型，V8 为 publication 增加多 Control 协调租约。
+- 不新增物理外键/级联；引用检查和删除保护在应用事务内完成。
+- Agent 草稿更新使用 `revision` 乐观锁；发布产物不可覆盖。
+- 会话固定 `agentReleaseId + manifestDigest`，不会因新版本发布而静默切换。
+- `ai_credential_secret` 只保存 AES-256-GCM 密文、nonce、keyId 和 secretRevision；主密钥不落库。
 
-工具白名单 = Agent 定义 ∩ 用户策略；构建 Toolkit 后对未授权工具执行 `removeTool`，调用前再逐次校验（用户、Agent、Tool、策略版本、预算）。
+## 4. 在线配置与发布
 
-工具返回示例：
+### 4.1 模型与凭据
 
-```json
-{
-  "data": { "...": "..." },
-  "data_time": "2026-11-13T10:00:00",
-  "source": "OPS",
-  "partial": false,
-  "warnings": []
-}
-```
+1. 在 `/ai-admin/credentials` 新建凭据或轮换密钥。接口只返回 `masked/keyId/currentSecretRevision`，不会返回明文。
+2. 在 `/ai-admin/models` 创建 OpenAI 兼容模型配置，绑定凭据并设置 `baseUrl/modelName/options`。
+3. 模型测试会真实请求供应商，可能产生 token 消耗。
+4. 修改 `IPE_CREDENTIAL_MASTER_KEY` 前必须评估已有密文：主密钥变化后旧密文无法解密。生产应使用稳定的秘密文件。
 
-工具结果、协议正文与用户输入都作为不可信数据处理：其中的指令不能改变权限或安全规则。
+### 4.2 MCP
 
-## 7. 协议知识库
+1. 新建 MCP 草稿，来源支持现有 Nacos MCP 原生目录映射或远程 Streamable HTTP Provider。
+2. `POST /api/ai/v1/mcps/{id}/test` 执行握手和 `tools/list`，保存测试报告；测试不会调用真实业务工具。
+3. 发布时冻结工具目录、输入/输出 Schema、catalog digest 和 endpoint；后续工具变化必须通过新版本发布。
+4. Agent 只能绑定已发布 MCP 的明确工具。Runtime prepare 会再次校验 catalog、工具 Schema digest 和连接。
+5. `required=true` 的 MCP 不可用时 prepare 失败；`required=false` 时整个 MCP 从工具集合移除并产生 warning。
+
+### 4.3 Skill
+
+1. Skill 是 UTF-8 文本包，入口必须为 `SKILL.md`，参考资料一般放在 `references/`。
+2. 禁止绝对路径、`.`/`..`、反斜杠、盘符、控制字符、`scripts/` 和可执行文件。
+3. 默认限制：50 个文件、单文件 256 KiB、包 2 MiB；大小写折叠后路径也不能冲突。
+4. 草稿可以不完整；保存不完整草稿后不能发布。
+5. Runtime 提供 `load_skill` / `read_skill_resource` 两个受控工具，仅允许当前 manifest 绑定的 skill/version/path。
+6. `AUTO` 只向模型暴露名称和描述；`ALWAYS` 在每轮注入正文，最多 2 个，注意上下文成本。
+
+### 4.4 Agent 编译与发布
+
+发布前编译会校验：
+
+- 模型绑定和凭据可用；
+- System Prompt 非空且不超过 20,000 字符；
+- Skill/MCP 精确版本均处于可用状态；
+- 工具 alias 唯一且不与内置 Skill 工具冲突；
+- 一个 Agent 最多 8 个 MCP、16 个 Skill、32 个模型可见工具；
+- 预算在硬上限内：最多 12 轮、32 次工具调用、300 秒执行时间。
+
+发布返回 `202 + releaseId + publicationId + manifestDigest`。状态机：
 
 ```text
-ops 协议文档（PDF/MD/TXT）
-  → AI 拉取文件与元数据
-  → PDFBox 按页抽取文本 / 纯文本直接解码
-  → 章节识别 + 分块（默认 800 字，重叠 100）
-  → 归一化 + 关键词（0x 命令字、英文标识符、数字、中文二元组）
-  → 写入 ai_chunk（状态 READY_FOR_REVIEW 或 PUBLISHED）
-  → 检索：协议/版本/发布状态过滤 → 关键字 like 召回 → 加权排序 → 引用
+VALIDATING -> PREPARING -> REGISTERING -> PUBLISHED
+        \         \             \
+         +---------+-------------+-> FAILED（可显式 retry）
 ```
 
-- 页码不可靠时返回空，界面显示「页码不可用」，不伪造。
-- 没有足够证据时返回空结果，并在 `warnings` 里说明，由 Agent 拒答。
-- `embedding` 配置存在但当前检索未使用向量；接入时按 `ai_index_version` 重建，禁止不同模型/维度混入同一索引。
-- 索引由管理员触发；`publish=true` 表示管理员在本次操作中完成审核发布，操作记入审计。
+Agent 发布时，Control 选择一个健康 Runtime 调用 `releases:prepare`。Runtime 在内存中完成 manifest、Skill bundle、MCP 目录和摘要校验并注册精确版本；Control 验证健康实例后才切 ACTIVE。发布超时为 60 秒，失败按指数退避重试，最多 5 次。
 
-## 8. 运行控制语义
+MCP 与 Skill 发布冻结目录/bundle 并写入 `ai_registry_projection`，随后由 Control 调用 `NacosRegistryService.registerComponent` 注册 `ipe-mcp--...` / `ipe-skill--...`；Control 启动后每 30 秒对账并补注册缺失的 ACTIVE 版本。
 
-| 操作 | 实现 | 限制 |
-|---|---|---|
-| 排队 | `ai_run` 持久化，按 `priority desc, queue_seq asc` 认领 | 同一会话只允许一个 RUNNING（部分唯一索引） |
-| 优先处理 | 新 Run 提升优先级并请求暂停当前 Run | 当前 Run 在安全点暂停后释放执行权；之后由用户手动继续 |
-| 暂停 | 事件循环每 700ms 检查状态，安全点（文本块结束 / 工具结果结束 / 模型调用结束）后释放执行权 | 模型流中途不强行恢复；外部请求已发出时不保证远端停止 |
-| 继续 | `PAUSED → QUEUED`，保留原 `queue_seq` 以优先执行 | 重新执行原问题，尚无 AgentScope 检查点恢复 |
-| 取消 | 执行中的任务进入 `CANCEL_REQUESTED`，执行器退出后才释放执行权 | 已发出的外部请求可能仍在远端运行 |
-| 多实例 | 认领用 `status='QUEUED'` 条件更新；SSE 读取数据库已提交事件 | fencing 写入校验和故障接管尚未实现 |
+## 5. Runtime 执行
 
-### 模型未配置时
+### 5.1 启动与就绪
 
-`IPE_MODEL_ENABLED=false`（默认）时不会调用大模型，Run 走确定性降级：
+Runtime 启动日志应包含：
 
-1. 从问题中提取订单号或 `0x` 命令字；
-2. 直接调用对应只读工具；
-3. 以 Markdown 返回工具事实与引用，并明确标注「未启用模型，以下为确定性工具结果」；
-4. 提取不到参数时，引导用户提供订单号 / 协议编码与版本，不猜测。
+- `Started AgentRuntimeApplication`
+- Nacos 启用时：`runtime base service registered: service=ipe-agent-runtime`
+- 完成 prepare 后：`release prepared: release=... agent=... version=... digest=...`
+- 精确版本注册：`runtime agent release registered: service=ipe-agent--...`
 
-这与既有排障链路的「确定性降级」口径一致。
-
-## 9. 授权与安全
-
-- 身份：请求 cookie 转发到 `ops /api/ops/auth/me` 校验，每个 `/api/ai/**` 请求都校验；不缓存身份校验结果。
-- 角色策略：`ai_permission_policy`，多角色取并集；没有匹配策略 → 拒绝。
-- 站点范围：`station_scope` 中 `*` 表示不限；空数组表示不能访问任何业务数据。默认种子给 `OPS` 配了 `*`，**生产环境必须改为具体站点 ID**：
-  ```sql
-  update ipe_ai.ai_permission_policy
-  set station_scope = '[1,2]'::jsonb, policy_version = 'v2', updated_at = now()
-  where role = 'OPS';
-  ```
-- 工具只读：不提供 shell、代码执行、任意 HTTP、写 SQL、设备控制；Agent 侧不启用文件系统与 Web 工具。
-- 密钥只走环境变量；日志不记录 cookie、模型密钥与完整业务数据。
-
-## 10. 配置
-
-| 环境变量 | 默认 | 说明 |
-|---|---|---|
-| `IPE_AI_DB_URL` / `IPE_AI_DB_USER` / `IPE_AI_DB_PASSWORD` | 复用 `IPE_OPS_DB_*` | AI 库连接，schema 固定 `ipe_ai` |
-| `IPE_OPS_BASE_URL` | `http://127.0.0.1:19082` | ops 地址 |
-| `IPE_OPS_SERVICE_TOKEN` | `local-service-token` | 服务间令牌，必须与 ops 一致 |
-| `IPE_MODEL_ENABLED` | `false` | 是否启用大模型 |
-| `IPE_MODEL_BASE_URL` / `IPE_MODEL_API_KEY` / `IPE_MODEL_NAME` | 空 / 空 / `deepseek-chat` | OpenAI 兼容模型 |
-| `IPE_MODEL_TIMEOUT_MS` | `60000` | 模型超时 |
-| `IPE_AI_RUN_MAX_CONCURRENT` | `4` | 并发 Run 上限 |
-| `IPE_AI_RUN_MAX_ITERS` | `6` | 单 Run 推理轮次上限 |
-| `IPE_AI_RUN_MAX_TOOL_CALLS` | `12` | 单 Run 工具调用上限 |
-| `IPE_AI_RUN_TIMEOUT_MS` | `120000` | 单 Run 超时 |
-| `IPE_AI_RUN_MAX_CONTEXT_MESSAGES` | `20` | 传给模型的历史消息条数 |
-| `IPE_AI_CHUNK_SIZE` / `IPE_AI_CHUNK_OVERLAP` | `800` / `100` | 分块参数 |
-| `IPE_AI_TOP_K` / `IPE_AI_MIN_SCORE` | `6` / `1` | 检索片段数与最低分 |
-| `IPE_AI_OTEL_ENABLED` | 跟随 `IPE_OTLP_ENABLED` | 是否注册 AgentScope 官方 `TelemetryTracer` |
-| `IPE_AI_OTEL_CONTENT_ENABLED` | `false` | 是否导出 prompt / response / 工具参数正文；仅本地排障开启 |
-| `IPE_AI_OTEL_MAX_CONTENT_CHARS` | `8192` | 单条内容属性的最大字符数，超出截断 |
-| `IPE_EMBEDDING_*` | 关闭 | 预留，当前检索未使用 |
-
-## 11. 本地验证步骤
-
-前置：PostgreSQL 可用，账号有创建 `ipe_ai` schema 的权限；ops 已启动。
+健康检查：
 
 ```powershell
-$env:JAVA_HOME='D:\develop\jdk\jdk-21'
-$env:PATH="$env:JAVA_HOME\bin;$env:PATH"
-& 'D:\develop\apache-maven-3.8.8\bin\mvn.cmd' -B package
-.\scripts\start-local.ps1
+Invoke-RestMethod http://127.0.0.1:19083/actuator/health
+Invoke-RestMethod http://127.0.0.1:19084/actuator/health/readiness
 ```
 
-前端：`cd iot-protocol-expert-web; npm ci; npm run dev`，登录后进入「AI 助手」。
+`/actuator/health/readiness` 使用 `runtimeReadiness`。Nacos 关闭时，只要 Control 地址和内部服务密钥可用即可接单；Nacos 开启时必须基础服务注册成功，`readiness` 才为 UP。
 
-最小验收：
+Runtime 重启后通过 `/internal/ai/v1/runtime/desired-releases` 对账 ACTIVE 版本并重新 prepare；不依赖管理员再次点击发布。
 
-1. 用 `admin` 打开 `/assistant`，新建会话，提问「订单 202411130001 为什么停止？结束 SOC 多少？」——未配置模型时应返回订单/账单/遥测工具事实，且明确标注未启用模型。
-2. 提问「0x3B 的停止原因定义」——应先执行 `POST /api/ai/knowledge/index` 建立协议索引，再返回片段与页码。
-3. 用 `viewer` 登录：只能看到协议 Agent；直接请求 `/api/ai/conversations/{id}/runs` 调用订单工具应返回 403。
-4. 把 `OPS` 角色的 `station_scope` 改为不含某订单所属站点，再用 `ops` 查询该订单：ops 内部接口应返回 403，工具返回「无权访问该订单或设备所属站点」。
-5. 运行中点击「暂停」：应在安全点进入 `PAUSED`；「继续」后重新排队并完成。
-6. 断网/刷新页面：SSE 重连携带 `cursor`，已产生事件不丢失、不重复。
+### 5.2 Run 状态
 
-> 注意：本机未连接真实 PostgreSQL，`ipe_ai` 迁移与端到端流程需在具备数据库的环境执行一次；单元测试已覆盖分块与确定性降级。
+```text
+QUEUED -> DISPATCHING -> RUNNING -> SUCCEEDED
+                  |          |----> FAILED
+                  |          |----> CANCELLED
+                  |          \----> TIMED_OUT
+                  \-> CANCEL_REQUESTED -> CANCELLED
+```
 
-## 12. 可观测
+- Control 认领 Run 时生成严格递增 `executionToken`；Runtime 以 `(runId, token, instanceId)` fencing。
+- Runtime 先向 Control `:claim`，成功后才返回 202；重复提交同 token 返回已有 receipt。
+- 心跳间隔 5 秒，Control 租约至少 30 秒；运行时失去所有权后停止本地执行。
+- 租约过期由 Control 标记 `EXECUTION_LOST`，不会自动重演整个 Run。
+- 取消是协作式取消；已经发到外部 Provider 的请求不保证物理未执行，工具结果可能是 `UNKNOWN`。
 
-- 日志：Boot 原生 Logstash JSON，字段含 `service.name`、`environment`、`trace_id/span_id`；不记录 cookie、模型密钥与完整业务数据。
-- Trace：注册 AgentScope 官方 `TelemetryTracer`，复用 Spring Boot 的 OTLP 管道。一次 Run 的链路为
-  `ai run execute` → `invoke_agent <agent>` → `chat <model>` / `execute_tool <tool>`；模型 Span 带
-  `gen_ai.request.model`、`gen_ai.usage.input_tokens`、`gen_ai.usage.output_tokens` 等 GenAI 语义属性。
-- 内容策略：默认只导出元数据与 token，`gen_ai.input.messages`、`gen_ai.output.messages`、工具参数/结果、
-  `agentscope.function.*` 不写入 Trace。仅本地排障时设置 `IPE_AI_OTEL_CONTENT_ENABLED=true`；开启后仍会按
-  `IPE_AI_OTEL_MAX_CONTENT_CHARS` 截断并做常见凭据脱敏，不得作为生产默认配置。
-- Collector：脱敏规则必须保留 `gen_ai.usage.*_tokens`，不能用宽泛的 `.*token.*` 删除键；详见
-  `中间件/ipe-doris-otel/collector.yaml`。
-- 指标（`/actuator/prometheus`，标签均为低基数）：
-  - `ai_runs_created_total{agent}`：提交量
-  - `ai_runs_finished_total{status}`：完成/失败/暂停/取消量
-  - `ai_tool_calls_total{tool,decision}`：工具调用与拒绝量
-- 审计：`ai_audit_log` 表结构已就绪，工具调用明细在 `ai_tool_call`（含授权决策、耗时、状态）。
+### 5.3 事件与 SSE
 
-## 13. 已知限制
+- Runtime 事件 `sourceSeq` 在单 Run 内从 1 单调递增，事件批次最多 32 条/64 KiB。
+- Control 按 `(runId, executionToken, sourceSeq)` 和 `eventId` 去重，再分配会话内 cursor。
+- 事件先入库后 ACK；Runtime 未 ACK 队列上限 256 条/1 MiB，超过后暂停模型流，持续 10 秒失败则终止执行。
+- SSE 使用 `GET /api/ai/v1/conversations/{id}/events?afterCursor=N`，`id` 为 cursor，支持断线续传。
+- 每实例最多 256 个 SSE 连接，单连接最长 30 分钟；超限返回 429。
 
-1. Nacos Skill Registry 属于独立能力，当前运维 MCP 由 Nacos 注册并通过 Higress 路由。
-2. SSE 按数据库游标轮询以支持跨实例事件，尚需连接数、延迟和数据库负载压测；跨实例 fencing 写入校验尚未实现。
-3. 上下文压缩（`ai_context_summary`）只建表，当前按最近 N 条消息截断。
-4. 检索为关键字方案；pgvector 迁移已就绪但未参与排序，需在有扩展的环境做评测后启用。
-5. PDF 表格、图纸与扫描件抽取质量有限，低质量文档应人工校对后再发布。
-6. 未实现 Skill 加载、可视化编排、写操作与设备控制（属二期）。
-7. 未实现缓存与事件保留清理：一期默认不缓存业务结果与最终答案，`ai_run_event` 需按保留期另行清理。
-8. 模型侧 token 已写入 OTel Span（`gen_ai.usage.input_tokens` / `output_tokens`），但尚未落库做费用预算、配额与账单统计
-   （`usage_json` 目前记录工具次数与耗时）。
-9. 已排队任务执行前及每次工具调用前重新校验用户授权；业务接口会重新读取用户站点范围，并与 AI 策略范围取交集。运营端的受限站点账号目前不能访问运营数据接口。
-10. 暂停并非框架检查点恢复，恢复时会重新执行。取消时执行权保留至执行器退出，但进程异常退出后的租约过期接管和 fencing 尚未实现。上述能力不能作为可靠的生产调度保证。
-11. SSE 跨实例重放尚需完整验证；知识检索目前没有文档级权限过滤或真实向量检索。
-12. 知识管理入口位于运营 Web；当前索引结构不支持新旧版本并存，已发布文档变化时不会自动覆盖旧索引，需要先下线并重建。
+常见事件：`message.user`、`run.queued`、`run.started`、`assistant.delta`、`tool.started`、`tool.completed`、`tool.failed`、`skill.loaded`、`run.warning`、`run.completed`、`run.failed`、`run.cancelled`、`stream.ready`。
 
-## 14. 后续接入顺序建议
+## 6. 内部接口
 
-1. 在目标环境执行 `ipe_ai` 迁移，跑通第 11 节验收。
-2. 用真实协议文档评测检索召回与引用正确性，确定 chunk 参数与最低分。
-3. 接入 Nacos Skill 版本与受控读取。
-4. 补 fencing token 和检查点恢复，做多实例抢占与恢复演练。
+所有 `/internal/**` 接口都要求服务身份 HMAC。请求头由 `InternalSignature` 统一生成/校验，覆盖 method、path+query、body、timestamp、nonce 和 audience。
+
+Control：
+
+```text
+GET  /internal/ai/v1/releases/{releaseId}/manifest
+GET  /internal/ai/v1/mcps/{key}/versions/{version}/descriptor
+GET  /internal/ai/v1/skills/{key}/versions/{version}
+GET  /internal/ai/v1/skills/{key}/versions/{version}/file?path=...
+POST /internal/ai/v1/runs/{runId}:claim
+POST /internal/ai/v1/runs/{runId}:heartbeat
+GET  /internal/ai/v1/runs/{runId}/context
+POST /internal/ai/v1/runs/{runId}/events:batch
+POST /internal/ai/v1/runs/{runId}:complete
+POST /internal/ai/v1/credentials:resolve
+POST /internal/ai/v1/runs/{runId}/tools:authorize
+GET  /internal/ai/v1/runtime/desired-releases
+GET  /internal/ai/v1/runtime/readiness
+```
+
+Runtime：
+
+```text
+POST /internal/agent/v1/releases:prepare
+POST /internal/agent/v1/agents/{agentKey}/versions/{version}/runs
+GET  /internal/agent/v1/runs/{runId}?executionToken=...
+POST /internal/agent/v1/runs/{runId}:cancel
+```
+
+Control 必须拒绝过期 token、错误 instanceId、非 ACTIVE release、错误 manifestDigest 和已终结 Run 的迟到写入。Runtime 不得向浏览器暴露 19084。
+
+## 7. 环境变量
+
+### 7.1 Control
+
+| 变量 | 说明 |
+|---|---|
+| `IPE_AI_DB_URL/USER/PASSWORD` | `ipe_ai` 数据库；缺省复用 `IPE_OPS_DB_*`，schema 固定 `ipe_ai` |
+| `IPE_AI_REGISTRY_ENABLED` | 在线 Agent 平台的 Nacos Naming 注册开关；本地无 Nacos 时为 `false` |
+| `IPE_NACOS_SERVER_ADDR/USERNAME/PASSWORD` | Nacos 服务与认证 |
+| `IPE_NACOS_NAMESPACE` / `IPE_AI_COMPONENT_GROUP` | Nacos namespace/group，默认 `public` / `IPE_AI_COMPONENTS` |
+| `IPE_AI_ADVERTISE_IP` / `IPE_CONTROL_SERVICE_NAME` | 可被 Runtime 访问的 Control 地址/服务名 |
+| `IPE_AI_MCP_GATEWAY_BASE` | Nacos MCP 目录未返回 endpoint 时，用于拼 Higress MCP 入口 |
+| `IPE_AI_MCP_REGISTRY_ENABLED` | 是否从 Nacos MCP Registry 订阅 `ipe-ops-rest` |
+| `IPE_AI_MCP_URL` / `IPE_AI_MCP_TOKEN` | MCP 兜底入口和共享令牌；生产必须显式配置 |
+| `IPE_CREDENTIAL_MASTER_KEY` / `_FILE` | 凭据加密主密钥；生产必须稳定配置 |
+| `IPE_INTERNAL_SERVICE_KEY` / `_FILE` | Control/Runtime 共享 HMAC 密钥，两端必须一致；Control 当前只读取环境变量，Runtime 还支持 `_FILE` |
+| `IPE_INTERNAL_SERVICE_NAME` / `IPE_RUNTIME_SERVICE_NAME` | 内部调用身份名，本地脚本默认 `control` / `runtime` |
+| `IPE_AGENT_RUNTIME_BASE_URL` | 本地调试直连地址；仅在 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true` 且 Nacos 无健康实例时使用 |
+| `IPE_OPS_BASE_URL` | OPS 身份接口地址；默认 `http://127.0.0.1:19082`，OPS 不在本机或端口不同时必须显式设置 |
+| `IPE_AI_BOOTSTRAP_ENABLED` | 启动后补齐演示模型/MCP/Skill/Agent；默认 `false` |
+| `IPE_MODEL_CREDENTIAL_KEY` / `IPE_MODEL_API_KEY` | bootstrap 首次创建模型凭据使用，不用于每次运行 |
+| `IPE_MODEL_BASE_URL` / `IPE_MODEL_NAME` | bootstrap 模型地址和名称 |
+| `IPE_RUNTIME_MAX_DISPATCH_ATTEMPTS` | Control 最大派发次数，默认 3 |
+| `IPE_RUNTIME_LEASE_SECONDS` | Run 租约，默认至少 30 秒 |
+| `IPE_RUNTIME_QUEUE_LIMIT` / `IPE_RUNTIME_PER_USER_QUEUED` / `IPE_RUNTIME_PER_USER_IN_FLIGHT` | 队列和用户限额 |
+
+注意：
+
+- `IPE_NACOS_DISCOVERY_ENABLED` 控制 Spring Cloud 服务注册；`IPE_AI_REGISTRY_ENABLED` 控制在线 Agent 平台的 Naming 契约，两者不能混为一谈。
+- `IPE_AI_MCP_REGISTRY_ENABLED` 只控制 Nacos MCP 目录订阅，不能替代 `IPE_AI_REGISTRY_ENABLED`。
+- 启动脚本没有显式配置时会把 `IPE_AI_REGISTRY_ENABLED` 和 `IPE_AI_MCP_REGISTRY_ENABLED` 设为 `false`；`seed-ai.ps1` 在检测到 Nacos 地址与 MCP 入口时会默认启用平台注册，也可在 `.env.local` 显式覆盖。
+- MCP/Skill 发布现在会实际注册 Nacos；`ai_registry_projection` 只记录期望/观测状态，排查时应以 Nacos 实例列表为准。
+- `IPE_CONTROL_SERVICE_NAME` 同时影响 Control 的平台 Nacos 服务名和 Runtime 期望的 Control 身份，但两者默认值不同（`ipe-ai-control` / `control`）；通常不要显式设置。
+
+### 7.2 Runtime
+
+| 变量 | 说明 |
+|---|---|
+| `IPE_RUNTIME_PORT` | Runtime HTTP 端口，默认 19084 |
+| `IPE_CONTROL_BASE_URL` | Control 内部地址，默认 `http://127.0.0.1:19083` |
+| `IPE_CONTROL_SERVICE_NAME` / `IPE_RUNTIME_SERVICE_NAME` | HMAC 调用身份，默认 `control` / `runtime` |
+| `IPE_RUNTIME_KEY_ID` | 服务密钥标识，默认 `runtime` |
+| `IPE_INTERNAL_SERVICE_KEY` / `_FILE` | 必须与 Control 相同 |
+| `IPE_AI_REGISTRY_ENABLED` | 是否注册 `ipe-agent-runtime` 和精确 Agent 版本 |
+| `IPE_NACOS_*` / `IPE_AI_COMPONENT_GROUP` | Nacos 地址、认证、namespace、group |
+| `IPE_RUNTIME_ADVERTISE_IP` | Runtime 的可达广播 IP；远程调用时不能注册 loopback |
+| `IPE_RUNTIME_MAX_ACTIVE` / `IPE_RUNTIME_QUEUE_CAPACITY` | 同时执行 4、等待 8（默认） |
+
+Runtime 的资金/上下文预算硬上限为 12 轮、32 次工具调用、300 秒；Control manifest 中的预算只能收紧，不能超过硬上限。
+
+### 7.3 OPS 注册与身份
+
+| 变量 | 说明 |
+|---|---|
+| `IPE_NACOS_DISCOVERY_ENABLED` | OPS 必须为 `true`，以 `iot-protocol-expert-ops` 注册到 Nacos |
+| `IPE_OPS_ADVERTISE_IP` | OPS 的 Nacos 广播地址，必须能被 Higress 访问 |
+| `IPE_NACOS_SERVER_ADDR` / `IPE_NACOS_NAMESPACE` / `IPE_NACOS_GROUP` | Nacos 地址、namespace、group；OPS 默认 `DEFAULT_GROUP` |
+| `IPE_OPS_BASE_URL` | Control 调用 OPS 身份接口的地址，必须是 `http://127.0.0.1:19082`（或实际 OPS 地址） |
+| `IPE_OPS_SERVICE_TOKEN` | Control→OPS 内部接口令牌，需与 OPS 配置一致 |
+
+OPS 未注册时，Higress 的 MCP `tools/call` 返回 503；这不是 Control 的内部 HMAC 或模型凭据错误。
+
+### 7.4 模型与知识库
+
+| 变量 | 说明 |
+|---|---|
+| `IPE_MODEL_ENABLED` | 旧助手确定性降级开关；在线 Agent 实际模型来自 manifest |
+| `IPE_MODEL_BASE_URL/API_KEY/NAME` | 模型参数；密钥只放本机环境变量或凭据表 |
+| `IPE_MODEL_TIMEOUT_MS/MAX_TOKENS/TEMPERATURE` | 模型超时、输出上限、温度 |
+| `IPE_AI_RUN_MAX_*` | 并发、轮次、工具调用、超时、上下文消息数 |
+| `IPE_AI_CHUNK_SIZE/OVERLAP/TOP_K/MIN_SCORE` | 知识库分块与检索参数 |
+| `IPE_AI_OTEL_*` | Trace 内容导出；生产默认关闭正文 |
+
+## 8. 本地启动与验证
+
+### 8.1 前置
+
+- JDK 21、Maven、PostgreSQL、Nacos、Higress 按实际环境可用。
+- `.env.local` 从 `.env.example` 复制并填写真实值；不要提交 `.env.local`。
+- 需要 Nacos 组件注册时显式设置 `IPE_AI_REGISTRY_ENABLED=true` 和 `IPE_AI_MCP_REGISTRY_ENABLED=true`。
+- OPS 必须已启动并启用 `IPE_NACOS_DISCOVERY_ENABLED=true`，注册为 `iot-protocol-expert-ops`，且 `IPE_OPS_ADVERTISE_IP` 是 Higress 可访问的地址；否则 MCP `tools/call` 会返回 503。
+- `start-local.ps1` 会启动 OPS、AI、协议服务和模拟器，但不启动 Runtime；它启动的 AI 使用 `run/ai.pid`。`seed-ai.ps1` 默认检测到该进程会拒绝重复启动；使用 `seed-ai.ps1 -Restart` 可校验 PID 与 jar 后停止并接管，或改用单独启动 OPS 的方式。
+- 本机默认使用 `IPE_OPS_BASE_URL=http://127.0.0.1:19082`；OPS 地址不同时必须在 `.env.local` 或进程环境中显式覆盖。
+
+### 8.2 启动
+
+```powershell
+# 1. 先启动 OPS，并确认 Nacos 中有 iot-protocol-expert-ops
+# 2. 构建并按 Runtime → Control 顺序启动，触发 bootstrap 并等待发布摘要
+.\scripts\seed-ai.ps1
+
+# 强制重建并重启已由本项目脚本启动的进程
+.\scripts\seed-ai.ps1 -Restart
+
+# 已构建且只需重启/引导时跳过 Maven
+.\scripts\seed-ai.ps1 -SkipBuild
+
+# 只启动单个进程（调试时）
+.\scripts\start-control-local.ps1
+.\scripts\start-runtime-local.ps1
+```
+
+`seed-ai.ps1` 不打印 `.env.local` 的值；它先用 `IPE_AI_BOOTSTRAP_ENABLED=false` 预启动 Control（Runtime readiness 需要 Control 可达），再启动 Runtime 并等待 readiness，最后重启 Control 并开启 bootstrap，等待 health 后输出最新 Agent release/publication 摘要。启动前会无条件尽力检查 OPS 19082 健康与 Nacos `iot-protocol-expert-ops` 注册状态（Nacos 3.x 走登录后的 v3 admin API），因为该注册是 Higress MCP 的前置条件，与 `IPE_AI_REGISTRY_ENABLED` 无关。平台注册开启时绑定 `0.0.0.0` 以匹配 Nacos 广播地址，直连模式绑定 `127.0.0.1`。`logs/control.pid` 的 Control 已运行时会复用；要应用新的 bootstrap 环境或重建 jar 时使用 `-Restart`。
+
+### 8.3 最小验证
+
+1. Control `/actuator/health` 为 UP。
+2. Runtime `/actuator/health/readiness` 为 UP。
+3. Runtime 日志出现 `release prepared`。
+4. `/ai-admin/publications` 中 publication 为 PUBLISHED。
+5. `/assistant` 新建会话，发送问题，确认 `run.started → assistant.delta → run.completed`。
+6. 用同一 `afterCursor` 重放，确认事件完整且客户端不重复请求模型；浏览器真实断线重连仍待专项验证。
+
+最新完整链路验证（2026-11-16，Control 重启并重新构建后）：Run `a567cbf1-77d8-4195-b79f-e288ac114c95` 为 `COMPLETED`，耗时约 40.8 秒；包含 6 个 `tool.completed`、3 个 `skill.loaded`、1178 个 `assistant.delta`，`warnings=[]`，事件 cursor 范围 2195–3391；工具 `get_device_detail`、`list_documents`、`load_skill`×2、`read_document`、`read_skill_resource` 全部成功。SSE 以 `afterCursor=2194` 重放可返回同一批事件，末尾 `run.completed` 为 `SUCCEEDED`，`stream.ready` cursor=3391。
+
+早前 Run `0ab842a5-ff3b-45ac-9472-4fc010091349` 也已 `COMPLETED`；其故障根因是 OPS 未注册 `iot-protocol-expert-ops`，Higress 返回 503，修复后恢复。上述证据不替代 T01–T20 的全量验收。
+
+### 8.4 重置
+
+```powershell
+# 先停止 seed/start-local 管理的 Control/Runtime，再清理
+.\scripts\reset-ai.ps1 -Confirm -StopServices
+# 仅查看 DELETE 清单，不连接数据库
+.\scripts\reset-ai.ps1 -Confirm -WhatIf
+```
+
+该脚本必须先停止 Control/Runtime，仅删除 `ipe_ai` 中在线 Agent 的运行、发布和配置数据：
+
+- 删除：`ai_run_event`、`ai_tool_call`、`ai_checkpoint`、`ai_context_summary`、`ai_run`、`ai_message`、`ai_conversation`、`ai_outbox`、`ai_registry_projection`、`ai_publication`、`ai_agent_skill_binding`、`ai_agent_mcp_binding`、`ai_agent_release`、`ai_agent_component`、`ai_skill_draft_file`、`ai_skill_release`、`ai_skill_component`、`ai_mcp_test_report`、`ai_mcp_release`、`ai_mcp_component`、`ai_model_profile`、`ai_credential_secret`、`ai_credential`、`ai_internal_nonce`。
+- 保留：Flyway 历史、`ai_permission_policy`、`ai_document`、`ai_chunk`、`ai_index_version`、`ai_audit_log`、旧版 `ai_agent_definition`/`ai_agent_binding` 及其他 schema。
+- 环境变量或数据库 URL 含 `prod/production` 时拒绝执行。
+
+## 9. 既有知识库与助手
+
+- 协议问答仍支持解析 PDF/MD/TXT、分块、关键词索引、发布和引用。
+- 管理接口：`GET /api/ai/v1/knowledge/stats`、`GET /api/ai/v1/knowledge/documents`、`POST /api/ai/v1/knowledge/index`、`POST /api/ai/v1/knowledge/documents/{id}/publish|archive`。
+- `POST /api/ai/v1/knowledge/index` 需要 `ai:admin`；`publish=true` 表示本次操作完成审核发布并写审计。
+- 页码不可靠时返回空页码，不伪造；证据不足时返回 warning，由 Agent 明确缺失。
+- pgvector 迁移是可选能力，当前关键词检索仍是主路径。
+
+## 10. 故障排查
+
+| 现象 | 优先检查 |
+|---|---|
+| 401 | OPS cookie/登录是否有效；Control 是否能访问 OPS 身份接口 |
+| 403 `CLIENT_HEADER_REQUIRED` | 写请求是否带 `X-AI-Client` |
+| 403/无管理菜单 | OPS 角色是否映射 `ai:admin`；普通对话需要 `ai:use` |
+| 503 `INTERNAL_SIGNATURE_INVALID` | Control/Runtime 的 `IPE_INTERNAL_SERVICE_KEY` 是否一致；机器时钟是否偏差超过 30 秒；服务名/audience 是否匹配 |
+| 409 `REVISION_CONFLICT` | 草稿已被其他请求修改；刷新页面后重试，不要覆盖 |
+| 422 `AGENT_COMPILE_FAILED` | 模型/凭据/依赖版本/alias/预算/Prompt 校验失败；查看 errors |
+| publication 停在 PREPARING | Runtime 是否健康；MCP/Skill 是否已在 `IPE_AI_COMPONENTS` 注册且 healthy；`/ai-admin/publications/{id}` 的 errorCode；Runtime `release prepared` 日志 |
+| publication FAILED 后重试 | 先修复依赖，再调用 `POST /api/ai/v1/publications/{id}/retry`；不要重复发布同版本 |
+| Runtime readiness DOWN | `IPE_INTERNAL_SERVICE_KEY`、Control 地址、Nacos 地址/namespace/group/广播 IP |
+| MCP `tools/call` 503 | OPS 是否以 `iot-protocol-expert-ops` 注册 Nacos；`IPE_NACOS_DISCOVERY_ENABLED` 与 `IPE_OPS_ADVERTISE_IP` 是否正确；Higress 能否访问该地址 |
+| 新 Run 一直排队或 503 `NO_HEALTHY_RUNTIME` | Nacos 是否发现对应 Agent 精确版本；`ipe-agent-runtime` 实例是否健康；确认未误开 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED` |
+| 429 `RUN_BUSY` | Runtime 并发/等待队列已满；降低并发或扩容；不要读取内部 inflight 配额 |
+| Run `EXECUTION_LOST` | Runtime 停止、网络分区或心跳中断；Control 不会自动重演，需重新提问生成新 Run |
+| 凭据解密失败 | `IPE_CREDENTIAL_MASTER_KEY` 是否被更换或丢失；旧密文无法用新主密钥恢复 |
+| SSE 重复/缺失 | 客户端是否持久化 cursor；检查 `ai_run_event` 的 cursor/sourceSeq/eventId；当前事件入库仍在优化 |
+| 模型无输出 | Runtime 是否能拿到模型凭据；模型 baseUrl/modelName/超时；Provider 日志；不要打印密钥 |
+| 工具调用已发出但 `ai_tool_call` 无记录 | 新 Runtime 在 `tool.started/completed/failed` 且事件带 `toolCallId` 时写表；检查事件是否成功入库、是否使用旧版执行路径，不能仅凭缺少审计行认定工具未执行 |
+
+## 11. 安全与已知限制
+
+- 不开放 CORS；Cookie 只在 Control→OPS 身份链路使用，不进入 manifest、Nacos、Runtime 或外部 MCP。
+- 模型可见工具 = Agent 绑定白名单 ∩ 用户策略 ∩ 当前可用 MCP 工具 ∩ 紧急停用规则。
+- 工具正文、Skill 正文和用户输入均按不可信数据处理，不能改变授权规则。
+- `authorize` 会校验 manifest alias、Agent/MCP release 的 `REVOKED`、Run 创建时保存的 `authVersion`、角色策略和站点范围；每次工具调用都会重新向 OPS 解析用户身份与最新 `authVersion`，变化时返回 `AUTH_VERSION_CHANGED`。组件 disable/revoke API 与权限变更故障注入仍待补齐。
+- T06 已默认禁止直连回退：Nacos 无健康 Runtime 时不再使用 `IPE_AGENT_RUNTIME_BASE_URL`；仅显式设置 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true` 才允许本地调试回退。
+- MCP、Skill、Agent 精确版本均已实际注册 Nacos；`ai_registry_projection` 只是数据库投影，不能替代 Nacos 实例列表。
+- `ai_tool_call` 已由新 Runtime 事件入库路径写入，6 行 E2E 记录含组件版本、原始工具名和 alias；两个 MCP 同名工具、参数摘要和失败分支仍需专项核验。`ai_run.compiled_plan` 未填充，平台管理操作也尚未接入 `ai_audit_log`。
+- 凭据轮换会生成新 `secretRevision`，但 Agent manifest 冻结旧 revision；新 Run 不会自动使用新密钥，必须重新发布 Agent。
+- `OpsIdentityClient` 的 Spring 配置默认值已修正为 `http://127.0.0.1:19082`；部署到其他主机或使用其他端口时必须显式设置 `IPE_OPS_BASE_URL`。
+- 发布失败或回滚没有完整撤销已注册的 Nacos Agent/MCP/Skill 实例，可能留下过期实例。
+- Runtime 的 `dependency:tree` 与断网 E2E 尚未形成 T20 证据；当前只确认 POM 无 JDBC/MyBatis/Flyway 依赖。
+- 草稿预览、组件 disable/revoke、发布列表分页、完整 OpenAPI/JSON Schema 尚未实现。
+- 事件入库最终一致性、Nacos 长断、MCP 协议矩阵、Control/Runtime 崩溃窗口和模型密钥轮换仍需故障注入验证。
+
+实现过程、代码证据和逐项状态见 `docs/online-agent/implementation-log.md`。

@@ -27,6 +27,8 @@ public class ConversationRepository {
                 conversation.title(),
                 conversation.agentKey(),
                 conversation.agentVersion(),
+                conversation.agentReleaseId(),
+                conversation.manifestDigest(),
                 conversation.status(),
                 conversation.createdAt(),
                 conversation.updatedAt());

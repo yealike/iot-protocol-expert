@@ -1,8 +1,5 @@
 package top.yealike.ipe.ai.api;
 
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -12,57 +9,28 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import top.yealike.ipe.ai.agent.AgentCatalog;
 import top.yealike.ipe.ai.identity.CurrentUser;
 import top.yealike.ipe.ai.identity.UserIdentity;
 import top.yealike.ipe.ai.knowledge.KnowledgeService;
 import top.yealike.ipe.ai.mapper.AuditLogMapper;
 import top.yealike.ipe.ai.policy.PolicyService;
 
-/** Agent 目录、知识索引与管理操作。管理类接口要求 ADMIN，权限不自动等于可看所有业务数据。 */
+/** 知识索引与策略管理。管理类接口要求 ADMIN，权限不自动等于可看所有业务数据。 */
 @RestController
-@RequestMapping("/api/ai")
+@RequestMapping("/api/ai/v1")
 public class AdminController {
 
-    private final AgentCatalog catalog;
     private final PolicyService policy;
     private final KnowledgeService knowledge;
     private final AuditLogMapper mapper;
 
-    public AdminController(
-            AgentCatalog catalog, PolicyService policy, KnowledgeService knowledge, AuditLogMapper mapper) {
-        this.catalog = catalog;
+    public AdminController(PolicyService policy, KnowledgeService knowledge, AuditLogMapper mapper) {
         this.policy = policy;
         this.knowledge = knowledge;
         this.mapper = mapper;
     }
 
     public record IndexRequest(Boolean publish) {}
-
-    @GetMapping("/agents")
-    public List<Map<String, Object>> agents() {
-        UserIdentity identity = CurrentUser.require();
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (AgentCatalog.Definition definition : catalog.listPublished()) {
-            if (!policy.canUseAgent(identity, definition.agentKey()).allowed()) {
-                continue;
-            }
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("agentKey", definition.agentKey());
-            item.put("version", definition.version());
-            item.put("name", definition.name());
-            item.put("kind", definition.kind());
-            item.put("description", definition.description());
-            item.put(
-                    "tools",
-                    definition.allowedTools().stream()
-                            .filter(tool -> policy.canUseTool(identity, definition.agentKey(), tool)
-                                    .allowed())
-                            .toList());
-            result.add(item);
-        }
-        return result;
-    }
 
     @GetMapping("/knowledge/stats")
     @PreAuthorize("hasAuthority('ai:admin')")

@@ -1,0 +1,92 @@
+package top.yealike.ipe.ai.platform.internal;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
+import top.yealike.ipe.ai.contract.RunEvent;
+import top.yealike.ipe.ai.contract.RunEventAck;
+import top.yealike.ipe.ai.contract.RunEventBatch;
+import top.yealike.ipe.ai.run.ConversationChannels;
+import top.yealike.ipe.ai.run.RunRecords.RuntimeEventInsert;
+import top.yealike.ipe.ai.run.RunRepository;
+
+class RuntimeEventIngestServiceTest {
+
+    @Test
+    void reservesCursorOnceAndRecordsToolAudit() {
+        RunRepository runs = mock(RunRepository.class);
+        ConversationChannels channels = mock(ConversationChannels.class);
+        PlatformTransactionManager transactions = mock(PlatformTransactionManager.class);
+        TransactionStatus status = mock(TransactionStatus.class);
+        when(transactions.getTransaction(any())).thenReturn(status);
+
+        UUID conversationId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        Instant startedAt = Instant.parse("2026-11-16T05:00:00Z");
+        Instant finishedAt = Instant.parse("2026-11-16T05:00:01Z");
+        when(runs.reserveEventCursors(conversationId, 2)).thenReturn(10L);
+        when(runs.insertRuntimeEvents(anyList())).thenReturn(Set.of(1L, 2L));
+
+        RunEvent started = new RunEvent(
+                "tool.started",
+                Map.of(
+                        "toolAlias", "mcp_ops__get_device_detail",
+                        "toolCallId", "call-1",
+                        "componentKey", "ops",
+                        "componentVersion", "1.0.0",
+                        "originalName", "get_device_detail"),
+                1L,
+                UUID.randomUUID(),
+                startedAt);
+        RunEvent completed = new RunEvent(
+                "tool.completed",
+                Map.of("toolAlias", "mcp_ops__get_device_detail", "toolCallId", "call-1", "durationMs", 25),
+                2L,
+                UUID.randomUUID(),
+                finishedAt);
+        RunEventBatch batch = new RunEventBatch(runId, 7L, "runtime-test", "request-1", List.of(started, completed));
+
+        RunEventAck ack = new RuntimeEventIngestService(runs, channels, transactions).ingest(conversationId, batch);
+
+        assertThat(ack.acceptedSourceSeq()).containsExactly(1L, 2L);
+        assertThat(ack.lastCursor()).isEqualTo(10L);
+        ArgumentCaptor<List<RuntimeEventInsert>> inserts = ArgumentCaptor.forClass(List.class);
+        verify(runs).insertRuntimeEvents(inserts.capture());
+        assertThat(inserts.getValue()).extracting(RuntimeEventInsert::cursor).containsExactly(9L, 10L);
+        verify(channels, times(2)).publish(any());
+        verify(transactions).commit(status);
+
+        UUID toolCallId = UUID.nameUUIDFromBytes((runId + ":call-1").getBytes(StandardCharsets.UTF_8));
+        verify(runs)
+                .insertRuntimeToolCall(
+                        eq(toolCallId),
+                        eq(runId),
+                        eq(conversationId),
+                        eq("mcp_ops__get_device_detail"),
+                        eq("ops"),
+                        eq("1.0.0"),
+                        eq("get_device_detail"),
+                        eq("call-1"),
+                        eq(7L),
+                        eq(startedAt));
+        verify(runs)
+                .finishRuntimeToolCall(eq(toolCallId), eq(runId), eq("SUCCEEDED"), anyMap(), eq(25), eq(finishedAt));
+    }
+}

@@ -23,7 +23,6 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import top.yealike.ipe.ai.config.AiProperties;
-import top.yealike.ipe.ai.tool.ToolNames;
 
 /**
  * 从 Nacos MCP Registry 订阅运维 MCP 服务，解析出实际入口地址。
@@ -209,9 +208,6 @@ public class McpEndpointResolver implements SmartInitializingSingleton {
         if (expected != null && !expected.isBlank() && !expected.equals(version)) {
             return "目录版本 " + version + " 与期望 " + expected + " 不一致";
         }
-        var missing = new LinkedHashSet<>(ToolNames.REMOTE_TOOLS);
-        missing.removeAll(tools);
-        if (!missing.isEmpty()) return "目录缺少工具 " + String.join(", ", missing);
         return null;
     }
 

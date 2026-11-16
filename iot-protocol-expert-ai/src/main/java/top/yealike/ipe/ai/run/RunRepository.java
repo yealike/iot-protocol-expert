@@ -4,11 +4,13 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
 import top.yealike.ipe.ai.mapper.RunMapper;
 import top.yealike.ipe.ai.run.RunRecords.Run;
 import top.yealike.ipe.ai.run.RunRecords.RunEvent;
+import top.yealike.ipe.ai.run.RunRecords.RuntimeEventInsert;
 import top.yealike.ipe.ai.run.RunRecords.ToolCall;
 import top.yealike.ipe.ai.support.JsonSupport;
 
@@ -32,6 +34,8 @@ public class RunRepository {
             String question,
             String agentKey,
             String agentVersion,
+            UUID agentReleaseId,
+            String manifestDigest,
             String modelKey,
             String idempotencyKey,
             String policyVersion,
@@ -48,6 +52,8 @@ public class RunRepository {
                 question,
                 agentKey,
                 agentVersion,
+                agentReleaseId,
+                manifestDigest,
                 modelKey,
                 priority,
                 idempotencyKey,
@@ -81,17 +87,37 @@ public class RunRepository {
      *
      * <p>按优先级与提交顺序取队首；认领失败直接返回空，等下一轮调度。
      */
-    public Optional<Run> claimNextQueued(String leaseOwner, int leaseSeconds) {
+    public Optional<Run> claimNextForDispatch(String dispatchOwner, int leaseSeconds, Instant deadlineAt) {
         List<UUID> candidates = mapper.selectNextQueued();
         if (candidates.isEmpty()) {
             return Optional.empty();
         }
         UUID id = candidates.getFirst();
-        int updated = mapper.claimQueued(leaseOwner, leaseSeconds, id);
+        int updated = mapper.claimForDispatch(dispatchOwner, leaseSeconds, deadlineAt, id);
         if (updated == 0) {
             return Optional.empty();
         }
         return find(id);
+    }
+
+    public boolean markRunning(UUID id, long executionToken, String instanceId, int leaseSeconds) {
+        return mapper.markRunning(id, executionToken, instanceId, leaseSeconds) > 0;
+    }
+
+    public boolean bindDispatchTarget(UUID id, long executionToken, String instanceId, int leaseSeconds) {
+        return mapper.bindDispatchTarget(id, executionToken, instanceId, leaseSeconds) > 0;
+    }
+
+    public boolean deferDispatch(UUID id, long executionToken, Instant nextAttemptAt, int leaseSeconds) {
+        return mapper.deferDispatch(id, executionToken, nextAttemptAt, leaseSeconds) > 0;
+    }
+
+    public boolean releaseDispatch(UUID id, long executionToken, Instant nextAttemptAt) {
+        return mapper.releaseDispatch(id, executionToken, nextAttemptAt) > 0;
+    }
+
+    public boolean heartbeat(UUID id, long executionToken, String instanceId, int leaseSeconds) {
+        return mapper.heartbeat(id, executionToken, instanceId, leaseSeconds) > 0;
     }
 
     public void renewLease(UUID id, String leaseOwner, int leaseSeconds) {
@@ -110,12 +136,37 @@ public class RunRepository {
         return mapper.markCompleted(JsonSupport.write(usage), id) > 0;
     }
 
+    public boolean markCompleted(UUID id, long executionToken, String instanceId, Map<String, Object> usage) {
+        return mapper.markCompletedWithToken(JsonSupport.write(usage), id, executionToken, instanceId) > 0;
+    }
+
     public boolean markFailed(UUID id, String code, String message, Map<String, Object> usage) {
         return mapper.markFailed(code, message, JsonSupport.write(usage), id) > 0;
     }
 
+    public boolean markFailed(
+            UUID id, long executionToken, String instanceId, String code, String message, Map<String, Object> usage) {
+        return mapper.markFailedWithToken(code, message, JsonSupport.write(usage), id, executionToken, instanceId) > 0;
+    }
+
     public void markCancelled(UUID id, Map<String, Object> usage) {
         mapper.markCancelled(JsonSupport.write(usage), id);
+    }
+
+    public boolean markCancelled(UUID id, long executionToken, String instanceId, Map<String, Object> usage) {
+        return mapper.markCancelledWithToken(JsonSupport.write(usage), id, executionToken, instanceId) > 0;
+    }
+
+    public List<Run> expiredLeases(int limit) {
+        return mapper.selectExpiredLeases(limit);
+    }
+
+    public List<Run> dispatchRetries(int limit) {
+        return mapper.selectDispatchRetries(limit);
+    }
+
+    public List<Run> cancelPending(int seconds, int limit) {
+        return mapper.selectCancelPending(seconds, limit);
     }
 
     public boolean markPaused(UUID id, Map<String, Object> usage) {
@@ -160,9 +211,21 @@ public class RunRepository {
         return cursor;
     }
 
+    public long reserveEventCursors(UUID conversationId, int count) {
+        Long cursor = mapper.reserveEventCursors(conversationId, count);
+        if (cursor == null) {
+            throw new IllegalStateException("conversation not found: " + conversationId);
+        }
+        return cursor;
+    }
+
     public void insertEvent(
             UUID conversationId, UUID runId, long cursor, String type, Map<String, Object> payload, Instant createdAt) {
         mapper.insertEvent(conversationId, runId, cursor, type, JsonSupport.write(payload), createdAt);
+    }
+
+    public Set<Long> insertRuntimeEvents(List<RuntimeEventInsert> events) {
+        return Set.copyOf(mapper.insertRuntimeEvents(events));
     }
 
     public List<RunEvent> eventsAfter(UUID conversationId, long cursor, int limit) {
@@ -200,6 +263,47 @@ public class RunRepository {
     public void finishToolCall(UUID id, String status, Map<String, Object> resultSummary, int durationMs) {
         mapper.finishToolCall(
                 status, JsonSupport.write(resultSummary == null ? Map.of() : resultSummary), durationMs, id);
+    }
+
+    public void insertRuntimeToolCall(
+            UUID id,
+            UUID runId,
+            UUID conversationId,
+            String toolAlias,
+            String componentKey,
+            String componentVersion,
+            String originalToolName,
+            String toolCallId,
+            long executionToken,
+            Instant createdAt) {
+        mapper.insertRuntimeToolCall(
+                id,
+                runId,
+                conversationId,
+                toolAlias,
+                toolAlias,
+                componentKey,
+                componentVersion,
+                originalToolName,
+                toolCallId,
+                executionToken,
+                createdAt);
+    }
+
+    public void finishRuntimeToolCall(
+            UUID id,
+            UUID runId,
+            String status,
+            Map<String, Object> resultSummary,
+            Integer durationMs,
+            Instant finishedAt) {
+        mapper.finishRuntimeToolCall(
+                id,
+                runId,
+                status,
+                JsonSupport.write(resultSummary == null ? Map.of() : resultSummary),
+                durationMs,
+                finishedAt);
     }
 
     public List<ToolCall> listToolCalls(UUID runId) {

@@ -700,6 +700,34 @@ a {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.assistant-heading {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.assistant-heading h3 {
+  max-width: 100%;
+}
+.assistant-agent-bar {
+  flex: none;
+  display: grid;
+  gap: 8px;
+  padding: 12px 12px 10px;
+  border-bottom: 1px solid #edf1f7;
+  background: #fbfcfe;
+}
+.assistant-agent-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  font-size: 11px;
+}
+.assistant-agent-meta .ant-typography {
+  margin-left: auto;
+}
 .assistant-history {
   flex: 1;
   min-height: 0;
@@ -986,6 +1014,112 @@ a {
     align-items: flex-start;
     flex-direction: column;
     align-items: flex-start;
+  }
+}
+
+/* AI capability administration */
+.ai-admin-shell {
+  width: 100%;
+  min-width: 0;
+}
+.ai-admin-shell > .ant-tabs > .ant-tabs-nav {
+  margin-bottom: 18px;
+}
+.ai-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+}
+.ai-form-wide {
+  grid-column: 1 / -1;
+}
+.ai-budget-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 16px;
+}
+.ai-json-editor {
+  min-height: 92px !important;
+  font-size: 12px;
+}
+.ai-prompt-editor {
+  min-height: 220px !important;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.ai-binding-row {
+  display: grid;
+  grid-template-columns:
+    minmax(180px, 2fr) minmax(110px, 1fr) minmax(100px, 0.8fr)
+    minmax(70px, 0.6fr) 32px;
+  gap: 8px;
+  align-items: start;
+}
+.ai-binding-row-head {
+  grid-template-columns:
+    minmax(180px, 2fr) minmax(110px, 1fr) minmax(100px, 0.8fr)
+    minmax(56px, auto) 32px;
+}
+.ai-binding-row .ant-form-item {
+  margin-bottom: 0;
+}
+.ai-binding-row .ant-form-item-label {
+  padding-bottom: 2px;
+}
+.ai-mcp-binding {
+  padding: 12px;
+  border: 1px solid #e5eaf2;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+.ai-mcp-binding > .ant-space-vertical {
+  width: 100%;
+}
+.ai-tool-checkboxes {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 12px;
+  margin-top: 4px;
+}
+.ai-tool-checkboxes .ant-checkbox-wrapper {
+  min-width: 0;
+  margin-inline-start: 0 !important;
+}
+.ai-skill-editor {
+  width: 100%;
+  min-height: 520px !important;
+  resize: vertical;
+  font-family: 'JetBrains Mono', Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.65;
+}
+.ai-skill-editor-small {
+  min-height: 240px !important;
+}
+.ai-skill-editor-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+@media (max-width: 800px) {
+  .ai-form-grid,
+  .ai-budget-grid {
+    grid-template-columns: 1fr;
+  }
+  .ai-form-wide {
+    grid-column: auto;
+  }
+  .ai-binding-row,
+  .ai-binding-row-head {
+    grid-template-columns: 1fr;
+    padding-bottom: 10px;
+    border-bottom: 1px dashed #dde5ef;
+  }
+  .ai-tool-checkboxes {
+    grid-template-columns: 1fr;
   }
 }
 

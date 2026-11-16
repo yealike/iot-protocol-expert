@@ -16,6 +16,8 @@ public interface ConversationMapper {
             @Param("title") String title,
             @Param("agentKey") String agentKey,
             @Param("agentVersion") String agentVersion,
+            @Param("agentReleaseId") UUID agentReleaseId,
+            @Param("manifestDigest") String manifestDigest,
             @Param("status") String status,
             @Param("createdAt") Instant createdAt,
             @Param("updatedAt") Instant updatedAt);

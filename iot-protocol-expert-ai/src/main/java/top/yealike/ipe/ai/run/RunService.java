@@ -7,11 +7,13 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.ipe.ai.agent.AgentCatalog;
 import top.yealike.ipe.ai.conversation.ConversationRecords.Conversation;
 import top.yealike.ipe.ai.conversation.ConversationRepository;
 import top.yealike.ipe.ai.identity.UserIdentity;
 import top.yealike.ipe.ai.observability.AiObservability;
+import top.yealike.ipe.ai.platform.agent.AgentService;
+import top.yealike.ipe.ai.platform.dispatch.RuntimeDispatchClient;
+import top.yealike.ipe.ai.platform.domain.PlatformRecords.AgentRelease;
 import top.yealike.ipe.ai.policy.PolicyService;
 import top.yealike.ipe.ai.run.RunRecords.Run;
 import top.yealike.ipe.ai.run.RunRecords.RunView;
@@ -27,7 +29,8 @@ public class RunService {
     private final RunRepository runs;
     private final RunEventService events;
     private final PolicyService policy;
-    private final AgentCatalog catalog;
+    private final AgentService agents;
+    private final RuntimeDispatchClient runtime;
     private final io.micrometer.core.instrument.MeterRegistry metrics;
     private final AiObservability observability;
 
@@ -36,14 +39,16 @@ public class RunService {
             RunRepository runs,
             RunEventService events,
             PolicyService policy,
-            AgentCatalog catalog,
+            AgentService agents,
+            RuntimeDispatchClient runtime,
             io.micrometer.core.instrument.MeterRegistry metrics,
             AiObservability observability) {
         this.conversations = conversations;
         this.runs = runs;
         this.events = events;
         this.policy = policy;
-        this.catalog = catalog;
+        this.agents = agents;
+        this.runtime = runtime;
         this.metrics = metrics;
         this.observability = observability;
     }
@@ -84,9 +89,11 @@ public class RunService {
         Instant now = Instant.now();
         conversations.insertMessage(messageId, conversationId, runId, "user", question, List.of(), "FINAL", seq, now);
 
-        AgentCatalog.Definition definition = catalog.find(conversation.agentKey());
-        if (definition == null) {
-            throw AiExceptions.notFound("Agent 未发布：" + conversation.agentKey());
+        AgentRelease release = conversation.agentReleaseId() == null
+                ? agents.requirePublishedRelease(conversation.agentKey(), conversation.agentVersion())
+                : agents.release(conversation.agentReleaseId());
+        if (!"ACTIVE".equals(release.state())) {
+            throw AiExceptions.conflict("RELEASE_NOT_ACTIVE", "会话绑定的 Agent 版本不可用");
         }
         runs.insertRun(
                 runId,
@@ -98,7 +105,11 @@ public class RunService {
                 question,
                 conversation.agentKey(),
                 conversation.agentVersion(),
-                definition.modelKey(),
+                release.id(),
+                release.manifestDigest(),
+                release.manifest().model() == null
+                        ? null
+                        : release.manifest().model().profileKey(),
                 key,
                 policy.version(),
                 observability.traceparent(),
@@ -133,46 +144,31 @@ public class RunService {
         return runs.find(runId).orElseThrow(() -> AiExceptions.unavailable("Run 创建失败"));
     }
 
-    public void pause(UserIdentity identity, UUID runId) {
-        Run run = requireRun(identity, runId);
-        if (!RunRecords.RUNNING.equals(run.status())) {
-            throw AiExceptions.conflict("RUN_NOT_RUNNING", "只有执行中的 Run 可以暂停");
-        }
-        if (!runs.requestPause(runId)) {
-            throw AiExceptions.conflict("RUN_NOT_RUNNING", "Run 状态已变化，请刷新后重试");
-        }
-        events.publish(
-                run.conversationId(), runId, "run.pause_requested", Map.of("status", RunRecords.PAUSE_REQUESTED));
-    }
-
-    public void resume(UserIdentity identity, UUID runId) {
-        Run run = requireRun(identity, runId);
-        if (!RunRecords.PAUSED.equals(run.status())) {
-            throw AiExceptions.conflict("RUN_NOT_PAUSED", "只有已暂停的 Run 可以继续");
-        }
-        PolicyService.Decision decision = policy.canUseAgent(identity, run.agentKey());
-        if (!decision.allowed()) {
-            throw AiExceptions.forbidden("AGENT_DENIED", "权限已变化：" + decision.reason());
-        }
-        if (!runs.requeuePaused(runId)) {
-            throw AiExceptions.conflict("RUN_NOT_PAUSED", "Run 状态已变化，请刷新后重试");
-        }
-        events.publish(run.conversationId(), runId, "run.queued", Map.of("runId", runId.toString(), "resumed", true));
-    }
-
     public String cancel(UserIdentity identity, UUID runId) {
         Run run = requireRun(identity, runId);
         if (run.terminal()) {
             return run.status();
         }
         runs.requestCancel(runId);
-        String status = runs.find(runId).orElseThrow().status();
+        Run current = runs.find(runId).orElseThrow();
+        String status = current.status();
         if (RunRecords.COMPLETED.equals(status) || RunRecords.FAILED.equals(status)) return status;
-        events.publish(
-                run.conversationId(),
-                runId,
-                RunRecords.CANCELLED.equals(status) ? "run.cancelled" : "run.cancel_requested",
-                Map.of("status", status, "note", "已发出的外部请求不保证远端未执行"));
+        if (RunRecords.CANCELLED.equals(status)) {
+            events.publish(
+                    run.conversationId(), runId, "run.cancelled", Map.of("status", status, "reason", "USER_CANCELLED"));
+            return status;
+        }
+        if (RunRecords.CANCEL_REQUESTED.equals(status)) {
+            RuntimeDispatchClient.RuntimeTarget target = runtimeTarget(current);
+            if (target != null && current.executionToken() > 0) {
+                runtime.cancel(target, runId, current.executionToken());
+            }
+            events.publish(
+                    run.conversationId(),
+                    runId,
+                    "run.cancel_requested",
+                    Map.of("status", status, "note", "已通知执行实例停止；外部工具调用不保证物理未发生"));
+        }
         return status;
     }
 
@@ -186,6 +182,9 @@ public class RunService {
                 run.conversationId(),
                 run.question(),
                 run.agentKey(),
+                run.agentVersion(),
+                run.manifestDigest(),
+                run.traceContext(),
                 run.status(),
                 run.priority(),
                 run.errorCode(),
@@ -219,5 +218,17 @@ public class RunService {
 
     public List<Run> history(UUID conversationId, int limit) {
         return runs.listByConversation(conversationId, Math.min(Math.max(limit, 1), 100));
+    }
+
+    private RuntimeDispatchClient.RuntimeTarget runtimeTarget(Run run) {
+        var targets = runtime.agentTargets(run.agentKey(), run.agentVersion());
+        String instanceId = run.runtimeInstanceId();
+        if (instanceId == null || instanceId.isBlank()) {
+            return targets.isEmpty() ? null : targets.getFirst();
+        }
+        return targets.stream()
+                .filter(item -> instanceId.equals(item.instanceId()))
+                .findFirst()
+                .orElse(null);
     }
 }

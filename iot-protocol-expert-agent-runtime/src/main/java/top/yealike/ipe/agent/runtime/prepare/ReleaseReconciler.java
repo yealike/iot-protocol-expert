@@ -1,0 +1,127 @@
+package top.yealike.ipe.agent.runtime.prepare;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.stereotype.Component;
+import top.yealike.ipe.agent.runtime.control.ControlClient;
+import top.yealike.ipe.agent.runtime.control.ControlException;
+import top.yealike.ipe.agent.runtime.control.DesiredRelease;
+import top.yealike.ipe.agent.runtime.control.DesiredReleasePage;
+import top.yealike.ipe.agent.runtime.registry.NacosRuntimeRegistry;
+import top.yealike.ipe.ai.contract.ReleasePrepareRequest;
+
+/**
+ * Runtime 重启后的期望版本对账。
+ *
+ * <p>Runtime 的已准备版本只存在内存；进程重启后必须重新 prepare 并注册精确版本服务，否则 Control 无法派发。
+ * 对账失败只记录日志，不阻塞基础健康检查，管理员可重新发布或重启 Runtime 触发再次对账。
+ */
+@Component
+public class ReleaseReconciler {
+
+    private static final Logger log = LoggerFactory.getLogger(ReleaseReconciler.class);
+    private static final Duration REGISTRY_WAIT = Duration.ofSeconds(60);
+
+    private final ControlClient control;
+    private final PrepareService prepareService;
+    private final NacosRuntimeRegistry registry;
+    private final ExecutorService executor;
+
+    public ReleaseReconciler(
+            ControlClient control,
+            PrepareService prepareService,
+            NacosRuntimeRegistry registry,
+            @Qualifier("runtimeReconcileExecutor") ExecutorService executor) {
+        this.control = control;
+        this.prepareService = prepareService;
+        this.registry = registry;
+        this.executor = executor;
+    }
+
+    @EventListener(ApplicationReadyEvent.class)
+    @Order(Ordered.LOWEST_PRECEDENCE)
+    public void start() {
+        executor.submit(this::runSafely);
+    }
+
+    private void runSafely() {
+        try {
+            if (!awaitRegistry()) {
+                log.warn("release reconcile skipped: runtime registry is not ready");
+                return;
+            }
+            DesiredReleasePage page = control.desiredReleases();
+            if (page == null || page.items() == null || page.items().isEmpty()) {
+                log.info("release reconcile finished: no desired releases");
+                return;
+            }
+            int prepared = 0;
+            int failed = 0;
+            for (DesiredRelease release : page.items()) {
+                if (!"ACTIVE".equalsIgnoreCase(release.state())) {
+                    continue;
+                }
+                try {
+                    prepareService.prepare(new ReleasePrepareRequest(
+                            release.releaseId(), release.manifestDigest(), release.generation(), release.releaseId()));
+                    prepared++;
+                } catch (RuntimeException exception) {
+                    failed++;
+                    log.warn(
+                            "release reconcile failed: release={} agent={} version={} code={} reason={}",
+                            release.releaseId(),
+                            release.agentKey(),
+                            release.version(),
+                            code(exception),
+                            safeMessage(exception));
+                }
+            }
+            log.info("release reconcile finished: prepared={} failed={}", prepared, failed);
+        } catch (RuntimeException exception) {
+            log.warn("release reconcile aborted: code={} reason={}", code(exception), safeMessage(exception));
+        }
+    }
+
+    private boolean awaitRegistry() {
+        if (registry.ready()) {
+            return true;
+        }
+        Instant deadline = Instant.now().plus(REGISTRY_WAIT);
+        while (Instant.now().isBefore(deadline)) {
+            try {
+                TimeUnit.MILLISECONDS.sleep(500L);
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+            if (registry.ready()) {
+                return true;
+            }
+        }
+        return registry.ready();
+    }
+
+    private static String code(RuntimeException exception) {
+        if (exception instanceof PrepareException prepareException) {
+            return prepareException.code();
+        }
+        if (exception instanceof ControlException controlException) {
+            return controlException.code();
+        }
+        return exception.getClass().getSimpleName();
+    }
+
+    private static String safeMessage(RuntimeException exception) {
+        String message = exception.getMessage();
+        return message == null || message.isBlank() ? exception.getClass().getSimpleName() : message;
+    }
+}

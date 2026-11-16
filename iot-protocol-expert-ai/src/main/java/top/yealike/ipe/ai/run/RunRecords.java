@@ -11,6 +11,7 @@ public final class RunRecords {
     private RunRecords() {}
 
     public static final String QUEUED = "QUEUED";
+    public static final String DISPATCHING = "DISPATCHING";
     public static final String RUNNING = "RUNNING";
     public static final String PAUSE_REQUESTED = "PAUSE_REQUESTED";
     public static final String PAUSED = "PAUSED";
@@ -45,7 +46,16 @@ public final class RunRecords {
             Instant startedAt,
             Instant finishedAt,
             Instant createdAt,
-            Instant updatedAt) {
+            Instant updatedAt,
+            UUID agentReleaseId,
+            String manifestDigest,
+            String runtimeInstanceId,
+            long executionToken,
+            Instant lastHeartbeatAt,
+            int dispatchAttempts,
+            Instant deadlineAt,
+            Instant dispatchNextAttemptAt,
+            Instant cancelRequestedAt) {
 
         public boolean terminal() {
             return COMPLETED.equals(status) || FAILED.equals(status) || CANCELLED.equals(status);
@@ -59,6 +69,17 @@ public final class RunRecords {
             String type,
             Map<String, Object> payload,
             Instant createdAt) {}
+
+    public record RuntimeEventInsert(
+            UUID conversationId,
+            UUID runId,
+            long cursor,
+            String type,
+            String payloadJson,
+            Instant createdAt,
+            long executionToken,
+            long sourceSeq,
+            UUID eventId) {}
 
     public record ToolCall(
             UUID id,
@@ -80,6 +101,9 @@ public final class RunRecords {
             UUID conversationId,
             String question,
             String agentKey,
+            String agentVersion,
+            String manifestDigest,
+            String traceId,
             String status,
             int priority,
             String errorCode,

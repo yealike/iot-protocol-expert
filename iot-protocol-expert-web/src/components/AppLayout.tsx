@@ -3,6 +3,7 @@ import { Avatar, Button, Dropdown, Layout, Menu, Space, Tag } from 'antd'
 import {
   AlertOutlined,
   AppstoreOutlined,
+  BuildOutlined,
   ClusterOutlined,
   DashboardOutlined,
   ExperimentOutlined,
@@ -39,6 +40,11 @@ const items = [
   },
   { key: '/alarms', icon: <AlertOutlined />, label: <Link to="/alarms">告警</Link> },
   { key: '/assistant', icon: <RobotOutlined />, label: <Link to="/assistant">AI 助手</Link> },
+  {
+    key: '/ai-admin',
+    icon: <BuildOutlined />,
+    label: <Link to="/ai-admin">AI 能力管理</Link>
+  },
   { key: '/users', icon: <UserOutlined />, label: <Link to="/users">用户管理</Link> },
   {
     key: '/ai-knowledge',
@@ -78,15 +84,18 @@ export default function AppLayout({ user, children }: Props) {
           mode="inline"
           selectedKeys={selected}
           items={items.filter((item) =>
-            user.allStations === false && !['/assistant', '/ai-knowledge'].includes(item.key)
+            user.allStations === false &&
+            !['/assistant', '/ai-knowledge', '/ai-admin'].includes(item.key)
               ? false
               : item.key === '/users'
                 ? user.permissions?.includes('iam:user:manage')
                 : item.key === '/ai-knowledge'
                   ? user.permissions?.includes('ai:admin')
-                  : item.key === '/assistant'
-                    ? user.permissions?.includes('ai:use')
-                    : true
+                  : item.key === '/ai-admin'
+                    ? user.permissions?.includes('ai:admin')
+                    : item.key === '/assistant'
+                      ? user.permissions?.includes('ai:use')
+                      : true
           )}
           style={{ background: 'transparent' }}
         />

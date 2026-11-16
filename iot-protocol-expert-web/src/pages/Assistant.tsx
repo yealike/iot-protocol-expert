@@ -1,6 +1,5 @@
-import { formatDateTime } from '../utils/dateTime'
-import { useEffect, useRef, useState } from 'react'
-import { Alert, Button, Checkbox, Input, Select, Space, Tag, Typography, message } from 'antd'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Alert, App, Button, Input, Select, Space, Tag, Typography } from 'antd'
 import {
   PlusOutlined,
   ReloadOutlined,
@@ -13,62 +12,134 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { api, openAiEventStream } from '../api/client'
 import type { AiMessage, AiStreamEvent } from '../api/types'
+import { formatDateTime } from '../utils/dateTime'
 
 const { Text, Paragraph } = Typography
 
 const STATUS_LABEL: Record<string, string> = {
   QUEUED: '排队中',
+  DISPATCHING: '正在调度',
   RUNNING: '执行中',
-  PAUSE_REQUESTED: '正在暂停',
   CANCEL_REQUESTED: '正在停止',
-  PAUSED: '已暂停',
   COMPLETED: '已完成',
   FAILED: '失败',
   CANCELLED: '已取消'
 }
 
-/**
- * AI 助手：会话列表 + 流式回答 + 执行进度。
- *
- * 事件流只用于展示进度与增量文本，最终内容以服务端消息为准；断线重连用 cursor 补齐。
- */
+const ACTIVE_RUN_STATUSES = new Set(['QUEUED', 'DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED'])
+const TERMINAL_RUN_STATUSES = new Set(['COMPLETED', 'FAILED', 'CANCELLED'])
+const LAST_AGENT_STORAGE_KEY = 'ipe-ai-last-agent'
+
+interface ProgressStep {
+  id: string
+  text: string
+  color?: string
+}
+
 export default function Assistant() {
+  const { message, modal } = App.useApp()
   const queryClient = useQueryClient()
   const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [agentKey, setAgentKey] = useState('team-leader')
+  const [targetAgentKey, setTargetAgentKey] = useState<string | null>(readLastAgent)
   const [input, setInput] = useState('')
   const [streamText, setStreamText] = useState('')
   const [streaming, setStreaming] = useState(false)
-  const [priority, setPriority] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [progress, setProgress] = useState<string[]>([])
+  const [cancelling, setCancelling] = useState(false)
+  const [progress, setProgress] = useState<ProgressStep[]>([])
   const [notice, setNotice] = useState<string | null>(null)
+  const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const cursorRef = useRef(0)
+  const activeRunIdRef = useRef<string | null>(null)
+  const stopStreamRef = useRef<(() => void) | null>(null)
+  const streamConversationRef = useRef<string | null>(null)
   const messagesRef = useRef<HTMLDivElement | null>(null)
 
-  const agents = useQuery({ queryKey: ['ai-agents'], queryFn: api.aiAgents })
+  const agents = useQuery({ queryKey: ['ai-agent-catalog'], queryFn: api.aiAgentCatalog })
   const conversations = useQuery({
     queryKey: ['ai-conversations'],
     queryFn: () => api.aiConversations()
   })
-
-  useEffect(() => {
-    if (agents.data?.length && !agents.data.some((agent) => agent.agentKey === agentKey)) {
-      setAgentKey(agents.data[0].agentKey)
-    }
-  }, [agents.data, agentKey])
   const detail = useQuery({
     queryKey: ['ai-conversation', selectedId],
     queryFn: () => api.aiConversation(selectedId as string),
     enabled: Boolean(selectedId)
   })
 
+  const targetAgent = useMemo(
+    () => agents.data?.find((agent) => agent.agentKey === targetAgentKey) ?? null,
+    [agents.data, targetAgentKey]
+  )
+  const conversation = detail.data?.conversation ?? null
   const currentRun = detail.data?.currentRun ?? null
+  const currentCatalog = useMemo(
+    () =>
+      conversation
+        ? ((agents.data ?? []).find(
+            (agent) =>
+              agent.agentKey === conversation.agentKey &&
+              agent.version === conversation.agentVersion
+          ) ?? null)
+        : null,
+    [agents.data, conversation]
+  )
+  const currentAgentOptions = useMemo(() => {
+    const options = (agents.data ?? []).map((agent) => ({
+      value: agent.agentKey,
+      disabled: !agent.healthy,
+      label: (
+        <Space size={4}>
+          <span>{agent.name}</span>
+          <Tag color={agent.healthy ? 'green' : 'red'} bordered={false}>
+            v{agent.version}
+          </Tag>
+          {!agent.healthy ? <Tag color="red">不可用</Tag> : null}
+        </Space>
+      )
+    }))
+    if (conversation && !options.some((option) => option.value === conversation.agentKey)) {
+      options.unshift({
+        value: conversation.agentKey,
+        disabled: true,
+        label: (
+          <Space size={4}>
+            <span>{conversation.agentKey}</span>
+            <Tag bordered={false}>v{conversation.agentVersion}</Tag>
+            <Tag>历史版本</Tag>
+          </Space>
+        )
+      })
+    }
+    return options
+  }, [agents.data, conversation])
+
   const busy =
     streaming ||
-    currentRun?.status === 'RUNNING' ||
-    currentRun?.status === 'PAUSE_REQUESTED' ||
-    currentRun?.status === 'CANCEL_REQUESTED'
+    Boolean(activeRunId) ||
+    Boolean(currentRun && ACTIVE_RUN_STATUSES.has(currentRun.status))
+  const cancelRunId = currentRun?.id ?? activeRunId
+  const canSubmit = Boolean(selectedId || targetAgent?.healthy)
+  const canCancel =
+    Boolean(cancelRunId) &&
+    !TERMINAL_RUN_STATUSES.has(currentRun?.status ?? '') &&
+    currentRun?.status !== 'CANCEL_REQUESTED'
+
+  useEffect(() => {
+    if (!agents.data?.length) return
+    if (
+      targetAgentKey &&
+      agents.data.some((agent) => agent.agentKey === targetAgentKey && agent.healthy)
+    ) {
+      return
+    }
+    if (selectedId) return
+    const remembered = readLastAgent()
+    const candidate =
+      agents.data.find((agent) => agent.agentKey === remembered && agent.healthy) ??
+      agents.data.find((agent) => agent.healthy) ??
+      agents.data[0]
+    setTargetAgentKey(candidate.agentKey)
+  }, [agents.data, selectedId, targetAgentKey])
 
   const refreshConversation = () => {
     if (selectedId) {
@@ -77,108 +148,224 @@ export default function Assistant() {
     void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
   }
 
-  useEffect(() => {
-    if (!selectedId) {
-      return
-    }
-    cursorRef.current = 0
-    setStreamText('')
-    setProgress([])
-    setNotice(null)
-    const stop = openAiEventStream(selectedId, 0, (event) => handleEvent(event))
-    return stop
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedId])
+  const setActiveRun = (runId: string | null) => {
+    activeRunIdRef.current = runId
+    setActiveRunId(runId)
+  }
+
+  const appendProgress = (text: string, color = 'blue') => {
+    setProgress((prev) => [...prev, { id: crypto.randomUUID(), text, color }].slice(-20))
+  }
+
+  const eventRunId = (event: AiStreamEvent) => {
+    if (event.runId) return event.runId
+    const value = event.data.runId
+    return typeof value === 'string' ? value : undefined
+  }
 
   const handleEvent = (event: AiStreamEvent) => {
-    if (event.cursor > 0) {
-      cursorRef.current = event.cursor
-    }
+    if (event.cursor > 0) cursorRef.current = event.cursor
     const data = event.data
+    const runId = eventRunId(event)
+    const active = activeRunIdRef.current
+    if (runId && active && runId !== active) return
+    if (runId && !active && !['run.queued', 'run.started'].includes(event.type)) {
+      return
+    }
+
     switch (event.type) {
+      case 'run.queued':
+        if (runId) setActiveRun(runId)
+        setStreaming(true)
+        appendProgress('任务已进入队列')
+        refreshConversation()
+        break
       case 'run.started':
+        if (runId) setActiveRun(runId)
+        setStreaming(true)
         setStreamText('')
         setProgress([])
-        setStreaming(true)
-        setProgress((prev) => [...prev, '开始执行'])
+        appendProgress('Agent 开始执行')
         refreshConversation()
         break
-      case 'run.queued':
-      case 'run.pause_requested':
-      case 'run.cancel_requested':
-        refreshConversation()
-        break
-      case 'tool.started':
+      case 'assistant.delta': {
+        const delta =
+          typeof data.delta === 'string'
+            ? data.delta
+            : typeof data.text === 'string'
+              ? data.text
+              : ''
+        if (delta) setStreamText((prev) => prev + delta)
         setStreaming(true)
-        setProgress((prev) => [...prev, `调用工具 ${String(data.tool ?? '')}`])
         break
-      case 'tool.finished':
-        setProgress((prev) => [...prev, `工具返回 ${String(data.state ?? '')}`])
+      }
+      case 'tool.started': {
+        const tool = eventToolLabel(data)
+        appendProgress(tool ? `调用工具 ${tool}` : '调用工具')
+        setStreaming(true)
         break
-      case 'text.delta':
-        setStreamText((prev) => prev + String(data.delta ?? ''))
+      }
+      case 'tool.completed': {
+        const tool = eventToolLabel(data)
+        const state = data.state ? ` · ${String(data.state)}` : ''
+        appendProgress(tool ? `工具完成 ${tool}${state}` : `工具完成${state}`, 'green')
         break
+      }
+      case 'tool.failed': {
+        const tool = eventToolLabel(data)
+        const error = String(data.message ?? data.errorMessage ?? data.errorCode ?? '工具调用失败')
+        appendProgress(tool ? `工具失败 ${tool}` : '工具调用失败', 'red')
+        setNotice(error)
+        break
+      }
+      case 'skill.loaded': {
+        const skill = String(data.skillKey ?? data.key ?? data.name ?? '')
+        const version = data.version ? `@${String(data.version)}` : ''
+        appendProgress(skill ? `加载 Skill ${skill}${version}` : '加载 Skill', 'purple')
+        break
+      }
       case 'run.warning':
         setNotice(String(data.message ?? data.warning ?? '执行受限'))
+        appendProgress('执行出现警告', 'orange')
         break
-      case 'run.paused':
-        setStreaming(false)
-        setNotice('已暂停；继续时会重新执行原问题，已发出的外部请求不保证停止')
+      case 'run.cancel_requested':
+        setNotice('正在停止执行；已发出的外部请求不保证远端未执行。')
         refreshConversation()
         break
       case 'run.cancelled':
         setStreaming(false)
-        setNotice('已请求停止；已发出的外部请求不保证远端未执行')
+        setActiveRun(null)
+        setNotice('任务已取消；已发出的外部请求不保证远端未执行。')
         refreshConversation()
         break
       case 'run.failed':
         setStreaming(false)
-        setNotice(String(data.message ?? '执行失败'))
+        setActiveRun(null)
+        setNotice(String(data.message ?? data.errorMessage ?? data.errorCode ?? '执行失败'))
+        appendProgress('执行失败', 'red')
+        refreshConversation()
+        break
+      case 'run.timed_out':
+        setStreaming(false)
+        setActiveRun(null)
+        setNotice(String(data.message ?? data.errorMessage ?? '执行超时'))
+        appendProgress('执行超时', 'red')
         refreshConversation()
         break
       case 'run.completed':
         setStreaming(false)
+        setActiveRun(null)
         setStreamText('')
-        refreshConversation()
+        appendProgress('执行完成', 'green')
+        window.setTimeout(refreshConversation, 250)
+        break
+      case 'stream.ready':
         break
       default:
+        if (event.type.startsWith('run.')) refreshConversation()
         break
     }
   }
 
-  const createConversation = async () => {
+  useEffect(() => {
+    setStreamText('')
+    setProgress([])
+    setNotice(null)
+    setStreaming(false)
+    setActiveRun(null)
+    cursorRef.current = 0
+    streamConversationRef.current = null
+    stopStreamRef.current?.()
+    stopStreamRef.current = null
+    return () => {
+      stopStreamRef.current?.()
+      stopStreamRef.current = null
+      streamConversationRef.current = null
+    }
+  }, [selectedId])
+
+  useEffect(() => {
+    if (!selectedId || !detail.data || streamConversationRef.current === selectedId) {
+      return
+    }
+    setActiveRun(detail.data.currentRun?.id ?? null)
+    const initialCursor = detail.data.currentRun ? 0 : detail.data.conversation.eventCursor
+    cursorRef.current = initialCursor
+    streamConversationRef.current = selectedId
+    stopStreamRef.current = openAiEventStream(
+      selectedId,
+      initialCursor,
+      handleEvent,
+      undefined,
+      (error) => {
+        setNotice(error.message)
+        if (error.status === 410) refreshConversation()
+      }
+    )
+  }, [detail.data, selectedId])
+
+  const createConversation = async (agentKey: string) => {
+    const agent = agents.data?.find((item) => item.agentKey === agentKey)
+    if (!agent) {
+      message.error('Agent 不在当前可选目录中')
+      return null
+    }
+    if (!agent.healthy) {
+      message.error('该 Agent 当前没有健康运行实例')
+      return null
+    }
     try {
-      const created = await api.aiCreateConversation(agentKey)
+      const created = await api.aiCreateConversation(agentKey, agent.version)
+      rememberAgent(agentKey)
       setSelectedId(created.id)
-      refreshConversation()
+      void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
+      return created
     } catch (error) {
       message.error((error as Error).message)
+      return null
     }
+  }
+
+  const handleAgentChange = (agentKey: string) => {
+    if (conversation && selectedId && conversation.agentKey !== agentKey) {
+      modal.confirm({
+        title: '切换 Agent 将新建会话',
+        content: '当前会话已固定 Agent 与发布版本，不会在同一历史中静默切换系统指令或工具权限。',
+        okText: '新建会话',
+        cancelText: '留在当前会话',
+        onOk: async () => {
+          const created = await createConversation(agentKey)
+          if (created) setTargetAgentKey(agentKey)
+        },
+        onCancel: () => setTargetAgentKey(conversation.agentKey)
+      })
+      return
+    }
+    rememberAgent(agentKey)
+    setTargetAgentKey(agentKey)
   }
 
   const send = async () => {
-    const question = input.trim()
-    if (!question) {
-      return
-    }
+    const content = input.trim()
+    if (!content || busy) return
     try {
       setSubmitting(true)
       let conversationId = selectedId
       if (!conversationId) {
-        const created = await api.aiCreateConversation(agentKey)
+        if (!targetAgentKey) throw new Error('请先选择 Agent')
+        const created = await createConversation(targetAgentKey)
+        if (!created) return
         conversationId = created.id
-        setSelectedId(created.id)
-      }
-      if (!busy) {
-        setStreamText('')
-        setProgress([])
       }
       setNotice(null)
+      setStreamText('')
+      setProgress([])
       setStreaming(true)
-      await api.aiSubmitRun(conversationId, question, crypto.randomUUID(), priority ? 200 : 100)
+      const run = await api.aiSubmitRun(conversationId, content, crypto.randomUUID())
+      setActiveRun(run.id)
       setInput('')
-      setPriority(false)
-      setTimeout(refreshConversation, 400)
+      appendProgress('任务已提交')
+      window.setTimeout(refreshConversation, 300)
     } catch (error) {
       setStreaming(false)
       message.error((error as Error).message)
@@ -187,21 +374,22 @@ export default function Assistant() {
     }
   }
 
-  const runAction = async (action: 'pause' | 'resume' | 'cancel') => {
-    if (!currentRun) {
-      return
-    }
+  const cancelRun = async () => {
+    if (!cancelRunId) return
     try {
-      if (action === 'pause') {
-        await api.aiPauseRun(currentRun.id)
-      } else if (action === 'resume') {
-        await api.aiResumeRun(currentRun.id)
-      } else {
-        await api.aiCancelRun(currentRun.id)
-      }
-      setTimeout(refreshConversation, 500)
+      setCancelling(true)
+      const result = await api.aiCancelRun(cancelRunId)
+      setNotice(
+        result.note ??
+          (result.status && TERMINAL_RUN_STATUSES.has(result.status)
+            ? `任务状态：${STATUS_LABEL[result.status] ?? result.status}`
+            : '已请求停止；等待运行实例确认。')
+      )
+      window.setTimeout(refreshConversation, 500)
     } catch (error) {
       message.error((error as Error).message)
+    } finally {
+      setCancelling(false)
     }
   }
 
@@ -209,9 +397,7 @@ export default function Assistant() {
 
   useEffect(() => {
     const element = messagesRef.current
-    if (element) {
-      element.scrollTop = element.scrollHeight
-    }
+    if (element) element.scrollTop = element.scrollHeight
   }, [messages, streamText, progress, selectedId])
 
   return (
@@ -219,27 +405,46 @@ export default function Assistant() {
       <aside className="assistant-sidebar">
         <div className="assistant-panel-head">
           <h2>会话历史</h2>
-          <Space size={8}>
-            <Select
-              size="small"
-              value={agentKey}
-              style={{ width: 138 }}
-              onChange={setAgentKey}
-              popupMatchSelectWidth={false}
-              options={(agents.data ?? []).map((agent) => ({
-                value: agent.agentKey,
-                label: agent.name
-              }))}
-            />
-            <Button
-              size="small"
-              type="primary"
-              icon={<PlusOutlined />}
-              onClick={createConversation}
-            >
-              新建
-            </Button>
-          </Space>
+          <Button
+            size="small"
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={!targetAgent?.healthy}
+            onClick={() => {
+              if (targetAgentKey) void createConversation(targetAgentKey)
+            }}
+          >
+            新建
+          </Button>
+        </div>
+        <div className="assistant-agent-bar">
+          <Select
+            value={targetAgentKey ?? undefined}
+            style={{ width: '100%' }}
+            placeholder="选择已发布 Agent"
+            loading={agents.isLoading}
+            options={currentAgentOptions}
+            popupMatchSelectWidth={380}
+            onChange={handleAgentChange}
+          />
+          {targetAgent ? (
+            <div className="assistant-agent-meta">
+              <Tag color="blue" bordered={false}>
+                v{targetAgent.version}
+              </Tag>
+              <Tag color={targetAgent.healthy ? 'green' : 'red'} bordered={false}>
+                {targetAgent.healthy ? '健康' : '无健康实例'}
+              </Tag>
+              <Text type="secondary">
+                {targetAgent.healthy
+                  ? `${targetAgent.toolCount} 工具 · ${targetAgent.skillCount} 技能`
+                  : '注册中心未发现该版本健康实例'}
+              </Text>
+            </div>
+          ) : null}
+          {agents.error ? (
+            <Alert type="error" showIcon message={(agents.error as Error).message} />
+          ) : null}
         </div>
         <div className="assistant-history">
           {conversations.isLoading ? (
@@ -250,11 +455,16 @@ export default function Assistant() {
                 key={item.id}
                 type="button"
                 className={`assistant-history-item${item.id === selectedId ? ' active' : ''}`}
-                onClick={() => setSelectedId(item.id)}
+                onClick={() => {
+                  setTargetAgentKey(item.agentKey)
+                  setSelectedId(item.id)
+                }}
               >
                 <span className="title">{item.title}</span>
                 <span className="meta">
-                  <span className="agent">{item.agentKey}</span>
+                  <span className="agent">
+                    {item.agentKey} · v{item.agentVersion}
+                  </span>
                   <span>{formatDateTime(item.updatedAt)}</span>
                 </span>
               </button>
@@ -263,7 +473,7 @@ export default function Assistant() {
             <div className="assistant-empty">
               <RobotOutlined style={{ fontSize: 34, color: '#9bb0c5' }} />
               <strong>开始你的第一次对话</strong>
-              <span>选择智能体后点击“新建”，即可向运维助手提出订单、设备或协议问题。</span>
+              <span>选择目录中的 Agent 后点击“新建”。会话会固定所选 Agent 的发布版本。</span>
             </div>
           )}
         </div>
@@ -271,7 +481,33 @@ export default function Assistant() {
 
       <section className="assistant-main">
         <div className="assistant-panel-head">
-          <h3>{detail.data?.conversation.title ?? 'AI 助手'}</h3>
+          <div className="assistant-heading">
+            <h3>{conversation?.title ?? 'AI 助手'}</h3>
+            {conversation ? (
+              <Space size={[4, 4]} wrap>
+                <Tag className="mono" bordered={false}>
+                  {conversation.agentKey}
+                </Tag>
+                <Tag color="blue" bordered={false}>
+                  v{conversation.agentVersion}
+                </Tag>
+                {currentCatalog ? (
+                  <>
+                    <Tag color={currentCatalog.healthy ? 'green' : 'red'} bordered={false}>
+                      {currentCatalog.healthy ? '健康' : '无健康实例'}
+                    </Tag>
+                    <Text type="secondary">
+                      {currentCatalog.toolCount} 工具 · {currentCatalog.skillCount} 技能
+                    </Text>
+                  </>
+                ) : (
+                  <Tag color="orange" bordered={false}>
+                    固定历史版本
+                  </Tag>
+                )}
+              </Space>
+            ) : null}
+          </div>
           <Space size={6} wrap>
             {currentRun ? <Tag>{STATUS_LABEL[currentRun.status] ?? currentRun.status}</Tag> : null}
             <Button
@@ -284,24 +520,11 @@ export default function Assistant() {
             </Button>
             <Button
               size="small"
-              onClick={() => runAction('pause')}
-              disabled={currentRun?.status !== 'RUNNING'}
-            >
-              暂停
-            </Button>
-            <Button
-              size="small"
-              onClick={() => runAction('resume')}
-              disabled={currentRun?.status !== 'PAUSED'}
-            >
-              继续
-            </Button>
-            <Button
-              size="small"
               danger
               icon={<StopOutlined />}
-              onClick={() => runAction('cancel')}
-              disabled={!currentRun || currentRun.status === 'CANCEL_REQUESTED'}
+              loading={cancelling}
+              onClick={cancelRun}
+              disabled={!canCancel}
             >
               停止
             </Button>
@@ -319,13 +542,21 @@ export default function Assistant() {
               onClose={() => setNotice(null)}
             />
           ) : null}
+          {detail.error ? (
+            <Alert
+              className="assistant-alert"
+              type="error"
+              showIcon
+              message={(detail.error as Error).message}
+            />
+          ) : null}
 
           <div className="assistant-messages" ref={messagesRef}>
             {messages.length === 0 ? (
               <div className="assistant-empty">
                 <RobotOutlined style={{ fontSize: 42, color: '#9bb0c5' }} />
-                <strong>选择或新建会话</strong>
-                <span>助手会基于服务端工具返回的事实与引用作答，缺失数据会明确标注。</span>
+                <strong>{conversation ? '开始新的任务' : '选择或新建会话'}</strong>
+                <span>助手只使用该发布版本已授权的工具与 Skill；缺失事实会明确标注。</span>
               </div>
             ) : (
               messages.map((item) => <MessageBubble key={item.id} message={item} />)
@@ -335,9 +566,9 @@ export default function Assistant() {
             ) : null}
             {progress.length > 0 && busy ? (
               <div className="assistant-progress">
-                {progress.slice(-6).map((step, index) => (
-                  <Tag key={`${step}-${index}`} color="blue">
-                    {step}
+                {progress.slice(-8).map((step) => (
+                  <Tag key={step.id} color={step.color}>
+                    {step.text}
                   </Tag>
                 ))}
               </div>
@@ -349,7 +580,7 @@ export default function Assistant() {
               <Input.TextArea
                 value={input}
                 onChange={(event) => setInput(event.target.value)}
-                placeholder="例如：订单 X 为什么停止？结束 SOC 多少？协议如何定义该停止原因？（Enter 发送，Shift + Enter 换行）"
+                placeholder="例如：结合协议与设备事实，分析这次离线或停止原因。（Enter 发送，Shift + Enter 换行）"
                 autoSize={{ minRows: 2, maxRows: 5 }}
                 onKeyDown={(event) => {
                   if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -363,17 +594,15 @@ export default function Assistant() {
                 type="primary"
                 icon={<SendOutlined />}
                 loading={submitting}
+                disabled={busy || !input.trim() || !canSubmit}
                 onClick={send}
               >
                 发送
               </Button>
             </div>
             <div className="assistant-composer-footer">
-              <Checkbox checked={priority} onChange={(event) => setPriority(event.target.checked)}>
-                优先处理（请求暂停当前任务）
-              </Checkbox>
               <Text type="secondary" style={{ fontSize: 12 }}>
-                Enter 发送 · Shift + Enter 换行
+                Enter 发送 · Shift + Enter 换行 · 切换 Agent 需新建会话
               </Text>
             </div>
           </div>
@@ -393,6 +622,32 @@ function streamPreview(conversationId: string | null, text: string): AiMessage {
     status: 'STREAMING',
     seq: 0,
     createdAt: new Date().toISOString()
+  }
+}
+
+function eventToolLabel(data: Record<string, unknown>): string {
+  const alias = typeof data.toolAlias === 'string' ? data.toolAlias : ''
+  const original = typeof data.originalName === 'string' ? data.originalName : ''
+  if (alias && original && original !== alias) return `${alias} (${original})`
+  if (alias) return alias
+  return String(data.tool ?? data.toolName ?? data.name ?? '')
+}
+
+function readLastAgent(): string | null {
+  if (typeof window === 'undefined') return null
+  try {
+    return window.localStorage.getItem(LAST_AGENT_STORAGE_KEY)
+  } catch {
+    return null
+  }
+}
+
+function rememberAgent(agentKey: string) {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(LAST_AGENT_STORAGE_KEY, agentKey)
+  } catch {
+    /* 本地偏好不可用时仍允许正常选择 Agent。 */
   }
 }
 
@@ -435,7 +690,9 @@ function MessageBubble({ message, streaming }: { message: AiMessage; streaming?:
                 <li key={`${citation.documentId}-${index}`}>
                   {citation.sourceDocumentId && /^\d+$/.test(citation.sourceDocumentId) ? (
                     <a
-                      href={`/api/ops/protocol-documents/${citation.sourceDocumentId}/view${citation.pageNo ? `#page=${citation.pageNo}` : ''}`}
+                      href={`/api/ops/protocol-documents/${citation.sourceDocumentId}/view${
+                        citation.pageNo ? `#page=${citation.pageNo}` : ''
+                      }`}
                       target="_blank"
                       rel="noreferrer"
                     >

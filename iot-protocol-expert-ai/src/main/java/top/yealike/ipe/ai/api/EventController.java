@@ -25,7 +25,7 @@ import top.yealike.ipe.ai.run.RunEventService;
 
 /** 按持久化游标读取已提交事件，重放和实时事件采用相同顺序，支持跨实例。 */
 @RestController
-@RequestMapping("/api/ai")
+@RequestMapping("/api/ai/v1")
 public class EventController {
     private static final int BATCH = 200;
     private final RunEventService events;
@@ -57,6 +57,7 @@ public class EventController {
     public SseEmitter stream(
             @PathVariable UUID id,
             @RequestParam(defaultValue = "0") long after,
+            @RequestParam(required = false) Long afterCursor,
             jakarta.servlet.http.HttpServletRequest request) {
         String cookie = request.getHeader("Cookie");
         var identity = CurrentUser.require();
@@ -75,7 +76,7 @@ public class EventController {
         emitter.onCompletion(cleanup);
         emitter.onTimeout(cleanup);
         emitter.onError(error -> cleanup.run());
-        long[] cursor = {Math.max(0, after)};
+        long[] cursor = {Math.max(0, afterCursor == null ? after : afterCursor)};
         int[] ticks = {0};
         boolean[] ready = {false};
         try {

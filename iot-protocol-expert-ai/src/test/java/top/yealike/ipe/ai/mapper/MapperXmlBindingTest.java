@@ -30,7 +30,6 @@ class MapperXmlBindingTest {
             ConversationMapper.class,
             RunMapper.class,
             KnowledgeMapper.class,
-            AgentDefinitionMapper.class,
             PermissionPolicyMapper.class,
             AuditLogMapper.class);
 
@@ -70,7 +69,7 @@ class MapperXmlBindingTest {
     private static Object sample(Class<?> type, boolean nullable) {
         if (type == int.class) return 10;
         if (type == long.class) return 1L;
-        if (type == List.class) return List.of("heartbeat", "心跳");
+        if (type == List.class) return List.of();
         if (nullable) return null;
         if (type == UUID.class) return ID;
         if (type == Instant.class) return NOW;
@@ -94,7 +93,7 @@ class MapperXmlBindingTest {
         var statement = configuration.getMappedStatement(RunMapper.class.getName() + ".insertRun");
         String sql = statement.getBoundSql(Map.of()).getSql().replaceAll("\\s+", " ");
         assertTrue(sql.contains("'QUEUED'"));
-        assertEquals(16, statement.getBoundSql(Map.of()).getParameterMappings().size());
+        assertEquals(18, statement.getBoundSql(Map.of()).getParameterMappings().size());
         assertTrue(sql.contains("created_at, updated_at"));
         assertTrue(sql.matches(".*\\?\\s*,\\s*\\?\\s*\\)\\s*"));
     }
@@ -123,7 +122,6 @@ class MapperXmlBindingTest {
                 "RunMapper.listToolCalls",
                 "KnowledgeMapper.listDocuments",
                 "KnowledgeMapper.candidates",
-                "AgentDefinitionMapper.listPublished",
                 "PermissionPolicyMapper.selectEnabled")) {
             for (boolean nullable : List.of(false, true)) {
                 Object row = materialize(statement, nullable);

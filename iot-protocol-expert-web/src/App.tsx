@@ -19,6 +19,12 @@ import Simulator from './pages/Simulator'
 import Assistant from './pages/Assistant'
 import AiKnowledge from './pages/AiKnowledge'
 import Users from './pages/Users'
+import AiAdmin from './pages/ai-admin/AiAdmin'
+import ModelsPage from './pages/ai-admin/ModelsPage'
+import McpsPage from './pages/ai-admin/McpsPage'
+import SkillsPage from './pages/ai-admin/SkillsPage'
+import AgentsPage from './pages/ai-admin/AgentsPage'
+import PublicationsPage from './pages/ai-admin/PublicationsPage'
 
 /**
  * 会话守卫。
@@ -59,7 +65,12 @@ export default function App() {
         }
       >
         <Routes>
-          <Route path="/" element={<Navigate to={user.allStations === false ? "/assistant" : "/overview"} replace />} />
+          <Route
+            path="/"
+            element={
+              <Navigate to={user.allStations === false ? '/assistant' : '/overview'} replace />
+            }
+          />
           <Route path="/overview" element={<Overview />} />
           <Route path="/devices" element={<Devices />} />
           <Route path="/devices/:id" element={<DeviceDetail />} />
@@ -73,6 +84,15 @@ export default function App() {
           <Route path="/assistant" element={<Assistant />} />
           <Route path="/users" element={<Users />} />
           <Route path="/ai-knowledge" element={<AiKnowledge user={user} />} />
+          <Route path="/ai-admin" element={<AiAdmin user={user} />}>
+            <Route index element={<Navigate to="models" replace />} />
+            <Route path="models" element={<ModelsPage />} />
+            <Route path="mcps" element={<McpsPage />} />
+            <Route path="skills" element={<SkillsPage />} />
+            <Route path="agents" element={<AgentsPage />} />
+            <Route path="publications" element={<PublicationsPage />} />
+            <Route path="publications/:publicationId" element={<PublicationsPage />} />
+          </Route>
           <Route path="*" element={<NotFound path={location.pathname} />} />
         </Routes>
       </Suspense>

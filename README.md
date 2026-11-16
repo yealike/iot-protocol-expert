@@ -8,12 +8,13 @@
 | `iot-protocol-expert-protocol` | 连接、编解码、协议适配和上下行转发，不持久化业务数据 | HTTP 19080；云快充 TCP 8768；OCPP WS 8769 |
 | `iot-protocol-expert-simulator` | 从运营平台选择设备，按绑定协议模拟上报，支持多桩并发 | HTTP 19081 |
 | `iot-protocol-expert-ai` | AI 助手与 Agent 能力平台：会话、Run 调度、受控工具、协议知识检索 | HTTP 19083 |
+| `iot-protocol-expert-agent-runtime` | 在线 Agent 执行进程：发布准备、MCP/Skill 装配、模型调用和事件回写 | HTTP 19084 |
 | `iot-protocol-expert-codec` | 协议通道与模拟器共用的纯编解码库 | 无 |
 | `iot-protocol-expert-web` | 运营平台独立前端 | 开发端口 5173 |
 
 协议通道通过 `ProtocolServer` SPI 管理云快充 1.6 和 OCPP 1.6J。设备数据与账单通过内部接口提交运营平台；业务数据由运营平台保存。
 
-AI 服务复用运营平台的数据库实例（独立 `ipe_ai` schema），身份校验与业务数据读取统一通过 Higress MCP。运维与 AI 都使用 Spring Cloud Alibaba 官方 starter 注册到 Nacos，AI 再从 Nacos MCP Registry 订阅 `ipe-ops-rest` 得到入口与工具清单（`IPE_NACOS_DISCOVERY_ENABLED` 控制本地是否连接）。模型默认关闭，关闭时执行确定性工具降级。实现范围、接口与限制见 `docs/ai-assistant.md`。
+AI 服务复用运营平台的数据库实例（独立 `ipe_ai` schema）。在线 Agent 平台拆为 Control（19083）和 Runtime（19084）：Control 保存模型、凭据、MCP、Skill、Agent、发布、会话与 Run；Runtime 不访问数据库，只通过签名内部接口拉取 manifest、执行模型/MCP 并回写事件。Control 通过 Nacos 发现 Runtime；Control 注册 MCP/Skill 组件，Runtime 注册基础服务与精确 Agent 版本，再经 Higress MCP 访问 OPS；`IPE_AI_REGISTRY_ENABLED` 控制在线 Agent 平台注册，`IPE_NACOS_DISCOVERY_ENABLED` 控制 Spring Cloud 服务发现。实现范围、接口、配置和排障见 `docs/ai-assistant.md`，验收状态见 `docs/online-agent/implementation-log.md`。
 
 ## 本地运行
 
@@ -26,9 +27,21 @@ $env:PATH="$env:JAVA_HOME\bin;$env:PATH"
 .\scripts\start-local.ps1 -DeviceId 1
 ```
 
-前端在 `iot-protocol-expert-web` 下执行 `npm ci`、`npm run dev`；生产构建使用 `npm run build`。本地数据库、服务地址和令牌在 `.env-local` 中配置；启动参数可覆盖相应配置。
+前端在 `iot-protocol-expert-web` 下执行 `npm ci`、`npm run dev`；生产构建使用 `npm run build`。本地数据库、服务地址和令牌在 `.env.local` 中配置；启动参数可覆盖相应配置。
 
-AI 服务应用账号需要创建 `ipe_ai` schema 的权限；可用 `IPE_AI_DB_*` 单独指定连接。启用大模型时设置 `IPE_MODEL_ENABLED=true` 与 `IPE_MODEL_BASE_URL`、`IPE_MODEL_API_KEY`、`IPE_MODEL_NAME`（OpenAI 兼容），密钥只放本机环境变量。首次使用协议问答前，以 ADMIN 身份调用 `POST /api/ai/knowledge/index` 建立索引。
+AI 服务应用账号需要创建 `ipe_ai` schema 的权限；可用 `IPE_AI_DB_*` 单独指定连接。启用大模型时设置 `IPE_MODEL_ENABLED=true` 与 `IPE_MODEL_BASE_URL`、`IPE_MODEL_API_KEY`、`IPE_MODEL_NAME`（OpenAI 兼容），密钥只放本机环境变量。首次使用协议问答前，以 ADMIN 身份调用 `POST /api/ai/v1/knowledge/index` 建立索引。
+
+### 在线 Agent 与 Runtime
+
+需要 Nacos/Higress 时在 `.env.local` 显式设置 `IPE_AI_REGISTRY_ENABLED=true`、`IPE_AI_MCP_REGISTRY_ENABLED=true`，并保证两个进程使用同一个 `IPE_INTERNAL_SERVICE_KEY` 和 `IPE_CREDENTIAL_MASTER_KEY`；同时显式设置 `IPE_OPS_BASE_URL=http://127.0.0.1:19082`。OPS 还必须启用 `IPE_NACOS_DISCOVERY_ENABLED=true`、设置可达的 `IPE_OPS_ADVERTISE_IP` 并注册 `iot-protocol-expert-ops`，否则 Higress 的 MCP `tools/call` 会返回 503。Control 通过 Nacos 发现 Runtime，默认禁止直连回退（仅 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true` 时用于本地调试）；Control、Runtime、Agent 精确版本以及 MCP/Skill 组件均注册 Nacos，`ai_registry_projection` 只保存数据库投影。首次启动或重建后执行：
+
+```powershell
+.\scripts\seed-ai.ps1
+```
+
+脚本按 Runtime → Control 顺序启动，等待健康检查，并以 `IPE_AI_BOOTSTRAP_ENABLED=true` 触发 Control 的模型/MCP/Skill/Agent 引导；它不会启动 OPS。`start-local.ps1` 会启动 OPS、AI 等进程但不启动 Runtime；其 AI 进程记录在 `run/ai.pid`，seed 默认拒绝重复启动，使用 `.\scripts\seed-ai.ps1 -Restart` 可在校验 PID 与 jar 后停止并接管。清理 `ipe_ai` 在线 Agent 数据时执行 `.\scripts\reset-ai.ps1 -Confirm -StopServices`（或先自行停止两个进程后使用 `-Confirm`）；Flyway、权限、知识库、审计和旧版 Agent 历史会保留。
+
+健康检查为 `GET http://127.0.0.1:19083/actuator/health` 和 `GET http://127.0.0.1:19084/actuator/health/readiness`；配置、发布、内部接口和故障排查见 [AI 助手与在线 Agent 平台](docs/ai-assistant.md)。
 
 首次运行将在独立 `ipe_ops` schema 初始化演示数据；不会清理已有 `public` 数据。现有 `public` 数据不会自动迁移。订单回放仅包含新接入的采样，显示的接收时间与设备时间分别标识。
 
