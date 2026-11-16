@@ -62,7 +62,12 @@ public class ProtocolTools {
                 item.put("score", hit.score());
                 items.add(item);
                 session.addCitation(new Citation(
-                        hit.documentId(), hit.title(), hit.protocolVersion(), hit.sectionPath(), hit.pageNo(), hit.sourceDocumentId()));
+                        hit.documentId(),
+                        hit.title(),
+                        hit.protocolVersion(),
+                        hit.sectionPath(),
+                        hit.pageNo(),
+                        hit.sourceDocumentId()));
             }
             List<String> warnings = new ArrayList<>();
             if (items.isEmpty()) {

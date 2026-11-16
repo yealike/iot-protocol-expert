@@ -4,9 +4,12 @@ import jakarta.annotation.PreDestroy;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.BeanUtils;
@@ -19,7 +22,14 @@ import top.yealike.ipe.simulator.config.SimulatorProperties;
 @Component
 public class ChargerFleet {
     private static final Logger log = LoggerFactory.getLogger(ChargerFleet.class);
-    private final ExecutorService workers = Executors.newFixedThreadPool(8);
+    private final ExecutorService workers = new ThreadPoolExecutor(
+            8,
+            8,
+            0L,
+            TimeUnit.MILLISECONDS,
+            new ArrayBlockingQueue<>(256),
+            Thread.ofPlatform().name("simulator-fleet-", 0).factory(),
+            new ThreadPoolExecutor.AbortPolicy());
     private final Set<Long> pending = ConcurrentHashMap.newKeySet();
     private final Map<Long, SimulatorRuntime> devices = new ConcurrentHashMap<>();
     private final SimulatorProperties defaults;
@@ -104,15 +114,21 @@ public class ChargerFleet {
     public void tick() {
         devices.forEach((id, runtime) -> {
             if (!pending.add(id)) return;
-            workers.execute(() -> {
-                try {
-                    if (devices.get(id) == runtime) runtime.tick();
-                } catch (RuntimeException e) {
-                    log.warn("设备 {} 模拟周期失败", id, e);
-                } finally {
-                    pending.remove(id);
-                }
-            });
+            try {
+                workers.execute(() -> {
+                    try {
+                        if (devices.get(id) == runtime) runtime.tick();
+                    } catch (RuntimeException e) {
+                        log.warn("设备 {} 模拟周期失败", id, e);
+                    } finally {
+                        pending.remove(id);
+                    }
+                });
+            } catch (RejectedExecutionException exception) {
+                // 下轮周期重试，拒绝时也必须释放 pending 标记。
+                pending.remove(id);
+                log.debug("模拟线程池繁忙，延后设备 {} 的周期", id);
+            }
         });
     }
 

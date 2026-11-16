@@ -74,25 +74,25 @@
     </insert>
 
     <select id="find" resultMap="RunMap">
-        select * from ai_run where id = #{id}
+        select id, conversation_id, user_message_id, actor, actor_roles, actor_auth_version, question, agent_key, agent_version, model_key, status, priority, queue_seq, idempotency_key, policy_version, trace_context, lease_owner, lease_until, budget_json, usage_json, error_code, error_message, started_at, finished_at, created_at, updated_at from ai_run where id = #{id}
     </select>
 
     <select id="findByIdempotency" resultMap="RunMap">
-        select * from ai_run where conversation_id = #{conversationId} and idempotency_key = #{idempotencyKey}
+        select id, conversation_id, user_message_id, actor, actor_roles, actor_auth_version, question, agent_key, agent_version, model_key, status, priority, queue_seq, idempotency_key, policy_version, trace_context, lease_owner, lease_until, budget_json, usage_json, error_code, error_message, started_at, finished_at, created_at, updated_at from ai_run where conversation_id = #{conversationId} and idempotency_key = #{idempotencyKey}
     </select>
 
     <select id="latest" resultMap="RunMap">
-        select * from ai_run where conversation_id = #{conversationId} order by created_at desc limit 1
+        select id, conversation_id, user_message_id, actor, actor_roles, actor_auth_version, question, agent_key, agent_version, model_key, status, priority, queue_seq, idempotency_key, policy_version, trace_context, lease_owner, lease_until, budget_json, usage_json, error_code, error_message, started_at, finished_at, created_at, updated_at from ai_run where conversation_id = #{conversationId} order by created_at desc limit 1
     </select>
 
     <select id="current" resultMap="RunMap">
-        select * from ai_run where conversation_id = #{conversationId} and status in ('QUEUED', 'RUNNING',
+        select id, conversation_id, user_message_id, actor, actor_roles, actor_auth_version, question, agent_key, agent_version, model_key, status, priority, queue_seq, idempotency_key, policy_version, trace_context, lease_owner, lease_until, budget_json, usage_json, error_code, error_message, started_at, finished_at, created_at, updated_at from ai_run where conversation_id = #{conversationId} and status in ('QUEUED', 'RUNNING',
             'PAUSE_REQUESTED', 'PAUSED', 'CANCEL_REQUESTED') order by case when status in ('RUNNING', 'PAUSE_REQUESTED',
             'CANCEL_REQUESTED') then 0 when status = 'PAUSED' then 1 else 2 end, priority desc, queue_seq asc limit 1
     </select>
 
     <select id="listByConversation" resultMap="RunMap">
-        select * from ai_run where conversation_id = #{conversationId} order by created_at desc limit #{limit}
+        select id, conversation_id, user_message_id, actor, actor_roles, actor_auth_version, question, agent_key, agent_version, model_key, status, priority, queue_seq, idempotency_key, policy_version, trace_context, lease_owner, lease_until, budget_json, usage_json, error_code, error_message, started_at, finished_at, created_at, updated_at from ai_run where conversation_id = #{conversationId} order by created_at desc limit #{limit}
     </select>
 
     <select id="selectNextQueued" resultType="java.util.UUID">
@@ -187,7 +187,7 @@
     </insert>
 
     <select id="eventsAfter" resultMap="RunEventMap">
-        select * from ai_run_event where conversation_id = #{conversationId} and cursor > #{cursor} order by cursor asc
+        select cursor, conversation_id, run_id, type, payload, created_at from ai_run_event where conversation_id = #{conversationId} and cursor > #{cursor} order by cursor asc
             limit #{limit}
     </select>
 
@@ -208,10 +208,10 @@
     </update>
 
     <select id="listToolCalls" resultMap="ToolCallMap">
-        select * from ai_tool_call where run_id = #{runId} order by created_at asc
+        select id, run_id, conversation_id, tool_name, status, decision, deny_reason, args_summary, result_summary, duration_ms, trace_id, created_at, finished_at from ai_tool_call where run_id = #{runId} order by created_at asc
     </select>
 
     <select id="eventByCursor" resultMap="RunEventMap">
-        select * from ai_run_event where conversation_id = #{conversationId} and cursor = #{cursor}
+        select cursor, conversation_id, run_id, type, payload, created_at from ai_run_event where conversation_id = #{conversationId} and cursor = #{cursor}
     </select>
 </mapper>

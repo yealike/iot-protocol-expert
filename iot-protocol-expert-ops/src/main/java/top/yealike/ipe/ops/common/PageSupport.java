@@ -20,7 +20,11 @@ public final class PageSupport {
             Integer page, Integer size, String sort, Set<String> allowedSortFields, String defaultSort, int maxSize) {
         int pageIndex = page == null || page < 0 ? 0 : page;
         int pageSize = size == null || size <= 0 ? DEFAULT_SIZE : Math.min(size, maxSize);
-        return new PageQuery(pageIndex, pageSize, pageIndex * pageSize, orderBy(sort, allowedSortFields, defaultSort));
+        long offset = (long) pageIndex * pageSize;
+        if (offset > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("分页偏移量过大");
+        }
+        return new PageQuery(pageIndex, pageSize, (int) offset, orderBy(sort, allowedSortFields, defaultSort));
     }
 
     public record PageQuery(int page, int size, int offset, String orderBy) {}

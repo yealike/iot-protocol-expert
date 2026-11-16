@@ -85,8 +85,7 @@ public class McpEndpointResolver implements SmartInitializingSingleton {
     /** 目录订阅失败、服务尚未注册或目录校验未通过时定期重试；订阅有效后由 Nacos 推送变更。 */
     @Scheduled(fixedDelay = 60_000L, initialDelay = 60_000L)
     public void reconcile() {
-        if (ai.mcp().registry().usable()
-                && (snapshot.source().equals("url") || snapshot.problem() != null)) {
+        if (ai.mcp().registry().usable() && (snapshot.source().equals("url") || snapshot.problem() != null)) {
             subscribe();
         }
     }
@@ -103,9 +102,7 @@ public class McpEndpointResolver implements SmartInitializingSingleton {
         synchronized (subscriptionMonitor) {
             if (subscribed) return;
             if (serverAddr.isBlank()) {
-                log.warn(
-                        "Nacos MCP 目录已启用，但缺少 spring.cloud.nacos.server-addr，暂用静态入口 {}",
-                        snapshot.endpoint());
+                log.warn("Nacos MCP 目录已启用，但缺少 spring.cloud.nacos.server-addr，暂用静态入口 {}", snapshot.endpoint());
                 return;
             }
             String serverName = ai.mcp().registry().serverName();
@@ -179,7 +176,7 @@ public class McpEndpointResolver implements SmartInitializingSingleton {
             service.shutdown();
         } catch (NacosException ex) {
             log.debug("关闭 Nacos AI 客户端失败：{}", ex.getErrMsg());
-    }
+        }
     }
 
     private URI endpoint(McpServerDetailInfo detail) {

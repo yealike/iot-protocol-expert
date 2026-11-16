@@ -14,8 +14,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -74,7 +74,10 @@ public class ModbusCollector {
         Config config = json.readValue(Files.readString(Path.of(configPath)), Config.class);
         if (config.devices() == null || config.devices().isEmpty()) throw new IllegalArgumentException("未配置 Modbus 设备");
         for (Device device : config.devices()) validate(device);
-        executor = Executors.newScheduledThreadPool(Math.min(config.devices().size(), 16));
+        // 每个配置设备仅注册一个周期任务，任务数量受配置设备数约束。
+        executor = new ScheduledThreadPoolExecutor(
+                Math.min(config.devices().size(), 16),
+                Thread.ofPlatform().name("modbus-poll-", 0).factory());
         for (Device device : config.devices()) {
             executor.scheduleWithFixedDelay(
                     () -> {

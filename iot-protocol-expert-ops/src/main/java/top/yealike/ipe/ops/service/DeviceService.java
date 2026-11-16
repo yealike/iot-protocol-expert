@@ -72,13 +72,13 @@ public class DeviceService {
 
     /** 按平台编码模糊匹配（排障入口用）。 */
     public List<DeviceInstance> searchByCode(String code) {
-        String key = code == null ? "" : code.trim().toLowerCase();
+        String key = code == null ? "" : code.trim().toLowerCase(java.util.Locale.ROOT);
         if (key.isEmpty()) {
             return List.of();
         }
         return devices.findAll().stream()
                 .filter(device -> device.deviceCode != null
-                        && device.deviceCode.toLowerCase().contains(key))
+                        && device.deviceCode.toLowerCase(java.util.Locale.ROOT).contains(key))
                 .toList();
     }
 

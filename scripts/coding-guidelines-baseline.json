@@ -1,0 +1,6 @@
+{
+  "iot-protocol-expert-ops/src/main/resources/db/migration/V1__init.sql": "82f59326ba6bd37e03f59887b6fe04e024ea21d3096069155eb256951ae3ef89",
+  "iot-protocol-expert-ops/src/main/resources/db/migration/V8__protocol_document_identity.sql": "2e41705900d06a29d38fad8929849eef5975afedd1afce10b150ffe32545becc",
+  "iot-protocol-expert-ops/src/main/resources/db/migration/V9__identity_authorization.sql": "b186c1eba3ce3accd147aac5ead9447a54f2ff0975de37f72553cb36563d9b88",
+  "iot-protocol-expert-simulator/src/main/resources/db/simulator-migration/V1__simulator_storage.sql": "20d77426df4b692b4a1e1c1eb4d3efb414ae11319d25861ea16ac5e70369c387"
+}

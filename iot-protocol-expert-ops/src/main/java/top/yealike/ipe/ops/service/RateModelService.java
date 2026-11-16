@@ -21,14 +21,14 @@ public class RateModelService {
         this.models = models;
     }
 
+    @Transactional
     public RateModel active() {
         return models.findTopByActiveTrueOrderByUpdatedAtDesc()
                 .or(() -> models.findByModelNo("0001"))
                 .orElseGet(this::createDefault);
     }
 
-    @Transactional
-    protected RateModel createDefault() {
+    private RateModel createDefault() {
         RateModel model = new RateModel();
         model.modelNo = "0001";
         model.sharpEnergy = new BigDecimal("1.20000");
@@ -102,6 +102,31 @@ public class RateModelService {
         }
         if (input.segments() == null || input.segments().size() != 48) {
             throw new IllegalArgumentException("时段费率必须为48个半小时");
+        }
+        if (input.segments().stream().anyMatch(period -> period == null || period < 0 || period > 3)) {
+            throw new IllegalArgumentException("费率时段必须为 0 至 3");
+        }
+        if (input.lossRatio() < 0 || input.lossRatio() > 100) {
+            throw new IllegalArgumentException("计损比例必须为 0 至 100");
+        }
+        BigDecimal[] prices = {
+            input.sharpEnergy(),
+            input.sharpService(),
+            input.peakEnergy(),
+            input.peakService(),
+            input.flatEnergy(),
+            input.flatService(),
+            input.valleyEnergy(),
+            input.valleyService()
+        };
+        for (BigDecimal price : prices) {
+            // 云快充以十万分之一元写入无符号 32 位字段。
+            if (price == null
+                    || price.signum() < 0
+                    || price.compareTo(new BigDecimal("42949.67295")) > 0
+                    || price.scale() > 5) {
+                throw new IllegalArgumentException("费率须为非负数，最多五位小数且不能超过协议上限");
+            }
         }
         RateModel model = models.findByModelNo(input.modelNo()).orElseGet(RateModel::new);
         model.modelNo = input.modelNo();

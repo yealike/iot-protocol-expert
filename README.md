@@ -43,3 +43,7 @@ AI 服务应用账号需要创建 `ipe_ai` schema 的权限；可用 `IPE_AI_DB_
 首次恢复每台设备时，若数据库还没有对应快照，会只读导入 `data/simulator-state-<设备ID>.properties`；未选设备的配置模式使用 `data/simulator-state.properties`，可用 `IPE_SIMULATOR_LEGACY_STATE_FILE` 指定旧文件基准路径。旧文件保留备查，不再写入；已有数据库快照后不重复导入。重启时完成会话可恢复显示，未完成会话按最后检查点以断电原因结算。数据库集成测试需显式提供 `IPE_SIMULATOR_TEST_DB_URL/USER/PASSWORD`，仅在模拟器 schema 内创建与清理随机测试记录。
 
 具体协议能力和已知限制见 `docs/ocpp16.md`、`docs/protocol-coverage.md` 和 `docs/protocol-decisions.md`。
+
+## 开发规范
+
+按阿里巴巴 Java 开发手册适配审查，范围、修复记录和运行方式见 [开发规范](docs/coding-guidelines.md)。提交前运行 `mvn -Pcoding-guidelines verify`（JDK 21、Python 3）。

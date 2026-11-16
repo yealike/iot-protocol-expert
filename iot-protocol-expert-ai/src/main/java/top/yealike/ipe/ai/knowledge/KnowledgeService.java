@@ -93,18 +93,19 @@ public class KnowledgeService {
                 failed++;
                 log.warn("protocol document ingestion failed: id={}", sourceId, exception);
                 var old = repository.findDocument(SOURCE, sourceId);
-                if (old.isEmpty() || !"PUBLISHED".equals(old.get().status())) repository.upsertDocument(
-                        UUID.randomUUID(),
-                        SOURCE,
-                        sourceId,
-                        str(document.get("protocolCode")),
-                        str(document.get("protocolVersion")),
-                        title,
-                        "",
-                        "FAILED",
-                        0,
-                        INDEX_VERSION,
-                        truncate(exception.getMessage()));
+                if (old.isEmpty() || !"PUBLISHED".equals(old.get().status()))
+                    repository.upsertDocument(
+                            UUID.randomUUID(),
+                            SOURCE,
+                            sourceId,
+                            str(document.get("protocolCode")),
+                            str(document.get("protocolVersion")),
+                            title,
+                            "",
+                            "FAILED",
+                            0,
+                            INDEX_VERSION,
+                            truncate(exception.getMessage()));
                 items.add(new IngestResult(sourceId, title, "FAILED", 0, exception.getMessage(), false));
             }
         }

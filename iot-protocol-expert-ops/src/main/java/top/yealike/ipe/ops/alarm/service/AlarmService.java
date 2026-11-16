@@ -261,12 +261,12 @@ public class AlarmService {
             Integer page,
             Integer size) {
         String stateFilter =
-                state == null || state.isBlank() ? null : state.trim().toUpperCase();
+                state == null || state.isBlank() ? null : state.trim().toUpperCase(java.util.Locale.ROOT);
         String levelFilter =
-                level == null || level.isBlank() ? null : level.trim().toUpperCase();
+                level == null || level.isBlank() ? null : level.trim().toUpperCase(java.util.Locale.ROOT);
         String typeFilter = deviceType == null || deviceType.isBlank()
                 ? null
-                : deviceType.trim().toUpperCase();
+                : deviceType.trim().toUpperCase(java.util.Locale.ROOT);
         String keywordFilter = keyword == null || keyword.isBlank() ? null : keyword.trim();
         PageSupport.PageQuery paging =
                 PageSupport.pageable(page, size, "-lastAt", Set.of("lastAt", "firstAt", "id", "level"));

@@ -564,6 +564,12 @@ public class DeviceInstanceService {
         if (!DeviceInstance.STATE_NOT_ACTIVE.equals(device.state)) {
             throw new IllegalArgumentException("只有未激活的设备可以删除，请先注销");
         }
+        if (devices.hasDeletionBlockers(id)) {
+            throw new IllegalArgumentException("设备存在子设备、业务记录或告警规则，不能删除");
+        }
+        devices.deleteTags(id);
+        devices.deleteChannels(id);
+        devices.deleteLatestProperties(id);
         devices.delete(device);
     }
 

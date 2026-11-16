@@ -311,7 +311,16 @@ public class RunExecutor {
             if (!runs.markCompleted(run.id(), usage)) return false;
             UUID messageId = UUID.randomUUID();
             List<Citation> citations = session.citations();
-            conversations.insertMessage(messageId, run.conversationId(), run.id(), "assistant", answer, citations, "FINAL", seq, Instant.now());
+            conversations.insertMessage(
+                    messageId,
+                    run.conversationId(),
+                    run.id(),
+                    "assistant",
+                    answer,
+                    citations,
+                    "FINAL",
+                    seq,
+                    Instant.now());
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("messageId", messageId.toString());
             payload.put("seq", seq);
@@ -381,8 +390,8 @@ public class RunExecutor {
     }
 
     private List<Msg> contextMessages(Run run) {
-        List<Message> history =
-                conversations.listMessagesThrough(run.conversationId(), run.userMessageId(), properties.run().maxContextMessages());
+        List<Message> history = conversations.listMessagesThrough(
+                run.conversationId(), run.userMessageId(), properties.run().maxContextMessages());
         List<Msg> messages = new ArrayList<>();
         for (Message message : history) {
             if ("user".equals(message.role())) {

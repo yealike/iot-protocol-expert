@@ -71,8 +71,10 @@ class AgentScopeTelemetryTest {
         assertThat(agentSpan.getAttributes().get(AttributeKey.stringKey("gen_ai.operation.name")))
                 .isEqualTo("invoke_agent");
         assertThat(agentSpan.getTraceId()).isEqualTo(runSpan.getSpanContext().getTraceId());
-        assertThat(agentSpan.getParentSpanId()).isEqualTo(runSpan.getSpanContext().getSpanId());
-        assertThat(chatSpan.getParentSpanId()).isEqualTo(agentSpan.getSpanContext().getSpanId());
+        assertThat(agentSpan.getParentSpanId())
+                .isEqualTo(runSpan.getSpanContext().getSpanId());
+        assertThat(chatSpan.getParentSpanId())
+                .isEqualTo(agentSpan.getSpanContext().getSpanId());
         assertThat(chatSpan.getAttributes().get(AttributeKey.longKey("gen_ai.usage.input_tokens")))
                 .isEqualTo(11L);
     }
@@ -117,11 +119,11 @@ class AgentScopeTelemetryTest {
 
         new FakeChatModel()
                 .stream(
-                        List.of(new UserMessage("订单 202411130001 为什么停止？")),
-                        List.of(),
-                        GenerateOptions.builder().build())
-                .collectList()
-                .block();
+                                List.of(new UserMessage("订单 202411130001 为什么停止？")),
+                                List.of(),
+                                GenerateOptions.builder().build())
+                        .collectList()
+                        .block();
 
         var span = exporter.getFinishedSpanItems().stream()
                 .filter(item -> item.getName().equals("chat fake-model"))

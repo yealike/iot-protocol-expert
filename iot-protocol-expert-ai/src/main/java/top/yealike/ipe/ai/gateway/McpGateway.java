@@ -37,7 +37,10 @@ public class McpGateway {
     private final SecureRandom random = new SecureRandom();
 
     public McpGateway(
-            AiProperties properties, McpEndpointResolver endpoints, RestClient.Builder builder, AiObservability observability) {
+            AiProperties properties,
+            McpEndpointResolver endpoints,
+            RestClient.Builder builder,
+            AiObservability observability) {
         http = builder.build();
         this.endpoints = endpoints;
         token = properties.mcp().token();
@@ -154,14 +157,16 @@ public class McpGateway {
             URI endpoint, String method, Map<String, Object> params, Map<String, String> headers) {
         return observability.observeSupplier("mcp " + method, () -> {
             String id = UUID.randomUUID().toString();
-            String body = post(endpoint, Map.of("jsonrpc", "2.0", "id", id, "method", method, "params", params), headers)
+            String body = post(
+                            endpoint, Map.of("jsonrpc", "2.0", "id", id, "method", method, "params", params), headers)
                     .retrieve()
                     .body(String.class);
             var reply = JsonSupport.readMap(body);
             if (reply.containsKey("error")) {
                 Object error = reply.get("error");
-                int code = error instanceof Map<?, ?> map
-                        && map.get("code") instanceof Number number ? number.intValue() : -1;
+                int code = error instanceof Map<?, ?> map && map.get("code") instanceof Number number
+                        ? number.intValue()
+                        : -1;
                 if (code == MCP_SESSION_LOST_ERROR || code == HTTP_SESSION_LOST_ERROR) {
                     throw new McpSessionLostException();
                 }

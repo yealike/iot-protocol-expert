@@ -69,8 +69,7 @@ public class RunService {
             throw AiExceptions.badRequest("幂等键过长");
         }
         var existing = observability.observeSupplier(
-                "ai run idempotency lookup",
-                () -> runs.findByIdempotency(conversationId, key));
+                "ai run idempotency lookup", () -> runs.findByIdempotency(conversationId, key));
         if (existing.isPresent()) {
             return existing.get();
         }
@@ -80,8 +79,7 @@ public class RunService {
         long seq = conversations.nextMessageSeq(conversationId);
         // 分配消息序号时持有会话行锁，重试请求须在锁内再次检查幂等键。
         existing = observability.observeSupplier(
-                "ai run idempotency lookup",
-                () -> runs.findByIdempotency(conversationId, key));
+                "ai run idempotency lookup", () -> runs.findByIdempotency(conversationId, key));
         if (existing.isPresent()) return existing.get();
         Instant now = Instant.now();
         conversations.insertMessage(messageId, conversationId, runId, "user", question, List.of(), "FINAL", seq, now);

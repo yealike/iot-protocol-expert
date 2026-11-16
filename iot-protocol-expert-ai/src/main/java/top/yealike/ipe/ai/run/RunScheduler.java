@@ -4,9 +4,12 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import java.lang.management.ManagementFactory;
 import java.util.UUID;
+import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -70,7 +73,14 @@ public class RunScheduler {
                 return thread;
             }
         };
-        pool = Executors.newFixedThreadPool(concurrency, factory);
+        pool = new ThreadPoolExecutor(
+                concurrency,
+                concurrency,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(concurrency),
+                factory,
+                new ThreadPoolExecutor.AbortPolicy());
         policy.reload();
         log.info("ai run scheduler started: node={} concurrency={}", nodeId, concurrency);
     }
@@ -84,20 +94,18 @@ public class RunScheduler {
 
     @Scheduled(fixedDelay = 700, initialDelay = 1500)
     public void tick() {
-        observability.observeSupplier(
-                "ai run dispatch",
-                () -> {
-                    try {
-                        dispatch();
-                    } catch (RuntimeException exception) {
-                        // 数据库或依赖短暂不可用时只记录，不让调度线程退出；下一轮继续尝试
-                        log.warn("ai run dispatch skipped: {}", exception.getMessage());
-                    }
-                    return null;
-                });
+        observability.observeSupplier("ai run dispatch", () -> {
+            try {
+                dispatch();
+            } catch (RuntimeException exception) {
+                // 数据库或依赖短暂不可用时只记录，不让调度线程退出；下一轮继续尝试
+                log.warn("ai run dispatch skipped: {}", exception.getMessage());
+            }
+            return null;
+        });
     }
 
-    private void dispatch() {
+    private synchronized void dispatch() {
         int max = Math.max(1, properties.run().maxConcurrent());
         int leaseSeconds = Math.max(60, properties.run().timeoutMs() / 1000 + 60);
         while (inflight.get() < max) {
@@ -144,7 +152,14 @@ public class RunScheduler {
                     inflight.decrementAndGet();
                 }
             };
-            pool.submit(observability.restoreOrWrap(run.traceContext(), "ai run execute", task));
+            try {
+                pool.execute(observability.restoreOrWrap(run.traceContext(), "ai run execute", task));
+            } catch (RejectedExecutionException exception) {
+                inflight.decrementAndGet();
+                runs.transition(run.id(), RunRecords.RUNNING, RunRecords.QUEUED);
+                log.warn("run submission rejected: run={}", run.id(), exception);
+                return;
+            }
         }
     }
 

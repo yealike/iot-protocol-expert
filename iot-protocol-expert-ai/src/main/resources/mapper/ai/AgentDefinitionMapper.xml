@@ -17,11 +17,11 @@
     </resultMap>
 
     <select id="listPublished" resultMap="DefinitionMap">
-        select * from ai_agent_definition where status = 'PUBLISHED' order by agent_key
+        select agent_key, version, name, kind, description, sys_prompt, model_key, allowed_tools, status from ai_agent_definition where status = 'PUBLISHED' order by agent_key
     </select>
 
     <select id="find" resultMap="DefinitionMap">
-        select * from ai_agent_definition where agent_key = #{agentKey} and status = 'PUBLISHED' order by published_at
+        select agent_key, version, name, kind, description, sys_prompt, model_key, allowed_tools, status from ai_agent_definition where agent_key = #{agentKey} and status = 'PUBLISHED' order by published_at
             desc limit 1
     </select>
 </mapper>

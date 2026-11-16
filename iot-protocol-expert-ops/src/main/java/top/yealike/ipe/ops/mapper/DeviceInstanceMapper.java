@@ -56,6 +56,14 @@ public interface DeviceInstanceMapper {
 
     int update(DeviceInstance device);
 
+    boolean hasDeletionBlockers(@Param("id") Long id);
+
+    int deleteTags(@Param("id") Long id);
+
+    int deleteChannels(@Param("id") Long id);
+
+    int deleteLatestProperties(@Param("id") Long id);
+
     int deleteById(@Param("id") Long id);
 
     default Optional<DeviceInstance> findById(Long id) {

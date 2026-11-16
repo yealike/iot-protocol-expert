@@ -18,8 +18,8 @@ public class DocumentTextExtractor {
     private static final Logger log = LoggerFactory.getLogger(DocumentTextExtractor.class);
 
     public List<TextChunker.Page> extract(byte[] content, String contentType, String filename) {
-        String type = contentType == null ? "" : contentType.toLowerCase();
-        String name = filename == null ? "" : filename.toLowerCase();
+        String type = contentType == null ? "" : contentType.toLowerCase(java.util.Locale.ROOT);
+        String name = filename == null ? "" : filename.toLowerCase(java.util.Locale.ROOT);
         if (type.contains("pdf") || name.endsWith(".pdf")) {
             return extractPdf(content);
         }

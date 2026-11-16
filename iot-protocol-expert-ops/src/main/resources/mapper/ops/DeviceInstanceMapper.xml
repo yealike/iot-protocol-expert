@@ -202,6 +202,31 @@
         where id = #{id}
     </update>
 
+    <select id="hasDeletionBlockers" resultType="boolean">
+        select exists (select 1 from ipe_ops.device_instance where parent_id = #{id})
+            or exists (select 1 from ipe_ops.charge_order where device_id = #{id})
+            or exists (select 1 from ipe_ops.bill where device_id = #{id})
+            or exists (select 1 from ipe_ops.alarm_rule where device_id = #{id})
+            or exists (select 1 from ipe_ops.alarm_record where device_id = #{id})
+            or exists (select 1 from ipe_ops.device_property_ts where device_id = #{id})
+            or exists (select 1 from ipe_ops.device_event_log where device_id = #{id})
+            or exists (select 1 from ipe_ops.command_record where device_id = #{id})
+            or exists (select 1 from ipe_ops.frame_log where device_id = #{id})
+            or exists (select 1 from ipe_ops.trouble_case where device_id = #{id})
+    </select>
+
+    <delete id="deleteTags">
+        delete from ipe_ops.device_tag where device_id = #{id}
+    </delete>
+
+    <delete id="deleteChannels">
+        delete from ipe_ops.device_channel where device_id = #{id}
+    </delete>
+
+    <delete id="deleteLatestProperties">
+        delete from ipe_ops.device_property_latest where device_id = #{id}
+    </delete>
+
     <delete id="deleteById">
         delete from ipe_ops.device_instance where id = #{id}
     </delete>

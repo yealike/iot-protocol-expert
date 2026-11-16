@@ -3,8 +3,8 @@ package top.yealike.ipe.ai.observability;
 import io.micrometer.context.ContextSnapshot;
 import io.micrometer.observation.Observation;
 import io.micrometer.observation.ObservationRegistry;
-import io.micrometer.tracing.Tracer;
 import io.micrometer.tracing.TraceContext;
+import io.micrometer.tracing.Tracer;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Component;
 

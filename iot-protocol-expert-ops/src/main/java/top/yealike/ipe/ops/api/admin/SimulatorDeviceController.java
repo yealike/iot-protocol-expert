@@ -37,7 +37,9 @@ public class SimulatorDeviceController {
                 .filter(device -> stationId == null || stationId.equals(device.stationId))
                 .filter(device -> sn == null
                         || sn.isBlank()
-                        || device.deviceCode.toLowerCase().contains(sn.toLowerCase()))
+                        || device.deviceCode
+                                .toLowerCase(java.util.Locale.ROOT)
+                                .contains(sn.toLowerCase(java.util.Locale.ROOT)))
                 .filter(device -> protocol == null
                         || protocol.isBlank()
                         || DeviceService.normalizeProtocol(device.protocol)

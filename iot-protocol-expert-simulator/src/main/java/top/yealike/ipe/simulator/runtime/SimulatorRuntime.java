@@ -1170,7 +1170,7 @@ public class SimulatorRuntime {
 
     private void handleCardSync(Frame frame) {
         OperationFrames.CardList list = OperationFrames.decodeCardSync(frame.body());
-        list.cards().forEach(c -> offlineCards.put(c.physicalCard().toUpperCase(), c));
+        list.cards().forEach(c -> offlineCards.put(c.physicalCard().toUpperCase(java.util.Locale.ROOT), c));
         persist();
         send(
                 FrameType.CARD_SYNC_ACK,
@@ -1183,7 +1183,7 @@ public class SimulatorRuntime {
         OperationFrames.CardClear clear = OperationFrames.decodeCardClear(frame.body());
         List<OperationFrames.CardClearAck.CardClearResult> results = new ArrayList<>();
         for (String card : clear.physicalCards()) {
-            offlineCards.remove(card.toUpperCase());
+            offlineCards.remove(card.toUpperCase(java.util.Locale.ROOT));
             results.add(new OperationFrames.CardClearAck.CardClearResult(card, true, 0));
         }
         persist();
@@ -1198,7 +1198,7 @@ public class SimulatorRuntime {
         List<OperationFrames.CardQueryAck.CardQueryResult> results = new ArrayList<>();
         for (String card : query.physicalCards()) {
             results.add(new OperationFrames.CardQueryAck.CardQueryResult(
-                    card, offlineCards.containsKey(card.toUpperCase())));
+                    card, offlineCards.containsKey(card.toUpperCase(java.util.Locale.ROOT))));
         }
         send(
                 FrameType.CARD_QUERY_ACK,
@@ -2026,7 +2026,7 @@ public class SimulatorRuntime {
         gun.soc = soc;
         gun.socValue = soc;
         gun.vin = vin;
-        gun.physicalCard = card.toUpperCase();
+        gun.physicalCard = card.toUpperCase(java.util.Locale.ROOT);
     }
 
     public synchronized void chargeLimits(String gunNo, double energy, double amount, int minutes) {

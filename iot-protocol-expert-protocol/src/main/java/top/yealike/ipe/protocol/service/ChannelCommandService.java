@@ -57,8 +57,12 @@ public class ChannelCommandService {
                         ? new BigDecimal("1000.00")
                         : new BigDecimal(balanceText);
                 OperationFrames.RemoteStart command = new OperationFrames.RemoteStart(
-                        orderNo, pileCode, gunNo, idTag == null || idTag.isBlank() ? "0" : idTag,
-                        str(params, "physicalCard"), balance);
+                        orderNo,
+                        pileCode,
+                        gunNo,
+                        idTag == null || idTag.isBlank() ? "0" : idTag,
+                        str(params, "physicalCard"),
+                        balance);
                 Frame ack = ykcSessions.request(
                         pileCode,
                         FrameType.REMOTE_START,

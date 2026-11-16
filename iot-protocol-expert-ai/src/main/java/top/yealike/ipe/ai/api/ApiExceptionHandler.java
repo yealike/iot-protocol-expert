@@ -15,6 +15,24 @@ public class ApiExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
 
+    @ExceptionHandler(org.springframework.web.server.ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> status(
+            org.springframework.web.server.ResponseStatusException exception) {
+        return ResponseEntity.status(exception.getStatusCode())
+                .headers(exception.getHeaders())
+                .body(Map.of(
+                        "error",
+                        "HTTP_" + exception.getStatusCode().value(),
+                        "message",
+                        exception.getReason() == null ? "请求失败" : exception.getReason()));
+    }
+
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    public ResponseEntity<Map<String, Object>> denied(
+            org.springframework.security.access.AccessDeniedException exception) {
+        return ResponseEntity.status(403).body(Map.of("error", "FORBIDDEN", "message", "无权执行此操作"));
+    }
+
     @ExceptionHandler(AiException.class)
     public ResponseEntity<Map<String, Object>> handle(AiException exception) {
         Map<String, Object> body = new LinkedHashMap<>();
@@ -25,7 +43,12 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> handleBadRequest(IllegalArgumentException exception) {
-        return ResponseEntity.badRequest().body(Map.of("error", "BAD_REQUEST", "message", exception.getMessage()));
+        return ResponseEntity.badRequest()
+                .body(Map.of(
+                        "error",
+                        "BAD_REQUEST",
+                        "message",
+                        exception.getMessage() == null ? "请求参数无效" : exception.getMessage()));
     }
 
     @ExceptionHandler(Exception.class)

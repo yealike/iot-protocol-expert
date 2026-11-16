@@ -12,7 +12,7 @@
     </resultMap>
 
     <select id="selectEnabled" resultMap="RuleMap">
-        select * from ai_permission_policy where enabled = true and environment in ('*', #{environment})
+        select role, agent_keys, tool_names, station_scope from ai_permission_policy where enabled = true and environment in ('*', #{environment})
     </select>
 
     <select id="selectLatestVersion" resultType="java.lang.String">
