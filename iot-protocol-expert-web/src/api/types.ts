@@ -323,6 +323,8 @@ export interface BusinessOverview {
   settledOrderCount: number
   settledEnergy: number
   settledAmount: number
+  chargedEnergy: number
+  dischargedEnergy: number
   activeOrderCount: number
   daily: { date: string; energy: number; amount: number; orders: number }[]
 }

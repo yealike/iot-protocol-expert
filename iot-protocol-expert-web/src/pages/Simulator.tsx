@@ -37,7 +37,7 @@ export default function Simulator() {
     let disposeTwin: (() => void) | undefined
     let disposed = false
     import('../simulator/twin.js').then((module) => {
-      if (!disposed) disposeTwin = module.mountTwin()
+      if (!disposed) disposeTwin = module.mountTwin(container)
     }).catch(() => {
       const message = container.querySelector('#twin-message')
       if (message) message.textContent = '三维场景加载失败，请检查浏览器 WebGL 支持'

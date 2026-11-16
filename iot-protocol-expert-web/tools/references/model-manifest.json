@@ -1,0 +1,23 @@
+{
+  "car": "Tesla Model Y 2021",
+  "car_dimensions_m": [
+    4.751,
+    1.921,
+    1.624
+  ],
+  "charger": "StarCharge Gemini 120kW V3.2",
+  "charger_dimensions_m": [
+    0.85,
+    0.55,
+    1.55
+  ],
+  "port_blender_xyz": [
+    -0.755901243686676,
+    1.98,
+    1.04
+  ],
+  "lid_original_parts": 4,
+  "lid_closed_surface_error_m": 0.0,
+  "car_license": "CC BY 4.0",
+  "car_author": "tonielpro520"
+}
