@@ -11,6 +11,7 @@ import top.yealike.ipe.ai.agent.AgentCatalog;
 import top.yealike.ipe.ai.conversation.ConversationRecords.Conversation;
 import top.yealike.ipe.ai.conversation.ConversationRepository;
 import top.yealike.ipe.ai.identity.UserIdentity;
+import top.yealike.ipe.ai.observability.AiObservability;
 import top.yealike.ipe.ai.policy.PolicyService;
 import top.yealike.ipe.ai.run.RunRecords.Run;
 import top.yealike.ipe.ai.run.RunRecords.RunView;
@@ -28,6 +29,7 @@ public class RunService {
     private final PolicyService policy;
     private final AgentCatalog catalog;
     private final io.micrometer.core.instrument.MeterRegistry metrics;
+    private final AiObservability observability;
 
     public RunService(
             ConversationRepository conversations,
@@ -35,13 +37,15 @@ public class RunService {
             RunEventService events,
             PolicyService policy,
             AgentCatalog catalog,
-            io.micrometer.core.instrument.MeterRegistry metrics) {
+            io.micrometer.core.instrument.MeterRegistry metrics,
+            AiObservability observability) {
         this.conversations = conversations;
         this.runs = runs;
         this.events = events;
         this.policy = policy;
         this.catalog = catalog;
         this.metrics = metrics;
+        this.observability = observability;
     }
 
     @Transactional
@@ -64,7 +68,9 @@ public class RunService {
         if (key.length() > 120) {
             throw AiExceptions.badRequest("幂等键过长");
         }
-        var existing = runs.findByIdempotency(conversationId, key);
+        var existing = observability.observeSupplier(
+                "ai run idempotency lookup",
+                () -> runs.findByIdempotency(conversationId, key));
         if (existing.isPresent()) {
             return existing.get();
         }
@@ -73,7 +79,9 @@ public class RunService {
         UUID messageId = UUID.randomUUID();
         long seq = conversations.nextMessageSeq(conversationId);
         // 分配消息序号时持有会话行锁，重试请求须在锁内再次检查幂等键。
-        existing = runs.findByIdempotency(conversationId, key);
+        existing = observability.observeSupplier(
+                "ai run idempotency lookup",
+                () -> runs.findByIdempotency(conversationId, key));
         if (existing.isPresent()) return existing.get();
         Instant now = Instant.now();
         conversations.insertMessage(messageId, conversationId, runId, "user", question, List.of(), "FINAL", seq, now);
@@ -95,6 +103,7 @@ public class RunService {
                 definition.modelKey(),
                 key,
                 policy.version(),
+                observability.traceparent(),
                 priority != null && priority > 100 ? 200 : 100,
                 now);
 

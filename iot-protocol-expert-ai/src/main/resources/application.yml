@@ -3,6 +3,8 @@ server:
   shutdown: graceful
 
 spring:
+  config:
+    import: classpath:observability-defaults.yml
   main:
     banner-mode: "off"
   application:
@@ -112,4 +114,9 @@ logging:
       add:
         service.name: ${spring.application.name}
         service.version: 1.0.0
-        deployment.environment.name: ${ipe.ai.environment}
+        deployment.environment.name: ${ipe.observability.environment}
+      rename:
+        traceId: trace_id
+        spanId: span_id
+      stacktrace:
+        max-length: 8192

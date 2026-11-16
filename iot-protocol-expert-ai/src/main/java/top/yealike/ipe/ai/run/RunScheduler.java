@@ -14,6 +14,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import top.yealike.ipe.ai.config.AiProperties;
 import top.yealike.ipe.ai.identity.UserIdentity;
+import top.yealike.ipe.ai.observability.AiObservability;
 import top.yealike.ipe.ai.policy.PolicyService;
 import top.yealike.ipe.ai.run.RunRecords.Run;
 
@@ -34,6 +35,7 @@ public class RunScheduler {
     private final PolicyService policy;
     private final top.yealike.ipe.ai.identity.IdentityService identities;
     private final RunEventService events;
+    private final AiObservability observability;
     private final AtomicInteger inflight = new AtomicInteger();
     private final String nodeId = nodeId();
     private ExecutorService pool;
@@ -44,13 +46,15 @@ public class RunScheduler {
             AiProperties properties,
             PolicyService policy,
             top.yealike.ipe.ai.identity.IdentityService identities,
-            RunEventService events) {
+            RunEventService events,
+            AiObservability observability) {
         this.runs = runs;
         this.executor = executor;
         this.properties = properties;
         this.policy = policy;
         this.identities = identities;
         this.events = events;
+        this.observability = observability;
     }
 
     @PostConstruct
@@ -80,12 +84,17 @@ public class RunScheduler {
 
     @Scheduled(fixedDelay = 700, initialDelay = 1500)
     public void tick() {
-        try {
-            dispatch();
-        } catch (RuntimeException exception) {
-            // 数据库或依赖短暂不可用时只记录，不让调度线程退出；下一轮继续尝试
-            log.warn("ai run dispatch skipped: {}", exception.getMessage());
-        }
+        observability.observeSupplier(
+                "ai run dispatch",
+                () -> {
+                    try {
+                        dispatch();
+                    } catch (RuntimeException exception) {
+                        // 数据库或依赖短暂不可用时只记录，不让调度线程退出；下一轮继续尝试
+                        log.warn("ai run dispatch skipped: {}", exception.getMessage());
+                    }
+                    return null;
+                });
     }
 
     private void dispatch() {
@@ -98,7 +107,7 @@ public class RunScheduler {
             }
             Run run = claimed.get();
             inflight.incrementAndGet();
-            pool.submit(() -> {
+            Runnable task = () -> {
                 try {
                     log.info(
                             "run started: run={} conversation={} agent={}",
@@ -134,7 +143,8 @@ public class RunScheduler {
                 } finally {
                     inflight.decrementAndGet();
                 }
-            });
+            };
+            pool.submit(observability.restoreOrWrap(run.traceContext(), "ai run execute", task));
         }
     }
 

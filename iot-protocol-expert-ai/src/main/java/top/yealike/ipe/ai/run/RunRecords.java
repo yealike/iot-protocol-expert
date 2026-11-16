@@ -35,6 +35,7 @@ public final class RunRecords {
             long queueSeq,
             String idempotencyKey,
             String policyVersion,
+            String traceContext,
             String leaseOwner,
             Instant leaseUntil,
             Map<String, Object> budget,

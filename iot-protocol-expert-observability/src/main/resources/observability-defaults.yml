@@ -48,12 +48,3 @@ management:
         http.server.requests: 1ms
       maximum-expected-value:
         http.server.requests: 30s
-
-jdbc:
-  includes: connection,query
-  datasource-proxy:
-    include-parameter-values: false
-    query:
-      enable-logging: false
-  resultset-operations:
-    enabled: false

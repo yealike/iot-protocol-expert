@@ -17,6 +17,7 @@ import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import top.yealike.ipe.ai.config.AiProperties;
+import top.yealike.ipe.ai.observability.AiObservability;
 import top.yealike.ipe.ai.support.JsonSupport;
 
 /** Client for the stateless Streamable HTTP endpoint routed by Higress. */
@@ -30,14 +31,17 @@ public class McpGateway {
     private final RestClient http;
     private final McpEndpointResolver endpoints;
     private final String token;
+    private final AiObservability observability;
     private volatile URI sessionEndpoint;
     private volatile boolean sessionValid;
     private final SecureRandom random = new SecureRandom();
 
-    public McpGateway(AiProperties properties, McpEndpointResolver endpoints, RestClient.Builder builder) {
+    public McpGateway(
+            AiProperties properties, McpEndpointResolver endpoints, RestClient.Builder builder, AiObservability observability) {
         http = builder.build();
         this.endpoints = endpoints;
         token = properties.mcp().token();
+        this.observability = observability;
     }
 
     public List<?> tools() {
@@ -148,23 +152,25 @@ public class McpGateway {
 
     private Map<String, Object> exchange(
             URI endpoint, String method, Map<String, Object> params, Map<String, String> headers) {
-        String id = UUID.randomUUID().toString();
-        String body = post(endpoint, Map.of("jsonrpc", "2.0", "id", id, "method", method, "params", params), headers)
-                .retrieve()
-                .body(String.class);
-        var reply = JsonSupport.readMap(body);
-        if (reply.containsKey("error")) {
-            Object error = reply.get("error");
-            int code = error instanceof Map<?, ?> map
-                    && map.get("code") instanceof Number number ? number.intValue() : -1;
-            if (code == MCP_SESSION_LOST_ERROR || code == HTTP_SESSION_LOST_ERROR) {
-                throw new McpSessionLostException();
+        return observability.observeSupplier("mcp " + method, () -> {
+            String id = UUID.randomUUID().toString();
+            String body = post(endpoint, Map.of("jsonrpc", "2.0", "id", id, "method", method, "params", params), headers)
+                    .retrieve()
+                    .body(String.class);
+            var reply = JsonSupport.readMap(body);
+            if (reply.containsKey("error")) {
+                Object error = reply.get("error");
+                int code = error instanceof Map<?, ?> map
+                        && map.get("code") instanceof Number number ? number.intValue() : -1;
+                if (code == MCP_SESSION_LOST_ERROR || code == HTTP_SESSION_LOST_ERROR) {
+                    throw new McpSessionLostException();
+                }
             }
-        }
-        if (!"2.0".equals(reply.get("jsonrpc")) || !id.equals(reply.get("id")) || reply.containsKey("error")) {
-            throw new IllegalStateException("Invalid MCP response");
-        }
-        return object(reply.get("result"));
+            if (!"2.0".equals(reply.get("jsonrpc")) || !id.equals(reply.get("id")) || reply.containsKey("error")) {
+                throw new IllegalStateException("Invalid MCP response");
+            }
+            return object(reply.get("result"));
+        });
     }
 
     private RestClient.RequestBodySpec post(URI endpoint, Map<String, Object> message, Map<String, String> headers) {
