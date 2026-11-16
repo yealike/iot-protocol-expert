@@ -37,14 +37,16 @@ public class RunRepository {
             String modelKey,
             String idempotencyKey,
             String policyVersion,
+            String traceContext,
             int priority,
             Instant createdAt) {
         jdbc.update(
                 """
                 insert into ai_run (id, conversation_id, user_message_id, actor, actor_roles, actor_auth_version, question, agent_key,
                                     agent_version, model_key, status, priority, idempotency_key, policy_version,
+                                    trace_context,
                                     created_at, updated_at)
-                values (?, ?, ?, ?, cast(? as jsonb), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                values (?, ?, ?, ?, cast(? as jsonb), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 id,
                 conversationId,
@@ -56,10 +58,10 @@ public class RunRepository {
                 agentKey,
                 agentVersion,
                 modelKey,
-                RunRecords.QUEUED,
                 priority,
                 idempotencyKey,
                 policyVersion,
+                traceContext,
                 Timestamp.from(createdAt),
                 Timestamp.from(createdAt));
     }
@@ -404,6 +406,7 @@ public class RunRepository {
             rs.getLong("queue_seq"),
             rs.getString("idempotency_key"),
             rs.getString("policy_version"),
+            rs.getString("trace_context"),
             rs.getString("lease_owner"),
             instant(rs.getTimestamp("lease_until")),
             JsonSupport.readMap(rs.getString("budget_json")),

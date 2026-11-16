@@ -17,6 +17,7 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import top.yealike.ipe.ai.conversation.ConversationService;
 import top.yealike.ipe.ai.identity.CurrentUser;
 import top.yealike.ipe.ai.identity.IdentityService;
+import top.yealike.ipe.ai.observability.AiObservability;
 import top.yealike.ipe.ai.run.RunEventService;
 
 /** 按持久化游标读取已提交事件，重放和实时事件采用相同顺序，支持跨实例。 */
@@ -27,16 +28,19 @@ public class EventController {
     private final RunEventService events;
     private final ConversationService conversations;
     private final IdentityService identities;
+    private final AiObservability observability;
     private final ScheduledExecutorService workers = Executors.newScheduledThreadPool(4, task -> {
         Thread thread = new Thread(task, "ai-sse-poll");
         thread.setDaemon(true);
         return thread;
     });
 
-    public EventController(RunEventService events, ConversationService conversations, IdentityService identities) {
+    public EventController(
+            RunEventService events, ConversationService conversations, IdentityService identities, AiObservability observability) {
         this.events = events;
         this.conversations = conversations;
         this.identities = identities;
+        this.observability = observability;
     }
 
     @GetMapping(value = "/conversations/{id}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -60,7 +64,7 @@ public class EventController {
         int[] ticks = {0};
         boolean[] ready = {false};
         future.set(workers.scheduleWithFixedDelay(
-                () -> {
+                observability.wrap(() -> {
                     try {
                         ++ticks[0];
                         var current = identities.resolve(cookie);
@@ -86,7 +90,7 @@ public class EventController {
                         cleanup.run();
                         emitter.completeWithError(exception);
                     }
-                },
+                }),
                 100,
                 1000,
                 TimeUnit.MILLISECONDS));
