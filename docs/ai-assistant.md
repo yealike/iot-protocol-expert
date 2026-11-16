@@ -191,6 +191,9 @@ ops 协议文档（PDF/MD/TXT）
 | `IPE_AI_RUN_MAX_CONTEXT_MESSAGES` | `20` | 传给模型的历史消息条数 |
 | `IPE_AI_CHUNK_SIZE` / `IPE_AI_CHUNK_OVERLAP` | `800` / `100` | 分块参数 |
 | `IPE_AI_TOP_K` / `IPE_AI_MIN_SCORE` | `6` / `1` | 检索片段数与最低分 |
+| `IPE_AI_OTEL_ENABLED` | 跟随 `IPE_OTLP_ENABLED` | 是否注册 AgentScope 官方 `TelemetryTracer` |
+| `IPE_AI_OTEL_CONTENT_ENABLED` | `false` | 是否导出 prompt / response / 工具参数正文；仅本地排障开启 |
+| `IPE_AI_OTEL_MAX_CONTENT_CHARS` | `8192` | 单条内容属性的最大字符数，超出截断 |
 | `IPE_EMBEDDING_*` | 关闭 | 预留，当前检索未使用 |
 
 ## 11. 本地验证步骤
@@ -220,6 +223,14 @@ $env:PATH="$env:JAVA_HOME\bin;$env:PATH"
 ## 12. 可观测
 
 - 日志：Boot 原生 Logstash JSON，字段含 `service.name`、`environment`、`trace_id/span_id`；不记录 cookie、模型密钥与完整业务数据。
+- Trace：注册 AgentScope 官方 `TelemetryTracer`，复用 Spring Boot 的 OTLP 管道。一次 Run 的链路为
+  `ai run execute` → `invoke_agent <agent>` → `chat <model>` / `execute_tool <tool>`；模型 Span 带
+  `gen_ai.request.model`、`gen_ai.usage.input_tokens`、`gen_ai.usage.output_tokens` 等 GenAI 语义属性。
+- 内容策略：默认只导出元数据与 token，`gen_ai.input.messages`、`gen_ai.output.messages`、工具参数/结果、
+  `agentscope.function.*` 不写入 Trace。仅本地排障时设置 `IPE_AI_OTEL_CONTENT_ENABLED=true`；开启后仍会按
+  `IPE_AI_OTEL_MAX_CONTENT_CHARS` 截断并做常见凭据脱敏，不得作为生产默认配置。
+- Collector：脱敏规则必须保留 `gen_ai.usage.*_tokens`，不能用宽泛的 `.*token.*` 删除键；详见
+  `中间件/ipe-doris-otel/collector.yaml`。
 - 指标（`/actuator/prometheus`，标签均为低基数）：
   - `ai_runs_created_total{agent}`：提交量
   - `ai_runs_finished_total{status}`：完成/失败/暂停/取消量
@@ -235,7 +246,8 @@ $env:PATH="$env:JAVA_HOME\bin;$env:PATH"
 5. PDF 表格、图纸与扫描件抽取质量有限，低质量文档应人工校对后再发布。
 6. 未实现 Skill 加载、可视化编排、写操作与设备控制（属二期）。
 7. 未实现缓存与事件保留清理：一期默认不缓存业务结果与最终答案，`ai_run_event` 需按保留期另行清理。
-8. 未做模型侧 token/费用预算统计（`usage_json` 目前记录工具次数与耗时）。
+8. 模型侧 token 已写入 OTel Span（`gen_ai.usage.input_tokens` / `output_tokens`），但尚未落库做费用预算、配额与账单统计
+   （`usage_json` 目前记录工具次数与耗时）。
 9. 已排队任务执行前及每次工具调用前重新校验用户授权；业务接口会重新读取用户站点范围，并与 AI 策略范围取交集。运营端的受限站点账号目前不能访问运营数据接口。
 10. 暂停并非框架检查点恢复，恢复时会重新执行。取消时执行权保留至执行器退出，但进程异常退出后的租约过期接管和 fencing 尚未实现。上述能力不能作为可靠的生产调度保证。
 11. SSE 跨实例重放尚需完整验证；知识检索目前没有文档级权限过滤或真实向量检索。
