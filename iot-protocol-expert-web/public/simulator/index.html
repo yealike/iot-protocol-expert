@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>协议专家 · 充电实验室</title>
     <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="./twin.css">
     <script type="importmap">{"imports":{"three":"./vendor/three.module.js"}}</script>
 
 </head>
@@ -22,12 +23,11 @@
             <h1>充电实验室 <span class="tag">SIMULATOR</span></h1>
             <p>让协议、车辆与每一度电，在同一个场景中运行。</p></div>
         <div class="connection">
-            <label class="protocol-picker">设备
+            <label class="protocol-picker">当前设备
                 <select id="deviceSelect" onchange="selectDevice()">
                     <option value="">加载设备中…</option>
                 </select>
             </label>
-            <select id="fleetDeviceSelect" aria-label="并发模拟设备"></select><button onclick="startFleet()">加入并发模拟</button>
             <span id="deviceProtocol" class="badge">—</span>
             <span id="connection" class="badge">正在连接</span>
             <button id="connectBtn" onclick="post('/connect')">连接平台</button>
@@ -44,12 +44,40 @@
             —</small></article>
     </section>
     <div id="error" role="alert"></div>
-    <section class="twin-panel" aria-label="充电三维仿真">
-        <div class="twin-heading"><div><span class="twin-kicker">LIVE DIGITAL TWIN</span><h2>充电场景 <small>· 当前选择的枪</small></h2></div><span id="twin-status" class="twin-badge">等待状态</span></div>
-        <div id="twin-view"><div id="twin-message">正在加载三维场景…</div></div>
-        <div class="twin-caption"><span>拖动旋转 · 滚轮缩放</span><span>示意模型 · 电动汽车 / 直流充电桩</span></div>
+    <section class="twin-panel" data-presentation="studio" aria-label="充电三维仿真">
+        <div class="twin-heading"><div><span class="twin-kicker">LIVE DIGITAL TWIN</span><h2>桩车充电场景 <small>· 跟随当前选择的枪</small></h2></div><span id="twin-status" class="twin-badge" role="status">等待状态</span></div>
+        <div class="twin-toolbar" aria-label="三维视图控制">
+            <button type="button" data-twin-view="overview">全景视角</button>
+            <button type="button" data-twin-view="port">充电口特写</button>
+            <button type="button" id="twin-battery-toggle" aria-pressed="true">充电自动透视</button>
+            <span>拖动旋转 · 滚轮缩放</span>
+        </div>
+        <div id="twin-view"><div id="twin-message">正在加载三维场景…</div>
+            <div class="twin-object-label twin-object-charger"><i></i><span id="twin-gun-label">星星充电 · 双子座 120 kW</span></div>
+            <div class="twin-object-label twin-object-car"><span id="twin-soc-label">Tesla Model Y</span><i></i></div>
+            <div class="twin-stage"><i></i><span id="twin-stage">选择设备，开始充电仿真</span></div>
+        </div>
+        <div class="twin-energy" aria-label="充电能流图">
+            <div class="twin-energy-heading"><span>实时能流 <small>ENERGY FLOW</small></span><span id="twin-flow-status" role="status">等待连接</span></div>
+            <div class="twin-energy-route">
+                <div class="twin-energy-node"><span class="twin-energy-icon">ϟ</span><div><span>直流充电桩</span><strong id="twin-flow-power">0.0 kW</strong><small id="twin-flow-electrical">0 V / 0.0 A</small></div></div>
+                <div class="twin-energy-link"><i></i><i></i><i></i></div>
+                <div class="twin-energy-coupler"><span>充电枪</span><small>DC</small></div>
+                <div class="twin-energy-link"><i></i><i></i><i></i></div>
+                <div class="twin-energy-node"><span class="twin-energy-icon twin-battery-icon">▥</span><div><span>车辆电池</span><strong id="twin-flow-soc">—</strong><small>本次 <b id="twin-flow-energy">0.00 kWh</b></small></div></div>
+            </div>
+        </div>
+        <div class="twin-caption"><span><i class="twin-legend-dot"></i> 插枪连接 <i class="twin-legend-dot energy"></i> 充电能流</span><span>Model Y 模型：<a href="https://sketchfab.com/tonielpro520" target="_blank" rel="noopener noreferrer">tonielpro520</a> · <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noopener noreferrer">CC BY 4.0</a> · 已适配</span></div>
     </section>
-    <section class="panel"><h2>并发模拟设备</h2><div id="fleetList">暂无设备</div></section>
+    <section class="panel">
+        <h2>并发模拟设备</h2>
+        <div class="rate-toolbar fleet-toolbar">
+            <label for="fleetDeviceSelect">添加并发设备</label>
+            <select id="fleetDeviceSelect"><option value="">加载设备中…</option></select>
+            <button onclick="startFleet()">加入并发模拟</button>
+        </div>
+        <div id="fleetList">暂无设备</div>
+    </section>
     <div class="lab-grid">
         <section class="panel clock-panel">
             <div class="panel-title"><h2>仿真时间</h2></div>
@@ -262,7 +290,7 @@
     <pre id="detailContent"></pre>
 </dialog>
 <script src="./app.js"></script>
-<script type="module" src="./twin.js"></script>
+<script type="module">import { mountTwin } from './twin.js'; mountTwin();</script>
 
 </body>
 </html>

@@ -1,0 +1,88 @@
+/* Shared scene chrome. Unique class names keep this usable in both hosts. */
+.twin-panel{background:#101d2b!important;border-color:#294052!important;border-radius:14px!important;color:#e7f3f6;min-width:0}
+.twin-panel .twin-heading{padding:22px 24px 0;gap:12px;flex-wrap:wrap}
+.twin-panel .twin-heading h2{color:#edf8fc;font-size:17px;letter-spacing:.02em}
+.twin-panel .twin-heading h2 small{color:#8ba4b5;font-size:11px}
+.twin-panel .twin-kicker{color:#6fbab1;font-size:9px;letter-spacing:.2em}
+.twin-panel .twin-badge{background:#1a353c;color:#9cebd3;border-color:#2f585d;font-size:11px;white-space:nowrap}
+.twin-panel .twin-toolbar{display:flex;align-items:center;gap:6px;padding:16px 24px 0;flex-wrap:wrap}
+.twin-panel .twin-toolbar button{font-size:11px;padding:6px 10px;border:1px solid #385061;border-radius:6px;background:#1b2d3c;color:#bbcfda;cursor:pointer}
+.twin-panel .twin-toolbar button:hover{background:#2c4353;border-color:#608a92;color:#fff}
+.twin-panel .twin-toolbar button[aria-pressed=true]{background:#173c3e;border-color:#34716b;color:#99ecd6}
+.twin-panel .twin-toolbar button:focus-visible{outline:2px solid #7dedcf;outline-offset:3px}
+.twin-panel .twin-toolbar>span{font-size:10px;color:#718d9f;margin-left:auto}
+.twin-panel #twin-view{height:440px;position:relative;isolation:isolate}
+.twin-panel #twin-view canvas{width:100%;height:100%;display:block;touch-action:none}
+.twin-panel .twin-object-label{position:absolute;top:16px;display:flex;align-items:center;gap:7px;font-size:10px;color:#a6becb;pointer-events:none;letter-spacing:.04em}
+.twin-panel .twin-object-label i{height:1px;width:24px;background:#52747d}
+.twin-panel .twin-object-charger{left:26px}.twin-panel .twin-object-car{right:26px}
+.twin-panel .twin-stage{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);display:flex;gap:7px;align-items:center;max-width:95%;width:max-content;padding:8px 13px;border:1px solid #385064;border-radius:30px;color:#b6cbd6;background:#142532e8;pointer-events:none;font-size:11px}
+.twin-panel .twin-stage i,.twin-panel .twin-legend-dot{width:5px;height:5px;display:inline-block;border-radius:50%;background:#a8c1db;flex-shrink:0}
+.twin-panel[data-flowing=true] .twin-stage i{background:#76f2c7;box-shadow:0 0 9px #55ffbbaa}
+.twin-panel .twin-energy{margin:0 22px 16px;border:1px solid #304554;border-radius:10px;background:linear-gradient(110deg,#1a303b,#142735);padding:14px 16px}
+.twin-panel .twin-energy-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;color:#ccdde5;font-size:11px;margin-bottom:16px}
+.twin-panel .twin-energy-heading small{color:#658794;font-size:8px;letter-spacing:.13em;margin-left:8px}
+.twin-panel #twin-flow-status{font-size:10px;color:#8ca6b4}
+.twin-panel[data-flowing=true] #twin-flow-status{color:#79ebc8}
+.twin-panel .twin-energy-route{display:flex;align-items:center;gap:12px}
+.twin-panel .twin-energy-node{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.twin-panel .twin-energy-node>div{display:flex;flex-direction:column;gap:4px}
+.twin-panel .twin-energy-node span{font-size:10px;color:#8faab8}
+.twin-panel .twin-energy-node strong{font-size:22px;color:#eefaff;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:-.04em}
+.twin-panel .twin-energy-node small{color:#7293a3;font-size:9px;white-space:nowrap}
+.twin-panel .twin-energy-node small b{font-weight:400}
+.twin-panel .twin-energy-node .twin-energy-icon{display:grid;place-items:center;background:#23414e;border:1px solid #395967;border-radius:9px;width:34px;height:40px;font-size:29px;color:#9ec9cf}
+.twin-panel .twin-energy-node .twin-battery-icon{font-size:23px}
+.twin-panel .twin-energy-link{flex:1;height:2px;min-width:18px;position:relative;background:#385563;overflow:visible}
+.twin-panel .twin-energy-link:after{content:'';position:absolute;right:-1px;top:-3px;border-left:5px solid #557381;border-top:4px solid transparent;border-bottom:4px solid transparent}
+.twin-panel .twin-energy-link i{position:absolute;width:5px;height:5px;top:-1.5px;border-radius:50%;background:#92ffe0;opacity:0}
+.twin-panel[data-flowing=true] .twin-energy-link{background:#2d806e}
+.twin-panel[data-flowing=true] .twin-energy-link:after{border-left-color:#63d6b6}
+.twin-panel[data-flowing=true] .twin-energy-link i{animation:twin-energy-travel 1.65s linear infinite;box-shadow:0 0 8px #66ffbf}
+.twin-panel[data-flowing=true] .twin-energy-link i:nth-child(2){animation-delay:-.55s}
+.twin-panel[data-flowing=true] .twin-energy-link i:nth-child(3){animation-delay:-1.1s}
+.twin-panel .twin-energy-coupler{display:flex;flex-direction:column;align-items:center;gap:4px;color:#8eaeba;font-size:10px}
+.twin-panel .twin-energy-coupler small{border:1px solid #42616d;padding:2px 7px;border-radius:4px;font-size:8px;color:#a0b9bf}
+.twin-panel[data-plugged=true] .twin-energy-coupler small{border-color:#438e7e;color:#9eefd9}
+.twin-panel .twin-caption{display:flex;justify-content:space-between;gap:10px;padding:0 24px 18px;color:#6d8c9e;font-size:10px}
+.twin-panel .twin-caption a{color:#94b9c8;text-underline-offset:3px}
+.twin-panel .twin-legend-dot{background:#a8c1db;margin:0 5px 1px 0}
+.twin-panel .twin-legend-dot.energy{background:#76f2c7;margin-left:14px}
+@keyframes twin-energy-travel{0%{left:0;opacity:0}10%{opacity:1}90%{opacity:1}100%{left:100%;opacity:0}}
+@media(max-width:800px){.twin-panel .twin-toolbar>span{display:none}.twin-panel #twin-view{height:370px}.twin-panel .twin-energy{margin:0 14px 14px;padding:12px}.twin-panel .twin-energy-route{gap:8px}.twin-panel .twin-energy-node{gap:6px}.twin-panel .twin-energy-node .twin-energy-icon{display:none}.twin-panel .twin-energy-node strong{font-size:20px}.twin-panel .twin-caption{flex-wrap:wrap;padding:0 16px 16px}.twin-panel .twin-heading h2 small{display:block;margin-top:5px}.twin-panel .twin-stage{font-size:10px}}
+@media(prefers-reduced-motion:reduce){.twin-panel[data-flowing=true] .twin-energy-link i{animation:none;left:50%;opacity:1}}
+@media(max-width:600px){.twin-panel .twin-object-label{font-size:9px}.twin-panel .twin-object-car{top:34px}.twin-panel .twin-heading,.twin-panel .twin-toolbar{padding-left:16px;padding-right:16px}}
+
+/* Daylight automotive studio: the interface and the rendered environment share
+   a neutral palette, with green reserved for active energy transfer. */
+.twin-panel[data-presentation=studio]{background:#e6ebec!important;border-color:#d3dcdf!important;color:#233d46;box-shadow:0 8px 28px #273e4a0a}
+.twin-panel[data-presentation=studio] .twin-heading h2{color:#233d46}
+.twin-panel[data-presentation=studio] .twin-heading h2 small{color:#758a92}
+.twin-panel[data-presentation=studio] .twin-kicker{color:#55857f}
+.twin-panel[data-presentation=studio] .twin-badge{background:#fff9;color:#3b766c;border-color:#bfd4d0}
+.twin-panel[data-presentation=studio] .twin-toolbar button{background:#ffffffa6;border-color:#c4d1d5;color:#526a74}
+.twin-panel[data-presentation=studio] .twin-toolbar button:hover{background:#fff;border-color:#78aa9f}
+.twin-panel[data-presentation=studio] .twin-toolbar button[aria-pressed=true]{background:#d7eae4;border-color:#9ac5b7;color:#2b7260}
+.twin-panel[data-presentation=studio] .twin-toolbar>span{color:#82969d}
+.twin-panel[data-presentation=studio] .twin-object-label{color:#6c858e}
+.twin-panel[data-presentation=studio] .twin-object-label i{background:#a8bfc2}
+.twin-panel[data-presentation=studio] #twin-message{color:#5a7780}
+.twin-panel[data-presentation=studio] .twin-stage{background:#fffffff0;color:#536e76;border-color:#c6d6da;box-shadow:0 3px 12px #243b4b0a}
+.twin-panel[data-presentation=studio] .twin-energy{background:#f8fbfbe8;border-color:#cbdadd;box-shadow:0 4px 12px #203b4a05}
+.twin-panel[data-presentation=studio] .twin-energy-heading{color:#4c6770}
+.twin-panel[data-presentation=studio] .twin-energy-heading small{color:#91a6ab}
+.twin-panel[data-presentation=studio] #twin-flow-status{color:#7b949a}
+.twin-panel[data-presentation=studio][data-flowing=true] #twin-flow-status{color:#118566}
+.twin-panel[data-presentation=studio] .twin-energy-node span{color:#79939a}
+.twin-panel[data-presentation=studio] .twin-energy-node strong{color:#284b55}
+.twin-panel[data-presentation=studio] .twin-energy-node small{color:#92a6ac}
+.twin-panel[data-presentation=studio] .twin-energy-node .twin-energy-icon{color:#6aa393;background:#e6f0ee;border-color:#d0e2dc}
+.twin-panel[data-presentation=studio] .twin-energy-link{background:#c5d6d7}
+.twin-panel[data-presentation=studio] .twin-energy-link:after{border-left-color:#a9c3c5}
+.twin-panel[data-presentation=studio][data-flowing=true] .twin-energy-link{background:#60bda1}
+.twin-panel[data-presentation=studio][data-flowing=true] .twin-energy-link i{background:#11a078;box-shadow:0 0 6px #20ad8255}
+.twin-panel[data-presentation=studio] .twin-energy-coupler{color:#79959b}
+.twin-panel[data-presentation=studio] .twin-energy-coupler small{border-color:#c7d9dc;color:#8ea7aa}
+.twin-panel[data-presentation=studio][data-plugged=true] .twin-energy-coupler small{border-color:#8bc6af;color:#379a78}
+.twin-panel[data-presentation=studio] .twin-caption{color:#8da2a9}
+.twin-panel[data-presentation=studio] .twin-caption a{color:#70969e}

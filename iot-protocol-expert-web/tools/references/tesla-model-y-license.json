@@ -1,0 +1,8 @@
+{
+  "uri": "https://api.sketchfab.com/v3/licenses/322a749bcfa841b29dff1e8a1bb74b0b",
+  "label": "CC Attribution",
+  "fullName": "Creative Commons Attribution",
+  "requirements": "Author must be credited. Commercial use is allowed.",
+  "url": "http://creativecommons.org/licenses/by/4.0/",
+  "slug": "by"
+}

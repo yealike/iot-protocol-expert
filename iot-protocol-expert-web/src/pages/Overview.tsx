@@ -48,8 +48,16 @@ export default function Overview() {
         <Link to="/orders">查看订单 →</Link>
       </div>
       <div className="metric-grid">
-        <MetricCard label="今日充电量" value="—" suffix="kWh" />
-        <MetricCard label="今日放电量" value="—" suffix="kWh" />
+        <MetricCard
+          label="今日充电量"
+          value={b ? Number(b.chargedEnergy).toFixed(2) : '—'}
+          suffix="kWh"
+        />
+        <MetricCard
+          label="今日放电量"
+          value={b ? Number(b.dischargedEnergy).toFixed(2) : '—'}
+          suffix="kWh"
+        />
         <MetricCard
           label="今日结算订单充电量"
           value={b ? Number(b.settledEnergy).toFixed(2) : '—'}
@@ -64,7 +72,7 @@ export default function Overview() {
         <MetricCard label="进行中订单" value={b?.activeOrderCount ?? '—'} suffix="笔" />
       </div>
       <p className="overview-note">
-        今日结算订单充电量按订单结束时间汇总，跨日订单的全部电量计入结束日；今日实际充放电量尚无可按自然日切分的计量数据。已结算金额可能包含平台估算，不代表实收。
+        今日充电量按自然日聚合当天发生充电的订单电量；当前平台仅支持充电订单，放电量为 0。今日结算订单充电量按订单结束时间汇总，跨日订单的全部电量计入结束日。已结算金额可能包含平台估算，不代表实收。
         {business.isError ? ' 业务统计加载失败。' : ''}
       </p>
       <Card

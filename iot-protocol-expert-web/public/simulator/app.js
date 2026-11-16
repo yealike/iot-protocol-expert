@@ -46,17 +46,21 @@ async function post(path, body = {}) {
 
 async function loadDevices() {
     const select = $('deviceSelect');
+    const fleetSelect = $('fleetDeviceSelect');
     try {
         const devices = await api('/api/devices');
         if (!devices || !devices.length) {
             select.innerHTML = '<option value="">没有可模拟设备</option>';
+            fleetSelect.innerHTML = select.innerHTML;
             return;
         }
-        select.innerHTML = '<option value="">请选择设备</option>' + devices.map(d => `<option value="${d.id}">${esc(d.sn)} · ${esc(d.protocolLabel || d.protocol)} · ${esc(d.protocolDeviceId)}</option>`).join('');
-        $('fleetDeviceSelect').innerHTML = select.innerHTML;
+        const options = devices.map(d => `<option value="${d.id}">${esc(d.sn)} · ${esc(d.protocolLabel || d.protocol)} · ${esc(d.protocolDeviceId)}</option>`).join('');
+        select.innerHTML = '<option value="">请选择当前设备</option>' + options;
+        fleetSelect.innerHTML = '<option value="">请选择要加入并发模拟的设备</option>' + options;
         if (live.deviceId) select.value = String(live.deviceId);
     } catch (e) {
         select.innerHTML = '<option value="">设备列表加载失败</option>';
+        fleetSelect.innerHTML = select.innerHTML;
         toast('设备列表加载失败：' + e.message, true);
     }
 }
@@ -361,7 +365,7 @@ async function refreshFleet() {
 }
 async function startFleet() {
     const id = Number($('fleetDeviceSelect').value);
-    if (!id) return toast('请选择设备', true);
+    if (!id) return toast('请选择要加入并发模拟的设备', true);
     try { await api('/api/fleet/' + id + '/start', {}); await refreshFleet(); } catch (e) { toast(e.message, true) }
 }
 async function stopFleet(id) {

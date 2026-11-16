@@ -1,5 +1,5 @@
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 * {
@@ -15,14 +15,12 @@ body,
 }
 
 body {
-  background:
-    radial-gradient(1200px 600px at 70% -10%, rgba(56, 211, 159, 0.12), transparent 60%),
-    radial-gradient(900px 500px at 10% 110%, rgba(64, 158, 255, 0.1), transparent 60%), #080f18;
-  color: #e6eef8;
+  background: #f4f6fa;
+  color: #1d2c40;
 }
 
 a {
-  color: inherit;
+  color: #2858a5;
   text-decoration: none;
 }
 
@@ -326,7 +324,7 @@ a {
   margin: 10px 2px 0;
 }
 .overview-panel {
-  height: 100%;
+  height: auto;
 }
 .availability {
   display: flex;
@@ -531,17 +529,9 @@ a {
   width: 100%;
 }
 .app-content {
-  height: calc(100vh - 60px);
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-.app-content > * {
-  flex: 1;
-  min-height: 0;
-}
-.app-content > .ant-row {
-  flex: none;
+  display: block;
+  padding: 24px 32px;
+  min-height: calc(100vh - 60px);
 }
 .page-header > .ant-space {
   max-width: 100%;
@@ -659,7 +649,7 @@ a {
 
 /* AI Assistant */
 .assistant-shell {
-  height: 100%;
+  height: calc(100vh - 108px);
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(300px, 22vw) minmax(0, 1fr);
@@ -973,6 +963,8 @@ a {
 @media (max-width: 900px) {
   .assistant-shell {
     grid-template-columns: minmax(0, 1fr);
+    height: auto;
+    min-height: calc(100vh - 108px);
     overflow-y: auto;
   }
   .assistant-sidebar,

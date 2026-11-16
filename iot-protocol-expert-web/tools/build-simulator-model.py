@@ -1,151 +1,210 @@
-"""Generate the simulator's close-up EV and DC charger.
+"""Model Y (tonielpro520, CC BY 4.0) + StarCharge Gemini 120 kW V3.2.
 
-Run: D:/tools/blender/blender.exe --background --python-exit-code 1 --python tools/build-simulator-model.py
-Coordinates are in metres; EV, EV_Port, Charger, Charger screen and
-Charger_Gun are the animation interfaces consumed by the web scene.
+Run: D:/tools/blender/blender.exe -b --python-exit-code 1 --python tools/build-simulator-model.py
+Sources, dimensions and provenance are in references/README.md.
+Geometry is authored in metres, Z-up, with the EV facing -Y.
 """
-import bpy
-import math
+import sys
 from pathlib import Path
+sys.path.insert(0,str(Path(__file__).resolve().parent))
+from model_primitives import *
+from mathutils import Matrix, Vector
+import json
+import bmesh
 
-ROOT = Path(__file__).resolve().parent.parent
-bpy.ops.wm.read_factory_settings(use_empty=True)
-
-def mat(name, color, metallic=0, roughness=.35, emission=0):
-    m = bpy.data.materials.new(name); m.diffuse_color = (*color, 1); m.use_nodes = True
-    p = m.node_tree.nodes.get('Principled BSDF'); p.inputs['Base Color'].default_value = (*color, 1)
-    p.inputs['Metallic'].default_value = metallic; p.inputs['Roughness'].default_value = roughness
-    if emission:
-        p.inputs['Emission Color'].default_value = (*color, 1); p.inputs['Emission Strength'].default_value = emission
-    return m
-
-paint = mat('Pearl graphite blue', (.28, .38, .43), .72, .23)
-black = mat('Satin black trim', (.018, .027, .032), .15, .4)
-rubber = mat('Tire rubber', (.012, .016, .019), 0, .82)
-glass = mat('Tinted glazing', (.025, .065, .082), .48, .13)
-chrome = mat('Machined alloy', (.48, .58, .61), .85, .22)
-rim_dark = mat('Wheel graphite', (.055, .075, .083), .72, .28)
-white = mat('Charger porcelain', (.76, .83, .83), .24, .27)
-charcoal = mat('Charger graphite', (.025, .045, .055), .22, .36)
-green = mat('Status light', (.12, .8, .54), .1, .25, 2)
-red = mat('Rear lamps', (.58, .008, .015), .2, .23, 1.2)
-headlight = mat('Head lamps', (.75, .92, 1), .1, .18, 1.5)
-
-def group(name, parent=None, pos=(0,0,0)):
-    o=bpy.data.objects.new(name,None); bpy.context.collection.objects.link(o); o.parent=parent; o.location=pos; return o
-
-def finish(o,name,material,parent):
-    o.name=name; o.parent=parent
-    if material: o.data.materials.append(material)
-    return o
-
-def box(name, pos, size, material, parent, bevel=.02):
-    bpy.ops.mesh.primitive_cube_add(size=1, location=pos); o=bpy.context.object
-    o.dimensions=size; bpy.ops.object.transform_apply(location=False, rotation=False, scale=True)
-    if bevel:
-        b=o.modifiers.new('Soft machined edges','BEVEL'); b.width=bevel; b.segments=3
-        o.modifiers.new('Corner normals','WEIGHTED_NORMAL')
-    return finish(o,name,material,parent)
-
-def mesh(name, verts, faces, material, parent, smooth=False):
-    data=bpy.data.meshes.new(name); data.from_pydata(verts,[],faces); data.update()
-    o=bpy.data.objects.new(name,data); bpy.context.collection.objects.link(o); finish(o,name,material,parent)
-    for f in data.polygons: f.use_smooth=smooth
-    return o
-
-def cylinder(name,pos,radius,depth,material,parent,vertices=64):
-    bpy.ops.mesh.primitive_cylinder_add(vertices=vertices, radius=radius, depth=depth, location=pos, rotation=(0,math.pi/2,0))
-    o=bpy.context.object
-    for f in o.data.polygons: f.use_smooth=True
-    o.modifiers.new('Weighted normals','WEIGHTED_NORMAL')
-    return finish(o,name,material,parent)
-
-def torus(name,pos,major,minor,material,parent):
-    bpy.ops.mesh.primitive_torus_add(major_segments=64, minor_segments=16, location=pos, rotation=(0,math.pi/2,0), major_radius=major, minor_radius=minor)
-    o=bpy.context.object
-    for f in o.data.polygons: f.use_smooth=True
-    return finish(o,name,material,parent)
-
+# Preserve the actual authored Model Y mesh: no lofted substitute bodywork.
+bpy.ops.import_scene.gltf(filepath=str(ROOT/'tools/references/tesla-model-y-source.glb'))
+imported=[o for o in bpy.context.scene.objects if o.type=='MESH']
+old_groups=[o for o in bpy.context.scene.objects if o.type=='EMPTY']
 car=group('EV')
-# Longitudinal stations form a continuously tapered, rounded body. Eight points
-# per section define the sill, shoulder and bonnet instead of a rectangular box.
-stations=[(-2.22,.65,.62),(-2.12,.80,.79),(-1.85,.91,.91),(-1.4,.96,.98),(-.85,.98,1.01),(.35,.98,1.00),(1.15,.95,.94),(1.78,.87,.80),(2.12,.72,.67),(2.19,.61,.60)]
-verts=[]
-for y,w,h in stations:
-    verts += [(-w*.78,y,.24),(w*.78,y,.24),(w*.98,y,.34),(w,y,h-.13),(w*.85,y,h),(-w*.85,y,h),(-w,y,h-.13),(-w*.98,y,.34)]
-faces=[tuple(reversed(range(8))),tuple(range((len(stations)-1)*8,len(stations)*8))]
-for i in range(len(stations)-1):
-    for j in range(8): faces.append((i*8+j,i*8+(j+1)%8,(i+1)*8+(j+1)%8,(i+1)*8+j))
-body=mesh('Sculpted body',verts,faces,paint,car,True)
-sub=body.modifiers.new('Continuous bodywork','SUBSURF'); sub.levels=2
-# The greenhouse is a gently rounded dark glass canopy, with body-coloured pillars.
-profiles=[(-1.65,.72,1.00),(-1.35,.78,1.32),(-.95,.78,1.48),(.48,.77,1.49),(1.08,.72,1.32),(1.48,.67,.96)]
-verts=[]
-for y,w,h in profiles: verts += [(-w,y,.98),(w,y,.98),(w*.96,y,h-.055),(w*.77,y,h),(-w*.77,y,h),(-w*.96,y,h-.055)]
-faces=[tuple(reversed(range(6))),tuple(range((len(profiles)-1)*6,len(profiles)*6))]
-for i in range(len(profiles)-1):
-    for j in range(6): faces.append((i*6+j,i*6+(j+1)%6,(i+1)*6+(j+1)%6,(i+1)*6+j))
-canopy=mesh('Panoramic glass canopy',verts,faces,glass,car,True); s=canopy.modifiers.new('Curved glass','SUBSURF'); s.levels=2
-for side in (-1,1):
-    # The windows sit on the outside of the body shoulder and slope inward
-    # towards the roof, so the cabin remains legible from a low side view.
-    for name, outline in (
-        ('Rear side window', [(-1.42,1.02),(-.14,1.02),(-.14,1.39),(-.93,1.38),(-1.25,1.25)]),
-        ('Front side window', [(-.08,1.02),(1.30,1.02),(.97,1.27),(.47,1.40),(-.08,1.39)]),
-    ):
-        points=[(side*(.945-(z-1.02)*.43), y, z) for y,z in outline]
-        mesh(name, points, [tuple(range(len(points)))], glass, car)
-    # Trim and recessed flush handles provide scale and readable side detail.
-    box('Lower rocker', (side*.935,-.02,.31),(.055,2.65,.09),black,car,.025)
-    for y in (-.75,.48): box('Flush door handle',(side*.97,y,.86),(.018,.18,.025),black,car,.008)
-    box('Window divider',(side*.758,-.08,1.20),(.018,.045,.40),black,car,.008)
-    box('Side mirror',(side*.99,.84,1.05),(.18,.24,.105),paint,car,.045)
-    box('Mirror indicator',(side*1.078,.84,1.05),(.008,.14,.018),headlight,car,.003)
-    for y in (-1.38,1.38):
-        # Complete wheel layers, including tire shoulder, rim and ten machined spokes.
-        x=side*.90
-        cylinder('Tire',(x,y,.39),.395,.245,rubber,car)
-        torus('Tire sidewall',(side*1.035,y,.39),.315,.055,rubber,car)
-        cylinder('Alloy rim',(side*1.04,y,.39),.29,.025,rim_dark,car)
-        torus('Rim edge',(side*1.058,y,.39),.27,.012,chrome,car)
-        for k in range(10):
-            a=k*math.tau/10
-            spoke=box('Alloy spoke',(side*1.06,y+math.sin(a)*.16,.39+math.cos(a)*.16),(.018,.038,.23),chrome,car,.009)
-            spoke.rotation_euler.x=-a
-        cylinder('Wheel hub',(side*1.075,y,.39),.065,.03,chrome,car,32)
-        for k in range(5):
-            a=k*math.tau/5
-            cylinder('Wheel bolt',(side*1.094,y+math.sin(a)*.039,.39+math.cos(a)*.039),.008,.008,black,car,12)
-    box('Front LED',(side*.58,2.01,.71),(.43,.04,.055),headlight,car,.02)
-    box('Rear LED',(side*.61,-2.05,.75),(.43,.035,.06),red,car,.02)
-box('Front lower intake',(0,2.105,.39),(1.05,.035,.095),black,car,.025)
-box('Rear lower diffuser',(0,-2.105,.34),(1.15,.04,.11),black,car,.025)
-box('Rear light bridge',(0,-2.075,.75),(.86,.025,.022),red,car,.008)
-port=group('EV_Port',car,(-.965,-1.35,.83))
-cylinder('Charging port bezel',(-.012,0,0),.10,.026,black,port,48)
-cylinder('Charging port inset',(-.03,0,0),.073,.03,chrome,port,48)
+car['identity']='Tesla Model Y · 2021 / classic 2020–2024 body'
+car['author']='tonielpro520'
+car['license']='CC BY 4.0'
+car['source']='https://sketchfab.com/3d-models/2021-tesla-model-y-59e2ead369984b1a85c800ff6cf6789d'
+# Measured source bounds: L4.763916, H1.654583, body width1.849941.
+# Calibrate to the classic Model Y owner's manual, not the 2025 facelift.
+calibration=Matrix.Diagonal((1.921/1.849941,4.751/4.763916,1.624/1.654583,1))
+for o in imported:
+    transform=calibration@o.matrix_world
+    o.parent=None; o.matrix_world=Matrix.Identity(4)
+    o.data.transform(transform); o.data.update(); o.parent=car
+    o.name='Tesla_Model_Y_'+o.name
+for o in old_groups: bpy.data.objects.remove(o,do_unlink=True)
 
+# The source uses diffuse materials. Refinish its existing material slots;
+# lamp, tire and interior textures remain attached to their original UVs.
+for m in set(m for o in imported for m in o.data.materials):
+    p=m.node_tree.nodes.get('Principled BSDF')
+    if not p: continue
+    name=m.name
+    p.inputs['Roughness'].default_value=.4
+    if 'Pintura' in name:
+        p.inputs['Base Color'].default_value=(.82,.86,.90,1)
+        p.inputs['Metallic'].default_value=0; p.inputs['Roughness'].default_value=.24
+        p.inputs['Coat Weight'].default_value=.85; p.inputs['Coat Roughness'].default_value=.16
+    elif 'Vidros' in name:
+        p.inputs['Base Color'].default_value=(.035,.055,.070,.68)
+        p.inputs['Alpha'].default_value=.68; p.inputs['Roughness'].default_value=.14
+        p.inputs['Metallic'].default_value=0
+    elif 'Vidro_Vermelho' in name:
+        p.inputs['Base Color'].default_value=(.14,.005,.008,.72)
+        p.inputs['Alpha'].default_value=.72; p.inputs['Roughness'].default_value=.19
+    elif 'Pneu' in name: p.inputs['Roughness'].default_value=.85
+    elif 'Cromado' in name or 'Disco' in name:
+        p.inputs['Metallic'].default_value=.78; p.inputs['Roughness'].default_value=.24
+    elif 'Metal_Preto' in name:
+        p.inputs['Base Color'].default_value=(.09,.11,.13,1)
+        p.inputs['Metallic'].default_value=.65
+    elif 'Farol' in name:
+        p.inputs['Metallic'].default_value=.50; p.inputs['Roughness'].default_value=.18
+    elif 'Plastico' in name:
+        p.inputs['Base Color'].default_value=(.012,.017,.023,1)
+        p.inputs['Roughness'].default_value=.37
+
+# The real Model Y port is integrated into the left REAR lamp. Sample the
+# source's side surface so the socket follows the car, rather than a door.
+port_y=1.98; port_z=1.04
+near=[v.co.x for o in imported for v in o.data.vertices
+      if abs(v.co.y-port_y)<.05 and abs(v.co.z-port_z)<.06 and v.co.x<-.5]
+# Socket sits BEHIND the original curved lens, not on top of the bodywork.
+port_x=(min(near) if near else -.82)+.035
+port=group('EV_Port',car,(port_x,port_y,port_z))
+port['location']='Left rear tail-lamp charging port'
+box('Socket recess',(.025,0,0),(.052,.19,.135),black,port,.025)
+cylinder('Socket seal',(.005,0,0),.052,.018,black,port,48)
+torus('Port socket gasket',(-.006,0,0),.050,.003,black,port)
+for y,z in [(-.021,.017),(.021,.017),(0,-.023)]:
+    cylinder('Socket contact',(-.008,y,z),.009,.008,chrome,port,24)
+hinge=Vector((port_x,port_y,1.145))
+door=group('Port_Door',port,(0,0,hinge.z-port_z))
+# Split the actual left wraparound tail-light lens/housing at precise planes.
+# BMesh keeps UVs and interpolates boundary vertices. In the closed pose the
+# extracted surfaces are exactly coincident with the original curved lamp.
+cover_parts=[]
+for o in imported:
+    if not any(('Vermelho' in m.name or 'Lanterna' in m.name) for m in o.data.materials): continue
+    bm=bmesh.new(); bm.from_mesh(o.data)
+    planes=[((-.64,0,0),(1,0,0)),((0,1.84,0),(0,1,0)),((0,2.10,0),(0,1,0)),
+            ((0,0,.97),(0,0,1)),((0,0,1.145),(0,0,1))]
+    for point,normal in planes:
+        bmesh.ops.bisect_plane(bm,geom=list(bm.verts)+list(bm.edges)+list(bm.faces),
+            dist=.000001,plane_co=Vector(point),plane_no=Vector(normal))
+    def is_lid(face):
+        c=face.calc_center_median()
+        return c.x<-.640001 and 1.839999<c.y<2.100001 and .969999<c.z<1.145001
+    selected=[f for f in bm.faces if is_lid(f)]
+    if not selected: bm.free(); continue
+    lid_bm=bm.copy()
+    bmesh.ops.delete(lid_bm,geom=[f for f in lid_bm.faces if not is_lid(f)],context='FACES')
+    lid_data=bpy.data.meshes.new('Original curved charge-port lens')
+    lid_bm.to_mesh(lid_data); lid_bm.free()
+    for m in o.data.materials:
+        if 'Vidro_Vermelho' in m.name:
+            opaque=m.copy(); opaque.name='Opaque backed charge-port lens'
+            shader=opaque.node_tree.nodes.get('Principled BSDF')
+            shader.inputs['Alpha'].default_value=1
+            color=list(shader.inputs['Base Color'].default_value); color[3]=1
+            shader.inputs['Base Color'].default_value=color
+            lid_data.materials.append(opaque)
+        else: lid_data.materials.append(m)
+    lid=bpy.data.objects.new('Port_Lid_Original_'+o.name,lid_data)
+    bpy.context.collection.objects.link(lid); lid.parent=door; lid.location=-hinge
+    cover_parts.append(lid)
+    bmesh.ops.delete(bm,geom=selected,context='FACES')
+    bm.to_mesh(o.data); bm.free(); o.data.update()
+assert cover_parts, 'No original tail-lamp surfaces selected for the flush charge-port lid'
+door['construction']='Original curved tail-lamp surfaces, exact closed pose'
+
+# Official Gemini V3.2 datasheet: W850 x D550 x H1550 mm, 120kW.
+# Photo: square white cabinet, narrow central fascia, landscape LCD, dual
+# green status strips, two front holsters and orange StarCharge branding.
+orange=mat('StarCharge orange',(.98,.23,.035),.05,.36)
 charger=group('Charger')
-box('Foundation',(0,0,.07),(.82,.65,.14),charcoal,charger,.04)
-box('Lower cabinet',(0,0,.76),(.67,.48,1.35),white,charger,.10)
-box('Upper cabinet',(0,0,1.47),(.72,.51,.47),white,charger,.12)
-box('Front fascia',(0,-.254,1.13),(.59,.035,1.13),charcoal,charger,.055)
-box('Screen surround',(0,-.281,1.37),(.47,.025,.50),black,charger,.025)
-box('Charger screen',(0,-.298,1.38),(.39,.014,.40),glass,charger,.012)
-box('Status LED',(0,-.289,1.02),(.37,.014,.018),green,charger,.006)
-box('Reader panel',(.12,-.29,.85),(.19,.016,.16),rim_dark,charger,.015)
-for i in range(3): box('Reader signal',(0.12,-.302,.83+i*.025),(.07+i*.018,.006,.006),chrome,charger,.002)
-box('Emergency stop',(-.16,-.30,.85),(.09,.045,.09),red,charger,.025)
-for i in range(8): box('Cooling vent',(.337,0,.47+i*.06),(.012,.26,.012),black,charger,.004)
-box('Gun holster',(.38,.02,.86),(.14,.25,.35),charcoal,charger,.04)
-box('Top signature',(0,-.257,1.67),(.24,.012,.025),green,charger,.008)
+charger['identity']='StarCharge 星星充电 双子座120kW V3.2'
+charger['dimensions_mm']='850 x 550 x 1550 (W x D x H)'
+box('Grey cabinet plinth',(0,0,.055),(.85,.55,.11),rim_dark,charger,.008)
+box('White rectangular cabinet',(0,0,.825),(.85,.55,1.45),white,charger,.012)
+box('Central graphite fascia',(0,-.286,1.005),(.31,.022,.76),charcoal,charger,.012)
+box('LCD bezel',(0,-.303,1.30),(.257,.015,.19),black,charger,.008)
+box('Charger screen',(0,-.314,1.30),(.19,.006,.12),glass,charger,.003)
+for x in (-.088,.088):
+    box('Green status indicator',(x,-.302,1.165),(.102,.009,.007),green,charger,.002)
+box('Card reader',(0,-.302,1.06),(.067,.012,.055),black,charger,.008)
+box('Tariff and QR label',(0,-.302,.973),(.267,.009,.06),rim_dark,charger,.004)
+for x in (-.105,.105):
+    box('QR backing',(x,-.309,.973),(.045,.004,.045),white,charger,.001)
+    for i in range(5):
+        for j in range(5):
+            if (i+j)%3!=0:
+                box('QR pattern',(x+(i-2)*.007,-.312,.973+(j-2)*.007),(.005,.003,.005),black,charger,0)
+for x in (-.094,.094):
+    box('Front gun holster',(x,-.311,.807),(.096,.055,.17),black,charger,.019)
+    box('Holster socket',(x,-.345,.83),(.063,.015,.10),charcoal,charger,.017)
+for side in (-1,1):
+    box('Cabinet side handle',(side*.429,-.17,.74),(.018,.05,.15),chrome,charger,.008)
+    for i in range(13):
+        box('Side cooling slit',(side*.427,.045,.33+i*.027),(.006,.30,.008),black,charger,.002)
+    box('Rear cable outlet',(side*.405,.11,1.40),(.055,.08,.06),black,charger,.015)
+    cylinder('Cable exit grommet',(side*.445,.11,1.40),.027,.05,black,charger,32)
+box('Emergency button collar',(.43,-.14,1.12),(.018,.075,.075),black,charger,.012)
+cylinder('Emergency stop',(.447,-.14,1.12),.028,.024,red,charger,32)
+box('Rear maintenance door',(0,.279,.83),(.74,.008,1.30),white,charger,.006)
 
-gun=group('Charger_Gun')
-box('Gun housing',(0,0,0),(.24,.11,.16),charcoal,gun,.04)
-box('Gun grip',(-.065,.01,-.13),(.095,.10,.18),black,gun,.025)
-cylinder('Gun nozzle',(.16,0,.015),.052,.18,chrome,gun,32)
-box('Gun status',(-.04,-.058,.045),(.07,.008,.018),green,gun,.005)
+font=bpy.data.fonts.load('C:/Windows/Fonts/msyh.ttc')
+def label(name,body,pos,size,material,parent):
+    data=bpy.data.curves.new(name,'FONT'); data.body=body; data.size=size
+    data.align_x='CENTER'; data.align_y='CENTER'; data.font=font
+    o=bpy.data.objects.new(name,data); bpy.context.collection.objects.link(o)
+    o.location=pos; o.rotation_euler=(math.pi/2,0,0)
+    finish(o,name,material,parent)
+    bpy.context.view_layer.objects.active=o
+    bpy.ops.object.select_all(action='DESELECT'); o.select_set(True)
+    bpy.ops.object.convert(target='MESH')
+    return o
+label('StarCharge brand','StarCharge 星星充电',(.025,-.284,1.477),.028,charcoal,charger)
+sun=[]
+for i in range(24):
+    a=i*math.tau/24; r=.025 if i%2==0 else .018
+    sun.append((-.215+math.cos(a)*r,-.285,1.477+math.sin(a)*r))
+mesh('Orange brand sun',sun,[tuple(range(24))],orange,charger)
+for i,c in enumerate('快充300A'):
+    label('Fast charge marking',c,(.286,-.284,.54-i*.047),.037,orange,charger)
+label('Rating label','120 kW',(0,-.314,.98),.018,white,charger)
 
+# Two physical guns belong to one cabinet. Only the selected gun moves;
+# the second remains parked, matching the dual-holster reference photo.
+def make_gun(name):
+    g=group(name)
+    box('Gun housing',(0,0,0),(.20,.09,.12),black,g,.029)
+    cylinder('Gun collar',(.115,0,.01),.051,.10,charcoal,g,32)
+    cylinder('Gun connector',(.183,0,.01),.043,.06,chrome,g,32)
+    box('Gun grip',(-.055,0,-.115),(.075,.085,.20),black,g,.025)
+    box('Release latch',(.012,0,.071),(.085,.05,.017),rim_dark,g,.005)
+    group('Gun_Tip' if name=='Charger_Gun' else 'Spare_Tip',g,(.213,0,.01))
+    group('Gun_Cable' if name=='Charger_Gun' else 'Spare_Cable',g,(-.055,0,-.22))
+    return g
+gun=make_gun('Charger_Gun')
+group('Gun_Home',charger,(.094,-.38,.84))
+group('Cable_Anchor',charger,(.47,.11,1.40))
+group('Spare_Home',charger,(-.094,-.38,.84))
+group('Spare_Anchor',charger,(-.47,.11,1.40))
+make_gun('Spare_Gun')
+
+bpy.context.view_layer.update()
+closed_surface_error=max((lid.matrix_world@v.co-v.co).length for lid in cover_parts for v in lid.data.vertices)
+assert closed_surface_error<.00001, f'Closed lid moved away from original tail lamp: {closed_surface_error}m'
+door['closed_surface_error_m']=closed_surface_error
 bpy.context.preferences.filepaths.save_version=0
-bpy.ops.wm.save_as_mainfile(filepath=str(ROOT/'tools'/'simulator-model.blend'))
-bpy.ops.export_scene.gltf(filepath=str(ROOT/'public'/'simulator'/'simulator-model.glb'),export_format='GLB',export_apply=True,export_animations=False,export_yup=True)
+bpy.ops.wm.save_as_mainfile(filepath=str(ROOT/'tools/simulator-model.blend'))
+bpy.ops.export_scene.gltf(filepath=str(ROOT/'public/simulator/simulator-model.glb'),
+    export_format='GLB',export_apply=True,export_animations=False,export_yup=True,
+    export_draco_mesh_compression_enable=True,export_draco_mesh_compression_level=6,
+    export_draco_position_quantization=16,export_draco_normal_quantization=12,
+    export_draco_texcoord_quantization=14)
+manifest={'car':'Tesla Model Y 2021','car_dimensions_m':[4.751,1.921,1.624],
+          'charger':'StarCharge Gemini 120kW V3.2','charger_dimensions_m':[.85,.55,1.55],
+          'port_blender_xyz':[port_x,port_y,port_z],
+          'lid_original_parts':len(cover_parts),
+          'lid_closed_surface_error_m':closed_surface_error,
+          'car_license':'CC BY 4.0','car_author':'tonielpro520'}
+(ROOT/'tools/references/model-manifest.json').write_text(json.dumps(manifest,indent=2),encoding='utf-8')

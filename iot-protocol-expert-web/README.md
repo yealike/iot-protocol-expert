@@ -8,4 +8,8 @@
 
 ## 充电场景模型
 
-模拟器页面使用 Three.js 加载 Blender 模型 `public/simulator/simulator-model.glb`，可编辑模型为 `tools/simulator-model.blend`。模型为比例化示意：车辆参考 [Tesla Model Y 官方尺寸](https://www.tesla.com/ownersmanual/modely/en_eu/GUID-1E76B638-7B12-4D9A-8767-94B7F1E92A0E.html)，直流桩参考 [ABB Terra 124 CE 数据表](https://library.e.abb.com/public/48ca18f6f24f470f8321774850d6d6a5/Txx4%20Gen%202%20Data%20Sheet.pdf)（最大 120 kW，约 1900 × 880 × 565 mm）。充电枪、SOC 和功率以当前选中枪的仿真状态为准。
+模拟器使用 Three.js 加载 `public/simulator/simulator-model.glb`，可编辑模型为 `tools/simulator-model.blend`。车辆采用 tonielpro520 的 **2021 Tesla Model Y** 网格（CC BY 4.0），按经典款官方尺寸校准；桩体按星星充电 **双子座120kW V3.2** 官方照片与 850 × 550 × 1550 mm 规格重建。图片、规格书、确定参数及来源见 [外观参考](tools/references/README.md)，发布署名见 [ASSET-CREDITS](public/simulator/ASSET-CREDITS.md)。
+
+执行 `D:/tools/blender/blender.exe --background --python-exit-code 1 --python tools/build-simulator-model.py` 重建模型。开发服务打开 `/tools/preview-simulator.html` 可独立验收插拔枪、充电、故障及切枪状态；该页使用固定测试状态。React 与独立模拟器共用同一场景实现。充电枪、SOC 和功率以当前选中枪的仿真状态为准。
+
+枪线使用 Ammo.js/Bullet 软体物理，按 5 m 长度模拟重力下垂、贴地摩擦与插拔拖动。实现和调研见 [枪线物理方案](tools/references/cable-physics-notes.md)；执行 `node --test tools/cable-physics.test.mjs tools/twin-geometry.test.mjs` 运行物理和动作顺序测试。

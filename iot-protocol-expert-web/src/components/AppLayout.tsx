@@ -103,7 +103,7 @@ export default function AppLayout({ user, children }: Props) {
             position: 'sticky',
             top: 0,
             zIndex: 10,
-            backdropFilter: 'blur(8px)'
+            background: '#ffffff'
           }}
         >
           <Space size={8}>
