@@ -2,7 +2,6 @@ package top.yealike.ipe.ops.common;
 
 import java.util.List;
 import java.util.function.Function;
-import org.springframework.data.domain.Page;
 
 /**
  * 统一分页响应。
@@ -12,21 +11,19 @@ import org.springframework.data.domain.Page;
  */
 public record PageResult<T>(List<T> content, int page, int size, long total, int totalPages) {
 
-    public static <T> PageResult<T> of(Page<T> page) {
-        return new PageResult<>(
-                page.getContent(), page.getNumber(), page.getSize(), page.getTotalElements(), page.getTotalPages());
+    public static <T> PageResult<T> of(List<T> content, int page, int size, long total) {
+        return new PageResult<>(content, page, size, total, totalPages(total, size));
     }
 
-    public static <S, T> PageResult<T> of(Page<S> page, Function<S, T> mapper) {
-        return new PageResult<>(
-                page.getContent().stream().map(mapper).toList(),
-                page.getNumber(),
-                page.getSize(),
-                page.getTotalElements(),
-                page.getTotalPages());
+    public static <S, T> PageResult<T> of(List<S> content, int page, int size, long total, Function<S, T> mapper) {
+        return new PageResult<>(content.stream().map(mapper).toList(), page, size, total, totalPages(total, size));
     }
 
     public static <T> PageResult<T> empty(int page, int size) {
         return new PageResult<>(List.of(), page, size, 0, 0);
+    }
+
+    private static int totalPages(long total, int size) {
+        return size <= 0 || total <= 0 ? 0 : (int) Math.ceil((double) total / size);
     }
 }

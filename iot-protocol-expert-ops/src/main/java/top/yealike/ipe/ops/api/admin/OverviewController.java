@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.yealike.ipe.ops.device.dto.DeviceDtos;
 import top.yealike.ipe.ops.device.service.DeviceInstanceService;
+import top.yealike.ipe.ops.mapper.ChargeOrderMapper;
 import top.yealike.ipe.ops.service.StationService;
 import top.yealike.ipe.ops.thingmodel.DeviceTypeCatalog;
 
@@ -19,9 +20,9 @@ public class OverviewController {
 
     private final DeviceInstanceService devices;
     private final StationService stations;
-    private final top.yealike.ipe.ops.repository.ChargeOrderRepository orders;
+    private final ChargeOrderMapper orders;
 
-    public OverviewController(DeviceInstanceService devices, StationService stations, top.yealike.ipe.ops.repository.ChargeOrderRepository orders) {
+    public OverviewController(DeviceInstanceService devices, StationService stations, ChargeOrderMapper orders) {
         this.orders = orders;
         this.devices = devices;
         this.stations = stations;
@@ -35,28 +36,35 @@ public class OverviewController {
     @GetMapping("/business")
     public Map<String, Object> business() {
         var today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai"));
-        var result = orders.summarizeAll(top.yealike.ipe.ops.domain.ChargeOrder.Status.SETTLED,
-                today.atStartOfDay(), today.plusDays(1).atStartOfDay());
+        var result = orders.summarizeAll(
+                top.yealike.ipe.ops.domain.ChargeOrder.Status.SETTLED,
+                today.atStartOfDay(),
+                today.plusDays(1).atStartOfDay());
         Map<String, Object> response = new LinkedHashMap<>();
         response.put("date", today.toString());
         response.put("timezone", "Asia/Shanghai");
         response.put("settledOrderCount", result.getC());
         response.put("settledEnergy", result.getE());
         response.put("settledAmount", result.getA());
-        response.put("chargedEnergy", orders.sumEnergyActiveBetween(
-                today.plusDays(1).atStartOfDay(), today.atStartOfDay()));
+        response.put(
+                "chargedEnergy", orders.sumEnergyActiveBetween(today.plusDays(1).atStartOfDay(), today.atStartOfDay()));
         response.put("dischargedEnergy", java.math.BigDecimal.ZERO);
         List<Map<String, Object>> daily = new ArrayList<>();
         for (int days = 6; days >= 0; days--) {
             var date = today.minusDays(days);
-            var day = orders.summarizeAll(top.yealike.ipe.ops.domain.ChargeOrder.Status.SETTLED,
-                    date.atStartOfDay(), date.plusDays(1).atStartOfDay());
-            daily.add(Map.of("date", date.toString(), "energy", day.getE(), "amount", day.getA(), "orders", day.getC()));
+            var day = orders.summarizeAll(
+                    top.yealike.ipe.ops.domain.ChargeOrder.Status.SETTLED,
+                    date.atStartOfDay(),
+                    date.plusDays(1).atStartOfDay());
+            daily.add(
+                    Map.of("date", date.toString(), "energy", day.getE(), "amount", day.getA(), "orders", day.getC()));
         }
         response.put("daily", daily);
-        response.put("activeOrderCount", orders.countByStatusIn(java.util.List.of(
-                top.yealike.ipe.ops.domain.ChargeOrder.Status.PENDING,
-                top.yealike.ipe.ops.domain.ChargeOrder.Status.CHARGING)));
+        response.put(
+                "activeOrderCount",
+                orders.countByStatusIn(java.util.List.of(
+                        top.yealike.ipe.ops.domain.ChargeOrder.Status.PENDING,
+                        top.yealike.ipe.ops.domain.ChargeOrder.Status.CHARGING)));
         return response;
     }
 

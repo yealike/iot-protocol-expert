@@ -1,6 +1,5 @@
 package top.yealike.ipe.ops.device.service;
 
-import jakarta.persistence.criteria.Predicate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -10,18 +9,15 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Sort;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.ipe.ops.common.PageResult;
 import top.yealike.ipe.ops.common.PageSupport;
 import top.yealike.ipe.ops.device.dto.DeviceDtos;
 import top.yealike.ipe.ops.device.entity.Product;
-import top.yealike.ipe.ops.device.repository.DeviceInstanceRepository;
-import top.yealike.ipe.ops.device.repository.ProductRepository;
+import top.yealike.ipe.ops.mapper.DeviceInstanceMapper;
+import top.yealike.ipe.ops.mapper.ProductMapper;
+import top.yealike.ipe.ops.mapper.ProtocolDocumentMapper;
 import top.yealike.ipe.ops.thingmodel.DeviceTypeCatalog;
 import top.yealike.ipe.ops.thingmodel.ThingModel;
 import top.yealike.ipe.ops.thingmodel.ThingModelCodec;
@@ -37,15 +33,16 @@ public class ProductService {
     private static final Set<String> SORTABLE =
             Set.of("id", "productCode", "name", "deviceType", "protocol", "createdAt", "updatedAt");
 
-    private final ProductRepository products;
-    private final DeviceInstanceRepository devices;
-    private final JdbcTemplate jdbc;
+    private final ProductMapper products;
+    private final DeviceInstanceMapper devices;
+    private final ProtocolDocumentMapper protocolDocuments;
     private final Map<Long, CachedModel> modelCache = new ConcurrentHashMap<>();
 
-    public ProductService(ProductRepository products, DeviceInstanceRepository devices, JdbcTemplate jdbc) {
+    public ProductService(
+            ProductMapper products, DeviceInstanceMapper devices, ProtocolDocumentMapper protocolDocuments) {
         this.products = products;
         this.devices = devices;
-        this.jdbc = jdbc;
+        this.protocolDocuments = protocolDocuments;
     }
 
     private record CachedModel(String raw, ThingModel model) {}
@@ -54,26 +51,16 @@ public class ProductService {
 
     public PageResult<DeviceDtos.ProductRow> query(
             String keyword, String deviceType, String categoryCode, Integer page, Integer size, String sort) {
-        Specification<Product> spec = (root, query, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
-            if (keyword != null && !keyword.isBlank()) {
-                String like = "%" + keyword.trim().toLowerCase(Locale.ROOT) + "%";
-                predicates.add(cb.or(
-                        cb.like(cb.lower(root.get("productCode")), like),
-                        cb.like(cb.lower(root.get("name")), like),
-                        cb.like(cb.lower(root.get("model")), like)));
-            }
-            if (deviceType != null && !deviceType.isBlank()) {
-                predicates.add(
-                        cb.equal(root.get("deviceType"), deviceType.trim().toUpperCase(Locale.ROOT)));
-            }
-            if (categoryCode != null && !categoryCode.isBlank()) {
-                predicates.add(cb.equal(root.get("categoryCode"), categoryCode.trim()));
-            }
-            return cb.and(predicates.toArray(Predicate[]::new));
-        };
-        Page<Product> result = products.findAll(spec, PageSupport.pageable(page, size, sort, SORTABLE));
-        return PageResult.of(result, this::row);
+        String effectiveKeyword = keyword == null || keyword.isBlank() ? null : keyword.trim();
+        String effectiveType = deviceType == null || deviceType.isBlank()
+                ? null
+                : deviceType.trim().toUpperCase(Locale.ROOT);
+        String effectiveCategory = categoryCode == null || categoryCode.isBlank() ? null : categoryCode.trim();
+        PageSupport.PageQuery paging = PageSupport.pageable(page, size, sort, SORTABLE);
+        List<Product> content = products.search(
+                effectiveKeyword, effectiveType, effectiveCategory, paging.orderBy(), paging.size(), paging.offset());
+        long total = products.countSearch(effectiveKeyword, effectiveType, effectiveCategory);
+        return PageResult.of(content, paging.page(), paging.size(), total, this::row);
     }
 
     public List<Product> findAllById(java.util.Collection<Long> ids) {
@@ -83,10 +70,14 @@ public class ProductService {
     /** 按产品批量读取所引用的协议展示信息。 */
     public Map<Long, Map<String, Object>> protocolDocuments(java.util.Collection<Long> productIds) {
         if (productIds.isEmpty()) return Map.of();
-        String placeholders = String.join(",", java.util.Collections.nCopies(productIds.size(), "?"));
         Map<Long, Map<String, Object>> result = new LinkedHashMap<>();
-        for (var row : jdbc.queryForList("select p.id, d.protocol_code, d.protocol_name_en, d.document_version from ipe_ops.product p join ipe_ops.protocol_document d on d.id = p.protocol_document_id where p.id in (" + placeholders + ")", productIds.toArray())) {
-            result.put(((Number) row.get("id")).longValue(), row);
+        for (ProtocolDocumentMapper.Ref ref : protocolDocuments.selectProductRefs(productIds)) {
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", ref.id());
+            row.put("protocol_code", ref.protocolCode());
+            row.put("protocol_name_en", ref.protocolNameEn());
+            row.put("document_version", ref.documentVersion());
+            result.put(ref.id(), row);
         }
         return result;
     }
@@ -96,9 +87,7 @@ public class ProductService {
     }
 
     public List<DeviceDtos.ProductRow> listAll() {
-        return products.findAll(Sort.by(Sort.Order.asc("id"))).stream()
-                .map(this::row)
-                .toList();
+        return products.findAll().stream().map(this::row).toList();
     }
 
     public List<Map<String, Object>> deviceTypeCatalog() {
@@ -151,12 +140,11 @@ public class ProductService {
         Long documentId = input.protocolDocumentId();
         String resolvedProtocol = previousProtocol;
         if (documentId != null) {
-            var docs = jdbc.queryForList("select protocol_name_en, document_version, status from ipe_ops.protocol_document where id = ? for update", documentId);
-            if (docs.isEmpty()) throw new IllegalArgumentException("协议文档不存在");
-            var doc = docs.get(0);
-            if (!"ACTIVE".equals(doc.get("status"))) throw new IllegalArgumentException("协议文档已归档");
-            String english = String.valueOf(doc.get("protocol_name_en"));
-            String version = String.valueOf(doc.get("document_version"));
+            ProtocolDocumentMapper.Policy doc = protocolDocuments.selectPolicyForUpdate(documentId);
+            if (doc == null) throw new IllegalArgumentException("协议文档不存在");
+            if (!"ACTIVE".equals(doc.status())) throw new IllegalArgumentException("协议文档已归档");
+            String english = doc.protocolNameEn();
+            String version = doc.documentVersion();
             if (english.equalsIgnoreCase("YKC") && version.equalsIgnoreCase("1.6")) resolvedProtocol = "YKC16";
             else if (english.equalsIgnoreCase("OCPP") && version.equalsIgnoreCase("1.6j")) resolvedProtocol = "OCPP16J";
             else throw new IllegalArgumentException("该协议版本尚未接入，当前支持 YKC 1.6 和 OCPP 1.6j");
@@ -168,11 +156,15 @@ public class ProductService {
         }
         if (product.id != null && devices.countByProductId(product.id) > 0) {
             String requestedProtocol = resolvedProtocol;
-            String requestedTransport = input.transport() == null || input.transport().isBlank()
-                    ? "NONE" : input.transport().trim().toUpperCase(Locale.ROOT);
+            String requestedTransport =
+                    input.transport() == null || input.transport().isBlank()
+                            ? "NONE"
+                            : input.transport().trim().toUpperCase(Locale.ROOT);
             ThingModel requestedModel = ThingModelCodec.fromMap(input.metadata());
-            if (!product.protocol.equals(requestedProtocol) || !product.transport.equals(requestedTransport)
-                    || !ThingModelCodec.toMap(ThingModelCodec.parse(product.metadata)).equals(ThingModelCodec.toMap(requestedModel))) {
+            if (!product.protocol.equals(requestedProtocol)
+                    || !product.transport.equals(requestedTransport)
+                    || !ThingModelCodec.toMap(ThingModelCodec.parse(product.metadata))
+                            .equals(ThingModelCodec.toMap(requestedModel))) {
                 throw new IllegalArgumentException("产品已绑定设备，不能直接修改协议或物模型");
             }
         }
@@ -273,8 +265,8 @@ public class ProductService {
 
     public DeviceDtos.ProductRow row(Product product) {
         ThingModel model = model(product.id);
-        var docs = product.protocolDocumentId == null ? List.<Map<String, Object>>of() : jdbc.queryForList("select protocol_code, protocol_name_en, document_version from ipe_ops.protocol_document where id = ?", product.protocolDocumentId);
-        Map<String, Object> doc = docs.isEmpty() ? Map.of() : docs.get(0);
+        ProtocolDocumentMapper.Ref doc =
+                product.protocolDocumentId == null ? null : protocolDocuments.selectRef(product.protocolDocumentId);
         return new DeviceDtos.ProductRow(
                 product.id,
                 product.productCode,
@@ -286,9 +278,9 @@ public class ProductService {
                         .orElse(product.deviceType),
                 product.protocol,
                 product.protocolDocumentId,
-                (String) doc.get("protocol_code"),
-                (String) doc.get("protocol_name_en"),
-                (String) doc.get("document_version"),
+                doc == null ? null : doc.protocolCode(),
+                doc == null ? null : doc.protocolNameEn(),
+                doc == null ? null : doc.documentVersion(),
                 product.transport,
                 product.vendor,
                 product.model,

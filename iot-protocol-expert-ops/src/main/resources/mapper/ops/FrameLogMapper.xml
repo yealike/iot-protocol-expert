@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.ipe.ops.mapper.FrameLogMapper">
+
+    <resultMap id="FrameLogMap" type="top.yealike.ipe.ops.domain.FrameLog">
+        <id property="id" column="id"/>
+        <result property="deviceId" column="device_id"/>
+        <result property="protocol" column="protocol"/>
+        <result property="protocolDeviceId" column="protocol_device_id"/>
+        <result property="direction" column="direction"/>
+        <result property="frameType" column="frame_type"/>
+        <result property="frameLabel" column="frame_label"/>
+        <result property="messageId" column="message_id"/>
+        <result property="sequenceNo" column="sequence_no"/>
+        <result property="encrypted" column="encrypted"/>
+        <result property="bodyHex" column="body_hex"/>
+        <result property="wireHex" column="wire_hex"/>
+        <result property="summary" column="summary"/>
+        <result property="errorMessage" column="error_message"/>
+        <result property="traceId" column="trace_id"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="columns">
+        id, device_id, protocol, protocol_device_id, direction, frame_type, frame_label, message_id,
+        sequence_no, encrypted, body_hex, wire_hex, summary, error_message, trace_id, created_at
+    </sql>
+
+    <select id="search" resultMap="FrameLogMap">
+        select <include refid="columns"/>
+        from ipe_ops.frame_log
+        <where>
+            <if test="deviceId != null">
+                and device_id = #{deviceId}
+            </if>
+            <if test="protocol != null and protocol != ''">
+                and protocol = #{protocol}
+            </if>
+            <if test="protocolDeviceId != null and protocolDeviceId != ''">
+                and protocol_device_id = #{protocolDeviceId}
+            </if>
+            <if test="messageId != null and messageId != ''">
+                and message_id = #{messageId}
+            </if>
+            <if test="from != null">
+                and created_at &gt;= #{from}
+            </if>
+            <if test="to != null">
+                and created_at &lt; #{to}
+            </if>
+        </where>
+        order by id desc
+        limit #{limit}
+    </select>
+
+    <select id="selectRecent" resultMap="FrameLogMap">
+        select <include refid="columns"/>
+        from ipe_ops.frame_log
+        order by id desc
+        limit #{limit}
+    </select>
+
+    <select id="selectRecentByDevice" resultMap="FrameLogMap">
+        select <include refid="columns"/>
+        from ipe_ops.frame_log
+        where device_id = #{deviceId}
+        order by created_at desc
+        limit #{limit}
+    </select>
+
+    <select id="countByDirection" resultType="long">
+        select count(*) from ipe_ops.frame_log where direction = #{direction}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        insert into ipe_ops.frame_log
+            (device_id, protocol, protocol_device_id, direction, frame_type, frame_label, message_id,
+             sequence_no, encrypted, body_hex, wire_hex, summary, error_message, trace_id, created_at)
+        values
+            (#{deviceId}, #{protocol}, #{protocolDeviceId}, #{direction}, #{frameType}, #{frameLabel},
+             #{messageId}, #{sequenceNo}, #{encrypted}, #{bodyHex}, #{wireHex}, #{summary},
+             #{errorMessage}, #{traceId}, #{createdAt})
+    </insert>
+</mapper>

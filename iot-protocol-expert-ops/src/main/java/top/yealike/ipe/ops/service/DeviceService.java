@@ -14,13 +14,13 @@ import top.yealike.ipe.ops.device.entity.DeviceChannel;
 import top.yealike.ipe.ops.device.entity.DeviceInstance;
 import top.yealike.ipe.ops.device.entity.DeviceTag;
 import top.yealike.ipe.ops.device.entity.Product;
-import top.yealike.ipe.ops.device.repository.DeviceChannelRepository;
-import top.yealike.ipe.ops.device.repository.DeviceInstanceRepository;
-import top.yealike.ipe.ops.device.repository.DeviceTagRepository;
-import top.yealike.ipe.ops.device.repository.ProductRepository;
 import top.yealike.ipe.ops.device.service.DeviceInstanceService;
 import top.yealike.ipe.ops.device.service.DevicePropertyService;
 import top.yealike.ipe.ops.dto.OpsDtos;
+import top.yealike.ipe.ops.mapper.DeviceChannelMapper;
+import top.yealike.ipe.ops.mapper.DeviceInstanceMapper;
+import top.yealike.ipe.ops.mapper.DeviceTagMapper;
+import top.yealike.ipe.ops.mapper.ProductMapper;
 
 /**
  * 协议侧设备服务：登录、心跳、离线与协议专属字段的落位。
@@ -35,20 +35,20 @@ public class DeviceService {
     private static final Logger log = LoggerFactory.getLogger(DeviceService.class);
 
     private final DeviceInstanceService instances;
-    private final DeviceInstanceRepository devices;
-    private final DeviceTagRepository tags;
-    private final DeviceChannelRepository channels;
-    private final ProductRepository products;
+    private final DeviceInstanceMapper devices;
+    private final DeviceTagMapper tags;
+    private final DeviceChannelMapper channels;
+    private final ProductMapper products;
     private final DevicePropertyService properties;
     private final StationService stations;
     private final OpsProperties options;
 
     public DeviceService(
             DeviceInstanceService instances,
-            DeviceInstanceRepository devices,
-            DeviceTagRepository tags,
-            DeviceChannelRepository channels,
-            ProductRepository products,
+            DeviceInstanceMapper devices,
+            DeviceTagMapper tags,
+            DeviceChannelMapper channels,
+            ProductMapper products,
             DevicePropertyService properties,
             StationService stations,
             OpsProperties options) {

@@ -6,15 +6,15 @@ import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import top.yealike.ipe.ops.domain.OpsUser;
-import top.yealike.ipe.ops.repository.OpsUserRepository;
+import top.yealike.ipe.ops.mapper.OpsUserMapper;
 
 @Service
 public class OpsUserDetailsService implements UserDetailsService {
 
-    private final OpsUserRepository users;
+    private final OpsUserMapper users;
     private final IdentityService identities;
 
-    public OpsUserDetailsService(OpsUserRepository users, IdentityService identities) {
+    public OpsUserDetailsService(OpsUserMapper users, IdentityService identities) {
         this.users = users;
         this.identities = identities;
     }

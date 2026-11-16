@@ -20,10 +20,10 @@ import top.yealike.ipe.ops.device.entity.DeviceChannel;
 import top.yealike.ipe.ops.device.entity.DeviceInstance;
 import top.yealike.ipe.ops.device.entity.DevicePropertyLatest;
 import top.yealike.ipe.ops.device.entity.DevicePropertyTs;
-import top.yealike.ipe.ops.device.repository.DeviceChannelRepository;
-import top.yealike.ipe.ops.device.repository.DeviceInstanceRepository;
-import top.yealike.ipe.ops.device.repository.DevicePropertyLatestRepository;
-import top.yealike.ipe.ops.device.repository.DevicePropertyTsRepository;
+import top.yealike.ipe.ops.mapper.DeviceChannelMapper;
+import top.yealike.ipe.ops.mapper.DeviceInstanceMapper;
+import top.yealike.ipe.ops.mapper.DevicePropertyLatestMapper;
+import top.yealike.ipe.ops.mapper.DevicePropertyTsMapper;
 import top.yealike.ipe.ops.thingmodel.DeviceTypeCatalog;
 import top.yealike.ipe.ops.thingmodel.ThingModel;
 import top.yealike.ipe.ops.thingmodel.ThingValues;
@@ -45,18 +45,18 @@ public class DevicePropertyService {
     private static final Logger log = LoggerFactory.getLogger(DevicePropertyService.class);
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private final DevicePropertyLatestRepository latest;
-    private final DevicePropertyTsRepository series;
-    private final DeviceInstanceRepository devices;
-    private final DeviceChannelRepository channels;
+    private final DevicePropertyLatestMapper latest;
+    private final DevicePropertyTsMapper series;
+    private final DeviceInstanceMapper devices;
+    private final DeviceChannelMapper channels;
     private final ThingModelResolver models;
     private final AlarmService alarms;
 
     public DevicePropertyService(
-            DevicePropertyLatestRepository latest,
-            DevicePropertyTsRepository series,
-            DeviceInstanceRepository devices,
-            DeviceChannelRepository channels,
+            DevicePropertyLatestMapper latest,
+            DevicePropertyTsMapper series,
+            DeviceInstanceMapper devices,
+            DeviceChannelMapper channels,
             ThingModelResolver models,
             AlarmService alarms) {
         this.latest = latest;

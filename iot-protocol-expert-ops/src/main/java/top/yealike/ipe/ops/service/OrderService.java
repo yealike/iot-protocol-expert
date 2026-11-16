@@ -1,23 +1,21 @@
 package top.yealike.ipe.ops.service;
 
-import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import top.yealike.ipe.ops.common.PageResult;
 import top.yealike.ipe.ops.device.entity.DeviceInstance;
 import top.yealike.ipe.ops.domain.ChargeOrder;
 import top.yealike.ipe.ops.dto.OpsDtos;
-import top.yealike.ipe.ops.repository.ChargeOrderRepository;
+import top.yealike.ipe.ops.mapper.ChargeOrderMapper;
 
 @Service
 public class OrderService {
@@ -26,12 +24,12 @@ public class OrderService {
             Set.of(ChargeOrder.Status.PENDING, ChargeOrder.Status.CHARGING);
     private static final DateTimeFormatter STAMP = DateTimeFormatter.ofPattern("yyMMddHHmmss");
 
-    private final ChargeOrderRepository orders;
+    private final ChargeOrderMapper orders;
     private final DeviceService devices;
     private final AtomicInteger sequence = new AtomicInteger();
     private volatile String sequenceStamp = "";
 
-    public OrderService(ChargeOrderRepository orders, DeviceService devices) {
+    public OrderService(ChargeOrderMapper orders, DeviceService devices) {
         this.orders = orders;
         this.devices = devices;
     }
@@ -253,10 +251,10 @@ public class OrderService {
             LocalDateTime to,
             Collection<ChargeOrder.Status> statuses) {
         return searchPage(stationId, deviceId, gunNo, protocol, orderNo, from, to, statuses, 0, 500)
-                .getContent();
+                .content();
     }
 
-    public org.springframework.data.domain.Page<ChargeOrder> searchPage(
+    public PageResult<ChargeOrder> searchPage(
             Long stationId,
             Long deviceId,
             String gunNo,
@@ -267,26 +265,12 @@ public class OrderService {
             Collection<ChargeOrder.Status> statuses,
             int page,
             int size) {
-        Specification<ChargeOrder> spec = (root, query, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
-            if (stationId != null) predicates.add(cb.equal(root.get("stationId"), stationId));
-            if (deviceId != null) predicates.add(cb.equal(root.get("deviceId"), deviceId));
-            if (gunNo != null && !gunNo.isBlank()) predicates.add(cb.equal(root.get("gunNo"), gunNo));
-            if (protocol != null && !protocol.isBlank()) predicates.add(cb.equal(root.get("protocol"), protocol));
-            if (orderNo != null && !orderNo.isBlank()) predicates.add(cb.equal(root.get("orderNo"), orderNo));
-            if (from != null) predicates.add(cb.greaterThanOrEqualTo(root.get("createdAt"), from));
-            if (to != null) predicates.add(cb.lessThan(root.get("createdAt"), to));
-            if (statuses != null && !statuses.isEmpty())
-                predicates.add(root.get("status").in(statuses));
-            return cb.and(predicates.toArray(new Predicate[0]));
-        };
-        return orders.findAll(
-                spec,
-                org.springframework.data.domain.PageRequest.of(
-                        Math.max(0, page),
-                        Math.max(1, Math.min(size, 500)),
-                        org.springframework.data.domain.Sort.by(
-                                org.springframework.data.domain.Sort.Direction.DESC, "id")));
+        int pageIndex = Math.max(0, page);
+        int pageSize = Math.max(1, Math.min(size, 500));
+        List<ChargeOrder> content = orders.search(
+                stationId, deviceId, gunNo, protocol, orderNo, from, to, statuses, pageSize, pageIndex * pageSize);
+        long total = orders.countSearch(stationId, deviceId, gunNo, protocol, orderNo, from, to, statuses);
+        return PageResult.of(content, pageIndex, pageSize, total);
     }
 
     public OpsDtos.OrderView view(ChargeOrder order) {

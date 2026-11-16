@@ -40,8 +40,7 @@ public class AiContextCodec {
                 new SecretKeySpec(key, "AES"),
                 new GCMParameterSpec(128, Arrays.copyOf(packed, 12)));
         cipher.updateAAD(operation.getBytes(StandardCharsets.UTF_8));
-        Map<?, ?> claims =
-                JsonMapper.shared().readValue(cipher.doFinal(packed, 12, packed.length - 12), Map.class);
+        Map<?, ?> claims = JsonMapper.shared().readValue(cipher.doFinal(packed, 12, packed.length - 12), Map.class);
         long now = Instant.now().getEpochSecond();
         if (claims == null
                 || !(claims.get("expires") instanceof Number expires)

@@ -5,16 +5,16 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.ipe.ops.device.repository.DeviceInstanceRepository;
+import top.yealike.ipe.ops.mapper.DeviceInstanceMapper;
 
 /** Expire only non-charger sessions created by the gateway telemetry endpoint. */
 @Component
 public class GatewayPresenceMonitor {
-    private final DeviceInstanceRepository devices;
+    private final DeviceInstanceMapper devices;
     private final long ttlSeconds;
 
     public GatewayPresenceMonitor(
-            DeviceInstanceRepository devices, @Value("${IPE_GATEWAY_ONLINE_TTL_SECONDS:60}") long ttlSeconds) {
+            DeviceInstanceMapper devices, @Value("${IPE_GATEWAY_ONLINE_TTL_SECONDS:60}") long ttlSeconds) {
         this.devices = devices;
         this.ttlSeconds = Math.max(10, ttlSeconds);
     }

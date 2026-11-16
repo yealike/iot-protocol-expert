@@ -13,14 +13,14 @@ import top.yealike.ipe.ops.device.entity.DeviceInstance;
 import top.yealike.ipe.ops.domain.ChargeOrder;
 import top.yealike.ipe.ops.domain.CommandRecord;
 import top.yealike.ipe.ops.dto.OpsDtos;
-import top.yealike.ipe.ops.repository.CommandRecordRepository;
+import top.yealike.ipe.ops.mapper.CommandRecordMapper;
 
 @Service
 public class CommandService {
 
     private static final Logger log = LoggerFactory.getLogger(CommandService.class);
 
-    private final CommandRecordRepository commands;
+    private final CommandRecordMapper commands;
     private final DeviceService devices;
     private final OrderService orders;
     private final ProtocolClient protocol;
@@ -29,7 +29,7 @@ public class CommandService {
     private final ObjectMapper json;
 
     public CommandService(
-            CommandRecordRepository commands,
+            CommandRecordMapper commands,
             DeviceService devices,
             OrderService orders,
             ProtocolClient protocol,

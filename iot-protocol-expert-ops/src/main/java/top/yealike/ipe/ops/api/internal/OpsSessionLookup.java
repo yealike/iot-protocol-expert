@@ -4,11 +4,9 @@ import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.HttpSessionEvent;
 import jakarta.servlet.http.HttpSessionIdListener;
 import jakarta.servlet.http.HttpSessionListener;
-
 import java.util.Map;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
-
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.stereotype.Component;
@@ -54,27 +52,27 @@ public class OpsSessionLookup implements HttpSessionListener, HttpSessionIdListe
             int interval = session.getMaxInactiveInterval();
             if (interval > 0 && idleMs >= interval * 1000L) return null;
             if (!(session.getAttribute(HttpSessionSecurityContextRepository.SPRING_SECURITY_CONTEXT_KEY)
-                instanceof SecurityContext context)) return null;
+                    instanceof SecurityContext context)) return null;
             var auth = context.getAuthentication();
             if (auth == null || !auth.isAuthenticated()) return null;
             return identities
-                .byUsername(auth.getName())
-                .filter(IdentityService.Identity::enabled)
-                .filter(identity -> Objects.equals(identity.authVersion(), session.getAttribute("iam.authVersion")))
-                .map(identity -> Map.<String, Object>of(
-                    "authenticated",
-                    true,
-                    "id",
-                    identity.id(),
-                    "username",
-                    identity.username(),
-                    "roles",
-                    identity.roles(),
-                    "permissions",
-                    identity.permissions(),
-                    "authVersion",
-                    identity.authVersion()))
-                .orElse(null);
+                    .byUsername(auth.getName())
+                    .filter(IdentityService.Identity::enabled)
+                    .filter(identity -> Objects.equals(identity.authVersion(), session.getAttribute("iam.authVersion")))
+                    .map(identity -> Map.<String, Object>of(
+                            "authenticated",
+                            true,
+                            "id",
+                            identity.id(),
+                            "username",
+                            identity.username(),
+                            "roles",
+                            identity.roles(),
+                            "permissions",
+                            identity.permissions(),
+                            "authVersion",
+                            identity.authVersion()))
+                    .orElse(null);
         } catch (IllegalStateException expired) {
             return null;
         }

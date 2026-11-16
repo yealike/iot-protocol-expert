@@ -1,0 +1,92 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.ipe.ops.mapper.DevicePropertyLatestMapper">
+
+    <resultMap id="DevicePropertyLatestMap"
+               type="top.yealike.ipe.ops.device.entity.DevicePropertyLatest">
+        <id property="id" column="id"/>
+        <result property="deviceId" column="device_id"/>
+        <result property="channelNo" column="channel_no"/>
+        <result property="propertyId" column="property_id"/>
+        <result property="valueType" column="value_type"/>
+        <result property="valueNum" column="value_num"/>
+        <result property="valueText" column="value_text"/>
+        <result property="valueJson" column="value_json"/>
+        <result property="valueTime" column="value_time"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="columns">
+        id, device_id, channel_no, property_id, value_type, value_num, value_text,
+        value_json::text as value_json, value_time, updated_at
+    </sql>
+
+    <select id="selectByDeviceAndProperty" resultMap="DevicePropertyLatestMap">
+        select <include refid="columns"/>
+        from ipe_ops.device_property_latest
+        where device_id = #{deviceId}
+          and channel_no = #{channelNo}
+          and property_id = #{propertyId}
+    </select>
+
+    <select id="selectByDeviceId" resultMap="DevicePropertyLatestMap">
+        select <include refid="columns"/>
+        from ipe_ops.device_property_latest
+        where device_id = #{deviceId}
+        order by channel_no, property_id
+    </select>
+
+    <select id="selectByDeviceIds" resultMap="DevicePropertyLatestMap">
+        select <include refid="columns"/>
+        from ipe_ops.device_property_latest
+        where device_id in
+        <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
+            #{deviceId}
+        </foreach>
+        order by device_id, channel_no, property_id
+    </select>
+
+    <select id="selectCountByPropertyIdAndValueTextAndDeviceIdIn" resultType="long">
+        select count(*)
+        from ipe_ops.device_property_latest
+        where property_id = #{propertyId}
+          and value_text = #{valueText}
+          and device_id in
+        <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
+            #{deviceId}
+        </foreach>
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        insert into ipe_ops.device_property_latest
+            (device_id, channel_no, property_id, value_type, value_num, value_text, value_json,
+             value_time, updated_at)
+        values
+            (#{deviceId}, #{channelNo}, #{propertyId}, #{valueType}, #{valueNum}, #{valueText},
+             cast(#{valueJson} as jsonb), #{valueTime}, #{updatedAt})
+    </insert>
+
+    <update id="update">
+        update ipe_ops.device_property_latest
+        set device_id = #{deviceId},
+            channel_no = #{channelNo},
+            property_id = #{propertyId},
+            value_type = #{valueType},
+            value_num = #{valueNum},
+            value_text = #{valueText},
+            value_json = cast(#{valueJson} as jsonb),
+            value_time = #{valueTime},
+            updated_at = #{updatedAt}
+        where id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        delete from ipe_ops.device_property_latest where id = #{id}
+    </delete>
+
+    <delete id="deleteByDeviceId">
+        delete from ipe_ops.device_property_latest where device_id = #{deviceId}
+    </delete>
+</mapper>

@@ -1,5 +1,6 @@
 package top.yealike.ipe.simulator;
 
+import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
@@ -11,6 +12,7 @@ import top.yealike.ipe.protocol.telemetry.ObservabilityConfiguration;
 @ConfigurationPropertiesScan
 @EnableScheduling
 @Import(ObservabilityConfiguration.class)
+@MapperScan("top.yealike.ipe.simulator.mapper")
 public class SimulatorApplication {
 
     public static void main(String[] args) {

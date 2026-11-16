@@ -19,8 +19,8 @@ import top.yealike.ipe.ops.domain.ChargeOrder;
 import top.yealike.ipe.ops.domain.FrameLog;
 import top.yealike.ipe.ops.domain.ProtocolDocSection;
 import top.yealike.ipe.ops.domain.TroubleCase;
-import top.yealike.ipe.ops.repository.ProtocolDocSectionRepository;
-import top.yealike.ipe.ops.repository.TroubleCaseRepository;
+import top.yealike.ipe.ops.mapper.ProtocolDocSectionMapper;
+import top.yealike.ipe.ops.mapper.TroubleCaseMapper;
 import top.yealike.ipe.ops.service.BillService;
 import top.yealike.ipe.ops.service.DeviceService;
 import top.yealike.ipe.ops.service.FrameLogService;
@@ -34,9 +34,9 @@ public class DiagnosticService {
     private final BillService bills;
     private final FrameLogService frames;
     private final FrameDecodeService decoder;
-    private final ProtocolDocSectionRepository docs;
+    private final ProtocolDocSectionMapper docs;
     private final ModelSummaryService model;
-    private final TroubleCaseRepository cases;
+    private final TroubleCaseMapper cases;
     private final OpsProperties properties;
     private final ObjectMapper json;
 
@@ -46,9 +46,9 @@ public class DiagnosticService {
             BillService bills,
             FrameLogService frames,
             FrameDecodeService decoder,
-            ProtocolDocSectionRepository docs,
+            ProtocolDocSectionMapper docs,
             ModelSummaryService model,
-            TroubleCaseRepository cases,
+            TroubleCaseMapper cases,
             OpsProperties properties,
             ObjectMapper json) {
         this.devices = devices;

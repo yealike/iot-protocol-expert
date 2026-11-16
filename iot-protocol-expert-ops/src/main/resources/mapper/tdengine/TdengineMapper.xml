@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.ipe.ops.telemetry.TdengineMapper">
+
+    <resultMap id="TelemetryRowMap" type="top.yealike.ipe.ops.telemetry.TdengineMapper$TelemetryRow">
+        <constructor>
+            <arg column="ts" javaType="java.sql.Timestamp"/>
+            <arg column="time_source" javaType="java.lang.String"/>
+            <arg column="voltage" javaType="java.math.BigDecimal"/>
+            <arg column="current_amp" javaType="java.math.BigDecimal"/>
+            <arg column="power_kw" javaType="java.math.BigDecimal"/>
+            <arg column="gun_temp" javaType="java.math.BigDecimal"/>
+            <arg column="battery_temp" javaType="java.math.BigDecimal"/>
+            <arg column="soc" javaType="java.math.BigDecimal"/>
+        </constructor>
+    </resultMap>
+
+    <update id="createDatabase" statementType="STATEMENT">
+        CREATE DATABASE IF NOT EXISTS ${database} PRECISION 'us' KEEP 3650
+    </update>
+
+    <update id="createStable" statementType="STATEMENT">
+        CREATE STABLE IF NOT EXISTS ${database}.samples
+            (ts TIMESTAMP, time_source VARCHAR(16), voltage DOUBLE, current_amp DOUBLE, power_kw DOUBLE,
+             gun_temp DOUBLE, battery_temp DOUBLE, soc DOUBLE)
+        TAGS (marker INT)
+    </update>
+
+    <update id="createTable" statementType="STATEMENT">
+        CREATE TABLE IF NOT EXISTS ${database}.${table}
+        USING ${database}.samples TAGS (0)
+    </update>
+
+    <insert id="insertSample">
+        insert into ${database}.${table}
+        <trim prefix="(" suffix=")" suffixOverrides=",">
+            ts,
+            time_source,
+            <if test="voltage != null">voltage,</if>
+            <if test="current != null">current_amp,</if>
+            <if test="power != null">power_kw,</if>
+            <if test="gunTemp != null">gun_temp,</if>
+            <if test="batteryTemp != null">battery_temp,</if>
+            <if test="soc != null">soc,</if>
+        </trim>
+        <trim prefix="values (" suffix=")" suffixOverrides=",">
+            #{ts},
+            #{source},
+            <if test="voltage != null">#{voltage},</if>
+            <if test="current != null">#{current},</if>
+            <if test="power != null">#{power},</if>
+            <if test="gunTemp != null">#{gunTemp},</if>
+            <if test="batteryTemp != null">#{batteryTemp},</if>
+            <if test="soc != null">#{soc},</if>
+        </trim>
+    </insert>
+
+    <select id="query" resultMap="TelemetryRowMap">
+        SELECT ts, time_source, voltage, current_amp, power_kw, gun_temp, battery_temp, soc
+        FROM ${database}.samples
+        WHERE tbname = '${table}'
+        ORDER BY ts
+        LIMIT 10001
+    </select>
+</mapper>

@@ -2,7 +2,7 @@ package top.yealike.ipe.ops.device.service;
 
 import org.springframework.stereotype.Component;
 import top.yealike.ipe.ops.device.entity.DeviceInstance;
-import top.yealike.ipe.ops.device.repository.DeviceInstanceRepository;
+import top.yealike.ipe.ops.mapper.DeviceInstanceMapper;
 import top.yealike.ipe.ops.thingmodel.ThingModel;
 import top.yealike.ipe.ops.thingmodel.ThingModelCodec;
 
@@ -15,9 +15,9 @@ import top.yealike.ipe.ops.thingmodel.ThingModelCodec;
 public class ThingModelResolver {
 
     private final ProductService productService;
-    private final DeviceInstanceRepository devices;
+    private final DeviceInstanceMapper devices;
 
-    public ThingModelResolver(ProductService productService, DeviceInstanceRepository devices) {
+    public ThingModelResolver(ProductService productService, DeviceInstanceMapper devices) {
         this.productService = productService;
         this.devices = devices;
     }

@@ -39,16 +39,6 @@ spring:
       minimum-idle: 1
       connection-timeout: 5000
       connection-init-sql: SET search_path TO ipe_ops
-  jpa:
-    hibernate:
-      ddl-auto: none
-    open-in-view: false
-    properties:
-      hibernate:
-        default_schema: ipe_ops
-        jdbc:
-          time_zone: Asia/Shanghai
-        format_sql: false
   flyway:
     enabled: true
     baseline-on-migrate: false
@@ -68,6 +58,12 @@ spring:
   mvc:
     problemdetails:
       enabled: true
+
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    jdbc-type-for-null: "NULL"
 
 management:
   endpoints:
@@ -125,7 +121,6 @@ logging:
     org.springframework.web: WARN
     org.springframework.http: WARN
     org.springframework.security: WARN
-    org.hibernate: WARN
-    org.hibernate.SQL: WARN
+    org.mybatis: WARN
     com.zaxxer.hikari: WARN
     org.flywaydb: INFO

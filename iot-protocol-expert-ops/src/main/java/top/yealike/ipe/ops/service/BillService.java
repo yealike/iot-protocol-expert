@@ -1,19 +1,16 @@
 package top.yealike.ipe.ops.service;
 
-import jakarta.persistence.criteria.Predicate;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.ipe.ops.device.entity.DeviceInstance;
 import top.yealike.ipe.ops.domain.Bill;
 import top.yealike.ipe.ops.domain.ChargeOrder;
 import top.yealike.ipe.ops.dto.OpsDtos;
-import top.yealike.ipe.ops.repository.BillRepository;
+import top.yealike.ipe.ops.mapper.BillMapper;
 
 @Service
 public class BillService {
@@ -21,11 +18,11 @@ public class BillService {
     public static final String SOURCE_YKC_TRANSACTION = "YKC_TRANSACTION";
     public static final String SOURCE_OCPP_STOP = "OCPP_STOP_TRANSACTION";
 
-    private final BillRepository bills;
+    private final BillMapper bills;
     private final DeviceService devices;
     private final OrderService orders;
 
-    public BillService(BillRepository bills, DeviceService devices, OrderService orders) {
+    public BillService(BillMapper bills, DeviceService devices, OrderService orders) {
         this.bills = bills;
         this.devices = devices;
         this.orders = orders;
@@ -119,28 +116,11 @@ public class BillService {
             LocalDateTime from,
             LocalDateTime to,
             Boolean accepted) {
-        Specification<Bill> spec = (root, query, cb) -> {
-            List<Predicate> predicates = new ArrayList<>();
-            if (stationId != null) predicates.add(cb.equal(root.get("stationId"), stationId));
-            if (deviceId != null) predicates.add(cb.equal(root.get("deviceId"), deviceId));
-            if (protocol != null && !protocol.isBlank()) predicates.add(cb.equal(root.get("protocol"), protocol));
-            if (sourceTransactionNo != null && !sourceTransactionNo.isBlank()) {
-                predicates.add(cb.equal(root.get("sourceTransactionNo"), sourceTransactionNo));
-            }
-            if (from != null) predicates.add(cb.greaterThanOrEqualTo(root.get("endedAt"), from));
-            if (to != null) predicates.add(cb.lessThan(root.get("endedAt"), to));
-            if (accepted != null) predicates.add(cb.equal(root.get("accepted"), accepted));
-            query.orderBy(cb.desc(root.get("id")));
-            return cb.and(predicates.toArray(new Predicate[0]));
-        };
-        return bills.findAll(spec).stream().limit(500).toList();
+        return bills.search(stationId, deviceId, protocol, sourceTransactionNo, from, to, accepted, 500);
     }
 
     public List<Bill> byOrder(Long orderId) {
-        return bills.findAll((root, query, cb) -> {
-            query.orderBy(cb.desc(root.get("id")));
-            return cb.equal(root.get("orderId"), orderId);
-        });
+        return bills.findAllByOrderId(orderId);
     }
 
     public OpsDtos.BillView view(Bill bill) {
