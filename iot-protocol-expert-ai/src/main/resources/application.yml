@@ -88,7 +88,7 @@ ipe:
         # 凭据加密主密钥与内部 HMAC 密钥只从环境变量或挂载文件读取
         master-key: ${IPE_CREDENTIAL_MASTER_KEY:}
         master-key-file: ${IPE_CREDENTIAL_MASTER_KEY_FILE:}
-        internal-service-name: ${IPE_INTERNAL_SERVICE_NAME:control}
+        internal-service-name: ${IPE_INTERNAL_SERVICE_NAME:ipe-ai-control}
         runtime-service-name: ${IPE_RUNTIME_SERVICE_NAME:runtime}
         internal-service-key: ${IPE_INTERNAL_SERVICE_KEY:}
         internal-key-id: ${IPE_INTERNAL_KEY_ID:control}

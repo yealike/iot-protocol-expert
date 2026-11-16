@@ -9,7 +9,7 @@ $env:JAVA_HOME = Get-IpeJavaHome
 $env:PATH = "$env:JAVA_HOME\bin;$env:PATH"
 
 if (-not $env:IPE_AI_BOOTSTRAP_ENABLED) { $env:IPE_AI_BOOTSTRAP_ENABLED = "false" }
-if (-not $env:IPE_INTERNAL_SERVICE_NAME) { $env:IPE_INTERNAL_SERVICE_NAME = "control" }
+if (-not $env:IPE_INTERNAL_SERVICE_NAME) { $env:IPE_INTERNAL_SERVICE_NAME = "ipe-ai-control" }
 if (-not $env:IPE_RUNTIME_SERVICE_NAME) { $env:IPE_RUNTIME_SERVICE_NAME = "runtime" }
 if (-not $env:IPE_INTERNAL_SERVICE_KEY) { $env:IPE_INTERNAL_SERVICE_KEY = "local-service-token" }
 if (-not $env:IPE_AGENT_RUNTIME_BASE_URL) { $env:IPE_AGENT_RUNTIME_BASE_URL = "http://127.0.0.1:19084" }

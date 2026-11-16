@@ -59,10 +59,32 @@ class MapperXmlBindingTest {
                     Object params = new ParamNameResolver(configuration, method).getNamedParams(args);
                     BoundSql sql = statement.getBoundSql(params);
                     assertFalse(sql.getSql().isBlank(), statement.getId());
+                    assertFalse(
+                            sql.getSql().matches("(?s).*\\?\\s+is\\s+null.*"),
+                            "null-only parameter comparison: " + statement.getId());
                     ParameterHandler handler = configuration.newParameterHandler(statement, params, sql);
                     handler.setParameters(mock(PreparedStatement.class));
                 }
             }
+        }
+    }
+
+    @Test
+    void optionalConversationFilterIsOmittedWhenNull() {
+        for (String id : List.of("countUserQueued", "countUserActive")) {
+            var statement = configuration.getMappedStatement(RunMapper.class.getName() + "." + id);
+            Map<String, Object> withoutConversation = new HashMap<>();
+            withoutConversation.put("actor", "user");
+            withoutConversation.put("excludeConversationId", null);
+            BoundSql unfiltered = statement.getBoundSql(withoutConversation);
+            assertFalse(unfiltered.getSql().contains("conversation_id !="), id);
+            assertEquals(1, unfiltered.getParameterMappings().size(), id);
+
+            Map<String, Object> withConversation = new HashMap<>(withoutConversation);
+            withConversation.put("excludeConversationId", ID);
+            BoundSql filtered = statement.getBoundSql(withConversation);
+            assertTrue(filtered.getSql().contains("conversation_id !="), id);
+            assertEquals(2, filtered.getParameterMappings().size(), id);
         }
     }
 

@@ -50,6 +50,13 @@
         last_heartbeat_at, dispatch_attempts, deadline_at, dispatch_next_attempt_at, cancel_requested_at
     </sql>
 
+    <sql id="RuntimeInstanceMatch">
+        <choose>
+            <when test="instanceId != null">and runtime_instance_id = #{instanceId}</when>
+            <otherwise>and runtime_instance_id is null</otherwise>
+        </choose>
+    </sql>
+
     <resultMap id="RunEventMap" type="top.yealike.ipe.ai.run.RunRecords$RunEvent">
         <constructor>
             <arg column="cursor" javaType="_long"/>
@@ -228,7 +235,7 @@
         set status = 'COMPLETED', usage_json = cast(#{usageJson} as jsonb), finished_at = now(), updated_at = now(),
             lease_owner = null, lease_until = null
         where id = #{id} and execution_token = #{executionToken}
-          and (runtime_instance_id = #{instanceId} or (runtime_instance_id is null and #{instanceId} is null))
+          <include refid="RuntimeInstanceMatch"/>
           and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
           and (lease_until is null or lease_until &gt; now())
           and (deadline_at is null or deadline_at &gt; now())
@@ -240,7 +247,7 @@
             usage_json = cast(#{usageJson} as jsonb), finished_at = now(), updated_at = now(),
             lease_owner = null, lease_until = null
         where id = #{id} and execution_token = #{executionToken}
-          and (runtime_instance_id = #{instanceId} or (runtime_instance_id is null and #{instanceId} is null))
+          <include refid="RuntimeInstanceMatch"/>
           and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
           and (lease_until is null or lease_until &gt; now())
           and (deadline_at is null or deadline_at &gt; now())
@@ -256,8 +263,7 @@
                                     else #{message} end,
                finished_at = now(), updated_at = now(), lease_owner = null, lease_until = null
          where id = #{id} and execution_token = #{executionToken}
-           and (runtime_instance_id = #{instanceId}
-                or (runtime_instance_id is null and #{instanceId} is null))
+           <include refid="RuntimeInstanceMatch"/>
            and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
            and (
                 (lease_until is not null and lease_until &lt; now())
@@ -271,7 +277,7 @@
         set status = 'CANCELLED', usage_json = cast(#{usageJson} as jsonb), finished_at = now(), updated_at = now(),
             lease_owner = null, lease_until = null
         where id = #{id} and execution_token = #{executionToken}
-          and (runtime_instance_id = #{instanceId} or (runtime_instance_id is null and #{instanceId} is null))
+          <include refid="RuntimeInstanceMatch"/>
           and status not in ('COMPLETED', 'FAILED', 'CANCELLED')
     </update>
 
@@ -300,14 +306,18 @@
     <select id="countUserQueued" resultType="java.lang.Integer">
         select count(*) from ai_run
         where actor = #{actor} and status = 'QUEUED'
-          and (conversation_id != #{excludeConversationId} or #{excludeConversationId} is null)
+        <if test="excludeConversationId != null">
+          and conversation_id != #{excludeConversationId}
+        </if>
     </select>
 
     <select id="countUserActive" resultType="java.lang.Integer">
         select count(*) from ai_run
         where actor = #{actor}
           and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
-          and (conversation_id != #{excludeConversationId} or #{excludeConversationId} is null)
+        <if test="excludeConversationId != null">
+          and conversation_id != #{excludeConversationId}
+        </if>
     </select>
 
     <select id="lockQuota" resultType="java.lang.Integer">
