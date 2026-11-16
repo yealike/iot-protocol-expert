@@ -1,118 +1,45 @@
 # iot-protocol-expert
 
-云快充 V1.6 协议平台与充电桩仿真实验室。Java 21 / Spring Boot 4.0.9 / Netty / H2，前端为静态 HTML、JavaScript 和 Three.js。
+充电桩协议平台，由运营平台、协议通道和模拟器组成。使用 Java 21、Spring Boot、PostgreSQL 和独立 React 前端。
 
-## 启动
+| 模块 | 职责 | 默认端口 |
+| --- | --- | --- |
+| `iot-protocol-expert-ops` | 充电桩、订单、账单、报文、设备命令及运营管理 | HTTP 19082 |
+| `iot-protocol-expert-protocol` | 连接、编解码、协议适配和上下行转发，不持久化业务数据 | HTTP 19080；云快充 TCP 8768；OCPP WS 8769 |
+| `iot-protocol-expert-simulator` | 从运营平台选择设备，按绑定协议模拟上报，支持多桩并发 | HTTP 19081 |
+| `iot-protocol-expert-ai` | AI 助手与 Agent 能力平台：会话、Run 调度、受控工具、协议知识检索 | HTTP 19083 |
+| `iot-protocol-expert-codec` | 协议通道与模拟器共用的纯编解码库 | 无 |
+| `iot-protocol-expert-web` | 运营平台独立前端 | 开发端口 5173 |
 
-已接入 Spring Boot 原生可观测性：Micrometer Tracing / Metrics、JDBC Observation、异步上下文、TCP 埋点及带 trace_id/span_id 的 JSON 日志。无需 Java Agent；默认本地模式，不外发遥测。[本地调试说明](docs/observability.md)。
+协议通道通过 `ProtocolServer` SPI 管理云快充 1.6 和 OCPP 1.6J。设备数据与账单通过内部接口提交运营平台；业务数据由运营平台保存。
+
+AI 服务复用运营平台的数据库实例（独立 `ipe_ai` schema），身份校验与业务数据读取统一通过 Higress MCP。运维与 AI 都使用 Spring Cloud Alibaba 官方 starter 注册到 Nacos，AI 再从 Nacos MCP Registry 订阅 `ipe-ops-rest` 得到入口与工具清单（`IPE_NACOS_DISCOVERY_ENABLED` 控制本地是否连接）。模型默认关闭，关闭时执行确定性工具降级。实现范围、接口与限制见 `docs/ai-assistant.md`。
+
+## 本地运行
+
+需要 JDK 21、Maven、PostgreSQL 和 TDengine 3.x。应用数据库账号需有创建 `ipe_ops`、`ipe_ai` 和 `ipe_simulator` schema 的权限。将 `.env.example` 复制为 `.env.local` 并填写本地连接、令牌和 JDK 路径；启动脚本会读取它，IDE 启动时需自行加载。订单时序使用 TDengine WebSocket 接口，应用账号需有创建数据库和表的权限。然后运行：
 
 ```powershell
-# 将 JAVA_HOME 指向本机 JDK 21，或设置 IPE_JAVA_HOME
+$env:JAVA_HOME='D:\develop\jdk\jdk-21'
 $env:PATH="$env:JAVA_HOME\bin;$env:PATH"
-mvn -B package
-.\scripts\start-local.ps1
+& 'D:\develop\apache-maven-3.8.8\bin\mvn.cmd' -B verify
+.\scripts\start-local.ps1 -DeviceId 1
 ```
 
-- 平台控制台：<http://localhost:19080>，TCP：8768。
-- 模拟器：<http://localhost:19081>，默认双枪；默认未插枪。
-- 停止：`.\scripts\stop-local.ps1`。
-- 最近链路：<http://localhost:19080/actuator/telemetry>、<http://localhost:19081/actuator/telemetry>，仅 `local` profile 启用。
-- 指标：两端 `/actuator/metrics` 与 `/actuator/prometheus`；JSON 日志位于 `logs/`。
-- 启动脚本支持 JAVA_HOME / IPE_JAVA_HOME，也可使用 -JavaHome 指定 JDK 21；支持项目路径中包含空格。
+前端在 `iot-protocol-expert-web` 下执行 `npm ci`、`npm run dev`；生产构建使用 `npm run build`。本地数据库、服务地址和令牌在 `.env-local` 中配置；启动参数可覆盖相应配置。
 
-## 充电实验室
+AI 服务应用账号需要创建 `ipe_ai` schema 的权限；可用 `IPE_AI_DB_*` 单独指定连接。启用大模型时设置 `IPE_MODEL_ENABLED=true` 与 `IPE_MODEL_BASE_URL`、`IPE_MODEL_API_KEY`、`IPE_MODEL_NAME`（OpenAI 兼容），密钥只放本机环境变量。首次使用协议问答前，以 ADMIN 身份调用 `POST /api/ai/knowledge/index` 建立索引。
 
-1. 等待「平台已登录」，确认桩已接收平台费率。
-2. 选择枪号，设置电池容量、SOC、VIN、物理卡号和可选停止条件。
-3. 插枪，选择 APP 远程启动、刷卡启动或 VIN 启动。
-4. 经握手、参数配置进入恒流充电；80% SOC 后逐渐降流进入恒压阶段。
-5. 使用速度选择器或「+1分钟」「+30分钟」推进；实际 TCP 心跳和上报间隔仍使用真实时间。
-6. 本地/APP 停止、满电、限电量/金额/时间、余额不足或故障均生成账单，等待平台 `0x40` 确认。
+首次运行将在独立 `ipe_ops` schema 初始化演示数据；不会清理已有 `public` 数据。现有 `public` 数据不会自动迁移。订单回放仅包含新接入的采样，显示的接收时间与设备时间分别标识。
 
-3D 场景使用本地化的 Car Concept 曲面车身（CC BY 4.0，保留署名并移除原贴图、标识、内饰和发动机）与独立生成的充电桩、底盘电池包。插拔枪使用约3.6秒缓动；充电展示“电网交流输入→桩内AC/DC转换→线缆直流输出→底盘电池储能”。默认充电时车身半透明，40组电芯按实际SOC点亮；支持自动、整车、电池透视三种视图。Three.js和模型随JAR打包，运行时无需CDN。无法使用WebGL时仍保留充电控制。详见 [3D视觉升级](docs/3d-visual-upgrade.md)。
+## 模拟器
 
-## 分时计费
+登录运营平台后从「充电模拟器」进入。模拟器服务仍需启动，运营平台通过 `IPE_SIMULATOR_BASE_URL`（默认 `http://127.0.0.1:19081`）连接模拟器。
 
-- 在模拟器的「费率模型」编辑八个电费/服务费单价、计损比例、48 个半小时时段。
-- 「保存到平台并下发」先保存平台模型，再走 `0x58` 下发及 `0x57` 应答。
-- 每笔订单保存费率快照；充电中收到的新模型用于下一笔订单。
-- 跨半小时、跨午夜逐段积分，以 BigDecimal 保留计算精度，输出电量/金额四位小数、单价五位小数。
-- 尖峰平谷分别累计电量、计损电量、电费和服务费；账单四段金额之和等于总金额。
-- 点击「跨时段演示」设为 09:59:50，启动后推进时间，即可看到默认平价到峰价的变化。
+设备列表由运营平台提供，选择设备后使用其协议和协议设备编号。主界面支持插枪、启动、停止、实时上报和故障模拟；云快充故障值为 16 位故障位图，OCPP 为标准 `StatusNotification.errorCode`。并发模拟区域可添加其他设备，分别控制枪和上报数据；同一设备不能同时出现在主模拟器和并发列表。
 
-## 完整协议与调试
+模拟器使用独立 PostgreSQL schema `ipe_simulator`，不在 `ipe_ops` 或 `ipe_ai` 中建表。默认复用 `IPE_OPS_DB_*` 连接，可通过 `IPE_SIMULATOR_DB_URL/USER/PASSWORD` 单独指定。Flyway 使用专属 `db/simulator-migration` 目录与 `ipe_simulator.flyway_schema_history`。`device_state` 按设备 ID、协议及协议设备编号保存电表、费率、充电检查点、已完成会话与云快充待补传账单；`charging_record` 永久归档完整充电账单（电量、费用、起止时间、停止原因及尖峰平谷明细），页面仍只展示最近 100 条。状态和账单在同一事务中保存，重复保存不会新增重复账单；数据库短暂不可用时保留内存数据并在模拟周期重试。
 
-51 种帧都有编解码和结构化查看入口，包括所有 BMS 字段、状态位、并充、离线卡、地锁和维护命令。详见 [协议覆盖](docs/protocol-coverage.md)。
+首次恢复每台设备时，若数据库还没有对应快照，会只读导入 `data/simulator-state-<设备ID>.properties`；未选设备的配置模式使用 `data/simulator-state.properties`，可用 `IPE_SIMULATOR_LEGACY_STATE_FILE` 指定旧文件基准路径。旧文件保留备查，不再写入；已有数据库快照后不重复导入。重启时完成会话可恢复显示，未完成会话按最后检查点以断电原因结算。数据库集成测试需显式提供 `IPE_SIMULATOR_TEST_DB_URL/USER/PASSWORD`，仅在模拟器 schema 内创建与清理随机测试记录。
 
-- `GET /api/protocol/catalog`：平台协议目录、BMS 字段、倍率/偏移和状态位定义。
-- `POST /api/protocol/decode`：平台完整帧 HEX 校验、解密与解析；也支持 `{frameType,bodyHex}`。
-- 平台帧流水和模拟器报文详情可展开全部字段。
-- 并充：先插好全部枪，选择「双枪刷卡并充」或「APP并充」；每枪独立流水号、实时数据和账单。
-- 停止原因：模拟器支持附录 `0x40~0x90` 的全部原因标签与按指定原因结束订单。
-
-## 离线与恢复
-
-- 在线同步白名单，断开 TCP 后可用对应物理卡离线启动；本地使用已同步费率计费。
-- 断网中的已有充电持续推进，结束账单写入本地待传队列；重新登录后补传。
-- 收到成功 `0x40` 才删除待传账单；失败应答保留；三次重试用尽仍保留，重新登录后再重试。
-- 每秒保存活动订单检查点；进程意外退出后，下一次启动按最后保存的电表值生成 `0x83` 断电账单。
-- 历史账单最多保留100笔。白名单、费率、电表、工作参数和待传队列写入 `./data/simulator-state.properties`。
-
-## 配置
-
-平台配置位于 `iot-protocol-expert-protocol/src/main/resources/application.yml`，模拟器位于 `iot-protocol-expert-simulator/src/main/resources/application.yml`。可通过 Spring Boot 命令行参数覆盖：
-
-| 模拟器参数 `ipe.simulator.*` | 默认值 | 作用 |
-|---|---|---|
-| platform-host / platform-port | 127.0.0.1 / 8768 | TCP 平台地址 |
-| platform-http-port | 19080 | 同源控制台桥接的平台 HTTP 端口 |
-| pile-code / gun-count | 32010600000001 / 2 | 14位桩号与枪数 |
-| rated-voltage / rated-current | 750 / 100 | 额定电压V、电流A |
-| encryption-enabled | false | 启用 3DES；平台按登录会话协商 |
-| heartbeat-seconds | 10 | 心跳，连续三周期未获回复则重连 |
-| idle-realtime-seconds / charging-realtime-seconds | 300 / 15 | 实时帧上报周期 |
-| state-file | ./data/simulator-state.properties | 每个模拟实例需使用不同文件 |
-| transaction-retry-seconds / transaction-max-retries | 30 / 3 | 待传账单重试 |
-
-平台 H2 文件为 `./data/protocol.mv.db`。模拟器「配置参数」查看实际运行参数、功率限制、白名单与升级状态；`0x52` 真正影响充电功率。规范没有参数查询帧，配置查看使用模拟器本地 REST。
-
-## 模拟器新增 API
-
-| 路径（POST，另行注明除外） | 请求体 / 含义 |
-|---|---|
-| GET `/api/state`、`/api/config`、`/api/logs` | 状态、配置、报文及结构化字段 |
-| `/api/clock` | `{time?,speed?,advanceSeconds?}`，仅空闲允许直接修改时间，倍速0~3600 |
-| `/api/guns/{gun}/vehicle` | `{capacityKwh,soc,vin,physicalCard}` |
-| `/api/guns/{gun}/limits` | `{energy,amount,minutes}`，0表示不限制 |
-| `/api/guns/{gun}/{action}` | action为plug、unplug、start、vin-start、offline-start、stop、report |
-| `/api/guns/{gun}/fault?enable={boolean}` | 急停故障与恢复 |
-| `/api/guns/{gun}/terminate?reason=114` | 按附录原因终止并生成账单，参数为十进制 |
-| `/api/parallel-start` | 全部枪主动刷卡并充 |
-| GET `/api/stop-reasons` | 全部停止原因字典 |
-| `/api/upgrade-scenario` | `{result:0~3}` 固件更新模拟结果 |
-| `/api/platform/...` | 桥接固定配置的协议平台，用于控制台，非云快充协议扩展 |
-
-原有平台设备、订单、交易、费率 REST 保留；新增 `POST /api/devices/{pileCode}/parallel-start`。
-
-## 验证与边界
-
-```powershell
-mvn -B test
-# 使用已经启动的隔离测试实例，脚本会执行充电、卡管理和参数修改：
-python scripts/smoke-test.py --base-url http://127.0.0.1:29081
-```
-
-36项自动化测试通过；另完成明文/3DES真实TCP联调和桌面/移动页面浏览器检查。详见 [验收记录](docs/verification.md)。
-
-本工程实现协议和仿真闭环，平台鉴权仍为参考演示逻辑，不接真实资金账户。BMS 为规范字段仿真，不连接真实 CAN 总线；物理电池模型为简化恒流/恒压模型。FTP 固件更新只模拟元数据校验、空闲执行与结果，不下载或执行固件。文档矛盾及取舍见 [协议决策](docs/protocol-decisions.md)。
-
-3D 技术选择、模型替换方法和依赖许可见 [3D落地方案](docs/3d-options.md)。
-
-## 仓库与本地配置
-
-- Java 包名前缀与 Maven groupId：`top.yealike.ipe`。
-- 两端默认使用公开的3DES演示测试向量，且默认不启用加密。真实设备使用私有密钥时，通过 `IPE_CRYPTO_KEY_HEX` 为平台和模拟器同时设置相同的16/24字节十六进制值。
-- 可参考 `.env.example` 配置环境变量。Spring Boot 不会自动加载 `.env`，请在 shell 或 IDE 中导入。
-- `.idea`、运行数据、日志、临时目录、构建包、密钥文件、本地配置和生成的验收记录均不提交。源码、可复用脚本、文档预览图及必要的3D资源保留。
-- 可选浏览器验证脚本使用标准 `playwright` 包，需要先安装该依赖和 Chromium；不依赖特定用户的工具缓存路径。
-- Three.js 的 MIT 许可及车辆模型的 CC BY 4.0 许可、署名和修改说明随资源保留；详见 [3D落地方案](docs/3d-options.md)。
+具体协议能力和已知限制见 `docs/ocpp16.md`、`docs/protocol-coverage.md` 和 `docs/protocol-decisions.md`。

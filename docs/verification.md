@@ -1,4 +1,23 @@
-# 验收记录
+# 历史验收记录
+
+以下记录对应当时版本，不代表当前重构已完成端到端验收。
+
+## 2026-11-11 三服务重构验收
+
+- 构建：`mvn -B package` 与 `mvn -B test` 均 BUILD SUCCESS；codec 19 项、protocol 3 项、simulator 15 项，共 37 项，失败 0。
+- 中间件：服务器 PostgreSQL 16.14（`ipe-postgres`，端口 55432），空库由 Flyway `V1__init.sql` 建表并写入演示数据。
+- 云快充链路：模拟器从平台选桩 → 登录 → 插枪 → 0x31 → 实时计量 → 停止 → 0x3B；订单 `SETTLED`，账单 `DEVICE_BILL`（38.6468 kWh / 42.5115 元）。
+- OCPP 链路：同站点同文本编号设备 → BootNotification → 平台远程启动 → StartTransaction → MeterValues → StopTransaction；订单 `SETTLED`，账单 `PLATFORM_ESTIMATE`（18.839 kWh / 20.7229 元）。
+- 设备隔离：切换后仅 OCPP 设备在线，云快充设备离线；订单与账单继续归属原平台设备 ID。
+- 命令：`remote-start` 命令记录 `SUCCESS`，设备随后上报 StartTransaction。
+- 站点统计：2 笔订单、电量 57.4858、订单金额 63.2344、桩账单 42.5115、平台估算 20.7229。
+- 排障：按订单号定位设备/订单，时间线确认 0x3B、0x40、账单，最后有证据环节为「交易记录确认 0x40」。
+- OTLP：运维平台 trace 已进入 Tempo；Loki 当前未返回标签，排障明确提示日志证据不足。
+- 启动脚本：`scripts/start-local.ps1` 依次启动 ops/protocol/simulator；`stop-local.ps1` 可停止三端。
+
+详细步骤与接口见 [运维平台与排障](ops-platform.md)。
+
+## 历史验收（2026-11-09，重构前）
 
 日期：2026-11-09，Asia/Shanghai。工具：指定JDK21、Maven3.8.8、真实Netty TCP服务和客户端、Playwright Chromium。
 
@@ -33,27 +52,6 @@
 
 可复用核心回归脚本：`scripts/smoke-test.py --base-url http://127.0.0.1:29081`。此脚本会修改目标实例状态，只对隔离测试实例运行。
 
-## 浏览器交互
-
-- 桌面1536px及手机390px：无横向溢出，无JavaScript页面错误。
-- WebGL真实渲染，摄像机随窄屏调整视角，保留完整桩车构图。
-- 点击读取平台费率→保存并下发，确认0x57成功。
-- 点击插枪→APP启动→两次推进1分钟→分时账单→APP停机。
-- 协议目录加载51项，选0x15可查看字段元数据。
-- 平台多枪选择器可切到02枪。
-
-界面预览：
-
-![桌面充电场景](simulator-preview.png)
-
-![手机充电场景](simulator-mobile-preview.png)
-
 ## 实现范围
 
 通过的是规范字段、仿真状态、参考平台业务与本地网络闭环验证，未进行真实桩CAN/BMS硬件测试或云快充正式接入认证。参考鉴权不接支付账户；升级只仿真结果。协议正文与附录冲突处理详见 `protocol-decisions.md`。
-
-## 3D视觉升级补充验收
-
-2026-11-09完成曲面车身、慢速插拔枪、AC/DC能流、底盘电池透视。14项前端检查通过，记录见 `scene-v2-browser-checks.json`，包括850毫秒时插枪仍在缓动、启机等待连接器就位、充电渐隐、真实SOC联动、故障断流、待机不伪造能流、手机无横向溢出、减少动态效果偏好和无JavaScript错误。
-
-重新打包BUILD SUCCESS；逐字节核对JAR内场景脚本、样式、模型、加载器及署名与源码一致，模型SHA256与资产清单一致；从重新启动后的JAR服务实际打开并渲染成功。新预览见 `scene-v2-charging.png`、`scene-v2-exterior.png`。

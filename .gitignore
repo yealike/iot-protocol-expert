@@ -3,7 +3,8 @@ target/
 build/
 out/
 dist/
-otel/
+# 前端产物不再回灌后端模块
+/iot-protocol-expert-ops/src/main/resources/static/
 *.class
 *.jar
 *.war
@@ -22,7 +23,7 @@ Desktop.ini
 # Runtime state, databases, logs and work directories (at any module depth)
 data/
 logs/
-run/
+/run/
 tmp/
 temp/
 backups/
@@ -70,3 +71,5 @@ node_modules/
 /docs/*-verification.json
 /docs/*-browser-checks.json
 /observability-verification.json
+/.env.local
+/sw-verify/

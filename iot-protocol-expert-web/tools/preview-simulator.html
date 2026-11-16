@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>充电三维场景 · 本地验收</title>
+<link rel="stylesheet" href="/simulator/styles.css">
+<link rel="stylesheet" href="/simulator/twin.css">
+<script type="importmap">{"imports":{"three":"/simulator/vendor/three.module.js"}}</script>
+<style>
+body{background:#edf1f5;padding:24px;font-family:"Segoe UI","Microsoft YaHei",sans-serif}
+.preview-controls{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 auto 16px;max-width:1050px}
+.preview-controls small{width:100%;color:#607487;margin-bottom:6px}
+#preview{max-width:1050px;margin:auto}.twin-panel #twin-view{height:480px}
+@media(max-width:600px){body{padding:12px}.twin-panel #twin-view{height:340px}}
+</style>
+<div class="preview-controls">
+<small>本地视觉验收 · 使用固定测试状态，不连接或控制真实设备</small>
+<button data-state="idle">待插枪</button><button data-state="plugged">插枪</button>
+<button data-state="charging">充电</button><button data-state="stopped">停止</button>
+<button data-state="unplugged">拔枪</button><button data-state="fault">故障</button>
+<button data-state="offline">离线充电</button><button data-state="switch">切换到 02 枪</button>
+<label>SOC <input type="range" min="0" max="100" value="62" id="preview-soc" aria-label="测试 SOC"></label>
+</div>
+<div id="preview"></div>
+<script type="module">
+import { mountTwin } from '../src/simulator/twin.js';
+const html=await (await fetch('/simulator/index.html')).text();
+const doc=new DOMParser().parseFromString(html,'text/html');
+document.querySelector('#preview').append(doc.querySelector('.twin-panel'));
+const dispose=mountTwin();
+const gun={gunNo:'01',plugged:false,stateCode:2,soc:62,voltage:0,current:0,energy:0};
+let mode='idle';
+function emit(mode){
+  gun.plugged=!['idle','unplugged','switch'].includes(mode);
+  gun.stateCode=['charging','offline'].includes(mode)?3:2;
+  gun.fault=mode==='fault'; gun.voltage=gun.stateCode===3?400:0; gun.current=gun.stateCode===3?120:0;
+  gun.energy=gun.stateCode===3?8.26:0;
+  window.dispatchEvent(new CustomEvent('simulator-state',{detail:{deviceId:1,connected:mode!=='offline',selectedGun:mode==='switch'?'02':'01',guns:[{...gun},{...gun,gunNo:'02',plugged:false,stateCode:2,soc:28,voltage:0,current:0,energy:0}]}}));
+}
+document.querySelectorAll('[data-state]').forEach(b=>b.addEventListener('click',()=>{mode=b.dataset.state;emit(mode);}));
+document.querySelector('#preview-soc').addEventListener('input',event=>{gun.soc=Number(event.target.value);emit(mode);});
+emit('idle');
+window.addEventListener('pagehide',dispose,{once:true});
+</script>
+</html>

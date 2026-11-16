@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.ipe.ops.mapper.ChargeOrderMapper">
+
+    <resultMap id="ChargeOrderMap" type="top.yealike.ipe.ops.domain.ChargeOrder">
+        <id property="id" column="id"/>
+        <result property="orderNo" column="order_no"/>
+        <result property="deviceId" column="device_id"/>
+        <result property="gunNo" column="gun_no"/>
+        <result property="stationId" column="station_id"/>
+        <result property="protocol" column="protocol"/>
+        <result property="protocolTransactionId" column="protocol_transaction_id"/>
+        <result property="ocppTransactionId" column="ocpp_transaction_id"/>
+        <result property="meterStartWh" column="meter_start_wh"/>
+        <result property="status" column="status"/>
+        <result property="startType" column="start_type"/>
+        <result property="physicalCard" column="physical_card"/>
+        <result property="logicalCard" column="logical_card"/>
+        <result property="startTime" column="start_time"/>
+        <result property="endTime" column="end_time"/>
+        <result property="energy" column="energy"/>
+        <result property="amount" column="amount"/>
+        <result property="amountSource" column="amount_source"/>
+        <result property="stopReason" column="stop_reason"/>
+        <result property="failReason" column="fail_reason"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <resultMap id="OrderSummaryMap" type="top.yealike.ipe.ops.mapper.ChargeOrderMapper$OrderSummary">
+        <constructor>
+            <arg column="c" javaType="_long"/>
+            <arg column="e" javaType="java.math.BigDecimal"/>
+            <arg column="a" javaType="java.math.BigDecimal"/>
+        </constructor>
+    </resultMap>
+
+    <sql id="columns">
+        id, order_no, device_id, gun_no, station_id, protocol, protocol_transaction_id,
+        ocpp_transaction_id, meter_start_wh, status, start_type, physical_card, logical_card,
+        start_time, end_time, energy, amount, amount_source, stop_reason, fail_reason,
+        created_at, updated_at
+    </sql>
+
+    <sql id="searchWhere">
+        <where>
+            <if test="stationId != null">
+                and station_id = #{stationId}
+            </if>
+            <if test="deviceId != null">
+                and device_id = #{deviceId}
+            </if>
+            <if test="gunNo != null and gunNo != ''">
+                and gun_no = #{gunNo}
+            </if>
+            <if test="protocol != null and protocol != ''">
+                and protocol = #{protocol}
+            </if>
+            <if test="orderNo != null and orderNo != ''">
+                and order_no = #{orderNo}
+            </if>
+            <if test="from != null">
+                and created_at &gt;= #{from}
+            </if>
+            <if test="to != null">
+                and created_at &lt; #{to}
+            </if>
+            <if test="statuses != null and statuses.size() > 0">
+                and status in
+                <foreach collection="statuses" item="status" open="(" separator="," close=")">
+                    #{status}
+                </foreach>
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectById" resultMap="ChargeOrderMap">
+        select <include refid="columns"/>
+        from ipe_ops.charge_order
+        where id = #{id}
+    </select>
+
+    <select id="selectByOrderNo" resultMap="ChargeOrderMap">
+        select <include refid="columns"/>
+        from ipe_ops.charge_order
+        where order_no = #{orderNo}
+    </select>
+
+    <select id="selectTopActive" resultMap="ChargeOrderMap">
+        select <include refid="columns"/>
+        from ipe_ops.charge_order
+        where device_id = #{deviceId}
+          and gun_no = #{gunNo}
+          and status in
+        <foreach collection="statuses" item="status" open="(" separator="," close=")">
+            #{status}
+        </foreach>
+        order by created_at desc
+        limit 1
+    </select>
+
+    <select id="selectTopByOcppTransaction" resultMap="ChargeOrderMap">
+        select <include refid="columns"/>
+        from ipe_ops.charge_order
+        where ocpp_transaction_id = #{ocppTransactionId}
+          and protocol = #{protocol}
+        order by created_at desc
+        limit 1
+    </select>
+
+    <select id="selectTopByDevice" resultMap="ChargeOrderMap">
+        select <include refid="columns"/>
+        from ipe_ops.charge_order
+        where device_id = #{deviceId}
+        order by id desc
+        limit 1
+    </select>
+
+    <select id="selectTop200" resultMap="ChargeOrderMap">
+        select <include refid="columns"/>
+        from ipe_ops.charge_order
+        order by id desc
+        limit 200
+    </select>
+
+    <select id="search" resultMap="ChargeOrderMap">
+        select <include refid="columns"/>
+        from ipe_ops.charge_order
+        <include refid="searchWhere"/>
+        order by id desc
+        limit #{limit} offset #{offset}
+    </select>
+
+    <select id="countSearch" resultType="long">
+        select count(*)
+        from ipe_ops.charge_order
+        <include refid="searchWhere"/>
+    </select>
+
+    <select id="maxOcppTransactionId" resultType="long">
+        select coalesce(max(ocpp_transaction_id), 0)
+        from ipe_ops.charge_order
+        where protocol = 'OCPP16J'
+    </select>
+
+    <select id="countByStatusIn" resultType="long">
+        select count(*)
+        from ipe_ops.charge_order
+        where status in
+        <foreach collection="statuses" item="status" open="(" separator="," close=")">
+            #{status}
+        </foreach>
+    </select>
+
+    <select id="summarizeStation" resultMap="OrderSummaryMap">
+        select count(*) as c,
+               coalesce(sum(energy), 0) as e,
+               coalesce(sum(amount), 0) as a
+        from ipe_ops.charge_order
+        where station_id = #{stationId}
+          and status = #{status}
+          and end_time &gt;= #{from}
+          and end_time &lt; #{to}
+    </select>
+
+    <select id="summarizeDevice" resultMap="OrderSummaryMap">
+        select count(*) as c,
+               coalesce(sum(energy), 0) as e,
+               coalesce(sum(amount), 0) as a
+        from ipe_ops.charge_order
+        where device_id = #{deviceId}
+          and status = #{status}
+          and end_time &gt;= #{from}
+          and end_time &lt; #{to}
+    </select>
+
+    <select id="summarizeAll" resultMap="OrderSummaryMap">
+        select count(*) as c,
+               coalesce(sum(energy), 0) as e,
+               coalesce(sum(amount), 0) as a
+        from ipe_ops.charge_order
+        where status = #{status}
+          and end_time &gt;= #{from}
+          and end_time &lt; #{to}
+    </select>
+
+    <select id="sumEnergyActiveBetween" resultType="java.math.BigDecimal">
+        select coalesce(sum(energy), 0)
+        from ipe_ops.charge_order
+        where status &lt;&gt; 'FAILED'
+          and start_time &lt; #{exclusiveEnd}
+          and (end_time is null or end_time &gt;= #{start})
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        insert into ipe_ops.charge_order
+            (order_no, device_id, gun_no, station_id, protocol, protocol_transaction_id,
+             ocpp_transaction_id, meter_start_wh, status, start_type, physical_card, logical_card,
+             start_time, end_time, energy, amount, amount_source, stop_reason, fail_reason,
+             created_at, updated_at)
+        values
+            (#{orderNo}, #{deviceId}, #{gunNo}, #{stationId}, #{protocol}, #{protocolTransactionId},
+             #{ocppTransactionId}, #{meterStartWh}, #{status}, #{startType}, #{physicalCard}, #{logicalCard},
+             #{startTime}, #{endTime}, #{energy}, #{amount}, #{amountSource}, #{stopReason}, #{failReason},
+             #{createdAt}, #{updatedAt})
+    </insert>
+
+    <update id="update">
+        update ipe_ops.charge_order
+        set order_no = #{orderNo},
+            device_id = #{deviceId},
+            gun_no = #{gunNo},
+            station_id = #{stationId},
+            protocol = #{protocol},
+            protocol_transaction_id = #{protocolTransactionId},
+            ocpp_transaction_id = #{ocppTransactionId},
+            meter_start_wh = #{meterStartWh},
+            status = #{status},
+            start_type = #{startType},
+            physical_card = #{physicalCard},
+            logical_card = #{logicalCard},
+            start_time = #{startTime},
+            end_time = #{endTime},
+            energy = #{energy},
+            amount = #{amount},
+            amount_source = #{amountSource},
+            stop_reason = #{stopReason},
+            fail_reason = #{failReason},
+            created_at = #{createdAt},
+            updated_at = #{updatedAt}
+        where id = #{id}
+    </update>
+</mapper>

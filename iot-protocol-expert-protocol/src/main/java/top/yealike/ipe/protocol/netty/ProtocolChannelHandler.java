@@ -1,14 +1,14 @@
 package top.yealike.ipe.protocol.netty;
 
-import top.yealike.ipe.protocol.codec.InboundFrame;
-import top.yealike.ipe.protocol.service.DeviceService;
-import top.yealike.ipe.protocol.telemetry.ProtocolTelemetry;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.handler.timeout.IdleStateEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import top.yealike.ipe.protocol.codec.InboundFrame;
+import top.yealike.ipe.protocol.ops.OpsClient;
+import top.yealike.ipe.protocol.telemetry.ProtocolTelemetry;
 
 /** TCP 会话入口。未登录会话只接受 0x01；登录后交给分发器。 */
 @ChannelHandler.Sharable
@@ -19,21 +19,21 @@ public class ProtocolChannelHandler extends SimpleChannelInboundHandler<InboundF
     private final ProtocolTelemetry telemetry;
     private final SessionRegistry sessions;
     private final ProtocolDispatcher dispatcher;
-    private final DeviceService deviceService;
+    private final OpsClient ops;
 
-    public ProtocolChannelHandler(SessionRegistry sessions, ProtocolDispatcher dispatcher,
-                                  DeviceService deviceService, ProtocolTelemetry telemetry) {
+    public ProtocolChannelHandler(
+            SessionRegistry sessions, ProtocolDispatcher dispatcher, OpsClient ops, ProtocolTelemetry telemetry) {
         this.telemetry = telemetry;
         this.sessions = sessions;
         this.dispatcher = dispatcher;
-        this.deviceService = deviceService;
+        this.ops = ops;
     }
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, InboundFrame inbound) {
         String pileCode = sessions.pileOf(ctx.channel());
-        try (var operation = telemetry.start("platform", "receive", inbound.frame(),
-                sessions.pendingContext(pileCode, inbound.frame()))) {
+        try (var operation = telemetry.start(
+                "platform", "receive", inbound.frame(), sessions.pendingContext(pileCode, inbound.frame()))) {
             try {
                 handleFrame(ctx, inbound, pileCode);
             } catch (RuntimeException e) {
@@ -47,7 +47,9 @@ public class ProtocolChannelHandler extends SimpleChannelInboundHandler<InboundF
         if (pileCode == null) {
             if (inbound.frame().frameType() != 0x01) {
                 telemetry.failure(new IllegalStateException("unauthenticated frame"));
-                log.warn("未登录连接 {} 发送帧 0x{}，关闭连接", ctx.channel().remoteAddress(),
+                log.warn(
+                        "未登录连接 {} 发送帧 0x{}，关闭连接",
+                        ctx.channel().remoteAddress(),
                         String.format("%02X", inbound.frame().frameType()));
                 ctx.close();
                 return;
@@ -62,7 +64,11 @@ public class ProtocolChannelHandler extends SimpleChannelInboundHandler<InboundF
     public void channelInactive(ChannelHandlerContext ctx) {
         String pileCode = sessions.unbind(ctx.channel());
         if (pileCode != null) {
-            deviceService.markOffline(pileCode);
+            try {
+                ops.offline("YKC16", pileCode, ctx.channel().id().asLongText());
+            } catch (RuntimeException e) {
+                log.warn("桩 {} 离线状态同步失败: {}", pileCode, e.getMessage());
+            }
         }
     }
 

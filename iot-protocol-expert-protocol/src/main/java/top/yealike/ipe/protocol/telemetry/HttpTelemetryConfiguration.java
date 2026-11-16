@@ -4,14 +4,13 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.web.servlet.HandlerMapping;
-
-import java.io.IOException;
 
 @Configuration(proxyBeanMethods = false)
 public class HttpTelemetryConfiguration {
@@ -26,8 +25,8 @@ public class HttpTelemetryConfiguration {
             }
 
             @Override
-            protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
-                                            FilterChain chain) throws ServletException, IOException {
+            protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+                    throws ServletException, IOException {
                 long start = System.nanoTime();
                 boolean failed = false;
                 try {
@@ -37,10 +36,14 @@ public class HttpTelemetryConfiguration {
                     throw e;
                 } finally {
                     int status = failed ? 500 : response.getStatus();
-                    // Use the route template, never raw URLs, query strings or request/response bodies.
+                    // Use the route template, never raw URLs, query strings or request/response
+                    // bodies.
                     Object route = request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE);
-                    var event = status >= 500 ? log.atError() : status >= 400 ? log.atWarn() :
-                                                                request.getMethod().equals("GET") ? log.atDebug() : log.atInfo();
+                    var event = status >= 500
+                            ? log.atError()
+                            : status >= 400
+                                    ? log.atWarn()
+                                    : request.getMethod().equals("GET") ? log.atDebug() : log.atInfo();
                     event.addKeyValue("event.name", "http.request.completed")
                             .addKeyValue("http.request.method", request.getMethod())
                             .addKeyValue("http.route", route == null ? "unmatched" : route.toString())

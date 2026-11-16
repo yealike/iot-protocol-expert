@@ -12,32 +12,22 @@
 
     <artifactId>iot-protocol-expert-protocol</artifactId>
     <name>iot-protocol-expert-protocol</name>
-    <description>云快充 1.6 运营平台端</description>
+    <description>多协议充电协议通道：TCP / WebSocket 接入、编解码与下行发送，零业务持久化</description>
 
     <dependencies>
-        <!-- Spring Boot owns the SDK, Micrometer tracing and OTLP exporters. -->
         <dependency>
-            <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-opentelemetry</artifactId>
+            <groupId>top.yealike.ipe</groupId>
+            <artifactId>iot-protocol-expert-codec</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
-            <groupId>io.micrometer</groupId>
-            <artifactId>micrometer-registry-otlp</artifactId>
+            <groupId>top.yealike.ipe</groupId>
+            <artifactId>iot-protocol-expert-observability</artifactId>
+            <version>${project.version}</version>
         </dependency>
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-registry-prometheus</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>io.opentelemetry.instrumentation</groupId>
-            <artifactId>opentelemetry-logback-appender-1.0</artifactId>
-            <!-- Matches Boot 4.0's OpenTelemetry 1.55 API/SDK. -->
-            <version>2.21.0-alpha</version>
-        </dependency>
-        <dependency>
-            <groupId>net.ttddyy.observation</groupId>
-            <artifactId>datasource-micrometer-spring-boot</artifactId>
-            <version>2.0.0</version>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -45,7 +35,7 @@
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter-data-jpa</artifactId>
+            <artifactId>spring-boot-starter-restclient</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
@@ -60,9 +50,9 @@
             <artifactId>netty-all</artifactId>
         </dependency>
         <dependency>
-            <groupId>com.h2database</groupId>
-            <artifactId>h2</artifactId>
-            <scope>runtime</scope>
+            <groupId>org.eclipse.paho</groupId>
+            <artifactId>org.eclipse.paho.client.mqttv3</artifactId>
+            <version>1.2.5</version>
         </dependency>
 
         <dependency>

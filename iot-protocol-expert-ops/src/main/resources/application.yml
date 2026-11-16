@@ -1,0 +1,126 @@
+server:
+  port: 19082
+  shutdown: graceful
+
+spring:
+  config:
+    import: classpath:observability-defaults.yml
+  main:
+    banner-mode: "off"
+  application:
+    name: iot-protocol-expert-ops
+  cloud:
+    nacos:
+      # Spring Cloud Alibaba 官方发现客户端：地址与凭据只在这里维护，discovery.enabled=false 时不建立任何连接
+      server-addr: ${IPE_NACOS_SERVER_ADDR:127.0.0.1:8848}
+      username: ${IPE_NACOS_USERNAME:}
+      password: ${IPE_NACOS_PASSWORD:}
+      discovery:
+        enabled: ${IPE_NACOS_DISCOVERY_ENABLED:false}
+        namespace: ${IPE_NACOS_NAMESPACE:public}
+        group: ${IPE_NACOS_GROUP:DEFAULT_GROUP}
+        # 留空时按 spring.cloud.inetutils 自动选非回环地址；多网卡或网关侧可达地址不同时显式指定
+        ip: ${IPE_OPS_ADVERTISE_IP:}
+        # 生产保持 fail-fast：注册不上就启动失败，避免实例起来了却不在目录中
+        fail-fast: ${IPE_NACOS_FAIL_FAST:true}
+        # 注销发生在 Web 优雅停机之前，等待网关刷新上游
+        graceful-shutdown-wait-time: ${IPE_NACOS_DEREGISTER_WAIT_MS:3000}
+        metadata:
+          ipe-role: ops
+          ipe-environment: ${IPE_ENVIRONMENT:local}
+          ipe-version: 1.0.0
+          ipe-protocols: cuokc16,ocpp16j
+  datasource:
+    url: ${IPE_OPS_DB_URL:jdbc:postgresql://127.0.0.1:55432/ipe_ops}
+    username: ${IPE_OPS_DB_USER:ipe}
+    password: ${IPE_OPS_DB_PASSWORD:}
+    hikari:
+      maximum-pool-size: 8
+      minimum-idle: 1
+      connection-timeout: 5000
+      connection-init-sql: SET search_path TO ipe_ops
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+    default-schema: ipe_ops
+    schemas: ipe_ops
+    create-schemas: true
+    locations: classpath:db/migration
+    # 迁移脚本里的物模型 JSON 含 ${...} 形态的字符，关掉占位符替换，避免 Flyway 误解析
+    placeholder-replacement: false
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
+  mvc:
+    problemdetails:
+      enabled: true
+
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    jdbc-type-for-null: "NULL"
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,telemetry
+
+ipe:
+  ops:
+    ai-mcp-token: ${IPE_AI_MCP_TOKEN:}
+    tdengine:
+      url: ${IPE_TDENGINE_URL:jdbc:TAOS-WS://127.0.0.1:6041}
+      username: ${IPE_TDENGINE_USER:root}
+      password: ${IPE_TDENGINE_PASSWORD:}
+      flush-delay-ms: ${IPE_TDENGINE_FLUSH_DELAY_MS:1000}
+    environment: ${IPE_ENVIRONMENT:local}
+    protocol-document-dir: ${IPE_PROTOCOL_DOCUMENT_DIR:./data/protocol-documents}
+    # 生产必须显式注入；留空会让对应内部入口在启动后拒绝服务
+    service-token: ${IPE_OPS_SERVICE_TOKEN:}
+    simulator-token: ${IPE_OPS_SIMULATOR_TOKEN:}
+    simulator-base-url: ${IPE_SIMULATOR_BASE_URL:http://127.0.0.1:19081}
+    protocol-base-url: ${IPE_PROTOCOL_BASE_URL:http://127.0.0.1:19080}
+    protocol-timeout-ms: ${IPE_PROTOCOL_TIMEOUT_MS:5000}
+    model:
+      enabled: ${IPE_MODEL_ENABLED:false}
+      base-url: ${IPE_MODEL_BASE_URL:}
+      api-key: ${IPE_MODEL_API_KEY:}
+      name: ${IPE_MODEL_NAME:deepseek-chat}
+      timeout-ms: ${IPE_MODEL_TIMEOUT_MS:15000}
+    default-station-code: ${IPE_DEFAULT_STATION_CODE:ST-DEMO}
+    default-station-name: ${IPE_DEFAULT_STATION_NAME:演示充电站}
+    loki-url: ${IPE_LOKI_URL:}
+    auto-register: ${IPE_AUTO_REGISTER:true}
+
+logging:
+  structured:
+    format:
+      console: logstash
+    json:
+      add:
+        service.name: ${spring.application.name}
+        service.version: 1.0.0
+        deployment.environment.name: ${ipe.observability.environment}
+      rename:
+        traceId: trace_id
+        spanId: span_id
+      stacktrace:
+        max-length: 8192
+  level:
+    root: INFO
+    top.yealike.ipe.ops: INFO
+    org.springframework: WARN
+    org.springframework.boot: WARN
+    org.springframework.boot.autoconfigure: WARN
+    org.springframework.web: WARN
+    org.springframework.http: WARN
+    org.springframework.security: WARN
+    org.mybatis: WARN
+    com.zaxxer.hikari: WARN
+    org.flywaydb: INFO

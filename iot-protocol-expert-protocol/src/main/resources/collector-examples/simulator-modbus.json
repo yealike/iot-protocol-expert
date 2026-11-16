@@ -1,0 +1,24 @@
+{
+  "devices": [
+    {"host":"127.0.0.1","port":15020,"unitId":1,"protocolDeviceId":"SIM-PV-001","intervalSeconds":5,"points":[
+      {"address":0,"type":"uint16","property":"irradiance"},
+      {"address":1,"type":"uint16","scale":0.1,"property":"activePower"},
+      {"address":2,"type":"uint16","scale":0.1,"property":"cabinetTemp"},
+      {"address":3,"type":"uint16","property":"state","enum":{"0":"standby","1":"running"}}]},
+    {"host":"127.0.0.1","port":15020,"unitId":2,"protocolDeviceId":"SIM-WIND-001","intervalSeconds":5,"points":[
+      {"address":0,"type":"uint16","scale":0.1,"property":"windSpeed"},
+      {"address":1,"type":"uint16","property":"activePower"},
+      {"address":2,"type":"uint16","scale":0.01,"property":"vibration"},
+      {"address":3,"type":"uint16","property":"state","enum":{"0":"idle","1":"running"}}]},
+    {"host":"127.0.0.1","port":15020,"unitId":3,"protocolDeviceId":"SIM-ESS-001","intervalSeconds":5,"points":[
+      {"address":0,"type":"uint16","scale":0.1,"property":"soc"},
+      {"address":1,"type":"int16","scale":0.1,"property":"activePower"},
+      {"address":2,"type":"uint16","scale":0.1,"property":"cellMaxTemp"},
+      {"address":3,"type":"uint16","property":"cellVoltageDiff"},
+      {"address":4,"type":"uint16","property":"state","enum":{"0":"idle","1":"discharging","2":"charging"}}]},
+    {"host":"127.0.0.1","port":15020,"unitId":4,"protocolDeviceId":"SIM-METER-001","intervalSeconds":5,"points":[
+      {"address":0,"type":"int16","scale":0.1,"property":"activePower"},
+      {"address":1,"type":"uint16","scale":0.01,"property":"frequency"},
+      {"address":2,"type":"uint16","property":"state","enum":{"1":"online"}}]}
+  ]
+}
