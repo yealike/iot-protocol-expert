@@ -20,17 +20,20 @@ class SimulatorRuntimeTest {
     SimulatorRuntime runtime;
     SimulatorProperties props;
     EmbeddedChannel channel;
+    MemorySimulatorStateStore store;
 
     @BeforeEach
     void setup() {
         props = new SimulatorProperties();
         props.setAutoConnect(false);
         props.setStateFile(temp.resolve("state.properties").toString());
+        store = org.mockito.Mockito.spy(new MemorySimulatorStateStore());
         runtime = new SimulatorRuntime(
                 props,
                 new top.yealike.ipe.protocol.telemetry.ProtocolTelemetry(
                         io.micrometer.tracing.Tracer.NOOP,
-                        new io.micrometer.core.instrument.simple.SimpleMeterRegistry()));
+                        new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
+                store);
         runtime.init();
         channel = new EmbeddedChannel();
         runtime.onConnected(channel);
@@ -106,7 +109,8 @@ class SimulatorRuntimeTest {
                 props,
                 new top.yealike.ipe.protocol.telemetry.ProtocolTelemetry(
                         io.micrometer.tracing.Tracer.NOOP,
-                        new io.micrometer.core.instrument.simple.SimpleMeterRegistry()));
+                        new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
+                store);
         second.init();
         try {
             assertEquals(1, ((Set<?>) second.state().get("pendingTransactions")).size());
@@ -233,7 +237,8 @@ class SimulatorRuntimeTest {
                 props,
                 new top.yealike.ipe.protocol.telemetry.ProtocolTelemetry(
                         io.micrometer.tracing.Tracer.NOOP,
-                        new io.micrometer.core.instrument.simple.SimpleMeterRegistry()));
+                        new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
+                store);
         recovered.init();
         try {
             var history = (List<?>) recovered.state().get("history");
@@ -287,5 +292,148 @@ class SimulatorRuntimeTest {
         assertEquals(new BigDecimal("1"), error.values().get("chargerChargingTimeout"));
         var tx = (OperationFrames.Transaction) ((List<?>) runtime.state().get("history")).getFirst();
         assertEquals(0x84, tx.stopReason());
+    }
+
+    @Test
+    void completedChargeAndBillingSurviveRestartWithoutWritingLegacyFiles() {
+        start("01");
+        runtime.configureClock(null, null, 124);
+        runtime.stopLocal("01");
+        var expected = gun();
+        var recovered = new SimulatorRuntime(
+                props,
+                new top.yealike.ipe.protocol.telemetry.ProtocolTelemetry(
+                        io.micrometer.tracing.Tracer.NOOP,
+                        new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
+                store);
+        recovered.init();
+        try {
+            var restored = ((List<?>) recovered.state().get("guns")).getFirst();
+            var actual = (Map<?, ?>) restored;
+            assertEquals(expected.get("energy"), actual.get("energy"));
+            assertEquals(expected.get("amount"), actual.get("amount"));
+            assertEquals(expected.get("soc"), actual.get("soc"));
+            assertEquals(expected.get("billing"), actual.get("billing"));
+            assertEquals(1, store.bills.size());
+            assertFalse(java.nio.file.Files.exists(Path.of(props.getStateFile())));
+            assertNull(recovered.state().get("lastError"));
+        } finally {
+            recovered.shutdown();
+        }
+    }
+
+    @Test
+    void legacyFileIsImportedOnceAndDatabaseTakesPrecedence() throws Exception {
+        start("01");
+        runtime.configureClock(null, null, 64);
+        runtime.stopLocal("01");
+        var key = new SimulatorStateStore.DeviceKey(null, "ykc16", props.getPileCode());
+        var legacy = store.load(key).orElseThrow();
+        legacy.remove("history.json");
+        var bill = (OperationFrames.Transaction) ((List<?>) runtime.state().get("history")).getFirst();
+        legacy.setProperty("history.0", HexFormat.of().formatHex(OperationFrames.encodeTransaction(bill)));
+        try (var out = java.nio.file.Files.newOutputStream(Path.of(props.getStateFile()))) {
+            legacy.store(out, "legacy");
+        }
+        var imported = new MemorySimulatorStateStore();
+        for (int i = 0; i < 2; i++) {
+            var recovered = new SimulatorRuntime(
+                    props,
+                    new top.yealike.ipe.protocol.telemetry.ProtocolTelemetry(
+                            io.micrometer.tracing.Tracer.NOOP,
+                            new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
+                    imported);
+            recovered.init();
+            try {
+                assertEquals(1, ((List<?>) recovered.state().get("history")).size());
+                assertEquals(1, imported.bills.size());
+            } finally {
+                recovered.shutdown();
+            }
+            java.nio.file.Files.writeString(Path.of(props.getStateFile()), "invalid legacy file");
+        }
+    }
+
+    @Test
+    void ocppBillWithAlphanumericIdentityPersistsAndRecovers() {
+        var config = new SimulatorProperties();
+        config.setPileCode("OCPP-CHARGER-A");
+        config.setProtocol("ocpp16j");
+        config.setAutoConnect(false);
+        config.setStateFile(temp.resolve("ocpp.properties").toString());
+        config.setGunCount(1);
+        // Device selection accepts arbitrary OCPP IDs; init validates the configured YKC default first.
+        var directory = org.mockito.Mockito.mock(OpsDeviceClient.class);
+        org.mockito.Mockito.when(directory.get(5L))
+                .thenReturn(new OpsDeviceClient.SimulatorDevice(
+                        5L, "OCPP-A", 1L, "S", "OCPP16J", "OCPP-CHARGER-A", 1, false, true, true));
+        config.setPileCode("32010600000001");
+        config.setOcppPort(1);
+        var telemetry = new top.yealike.ipe.protocol.telemetry.ProtocolTelemetry(
+                io.micrometer.tracing.Tracer.NOOP, new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
+        var ocpp = new SimulatorRuntime(config, telemetry, store);
+        ocpp.setOpsDevices(directory);
+        ocpp.init(false);
+        try {
+            ocpp.selectDevice(5L, false);
+            ocpp.onOcppTransactionStarted("01", 123, 1);
+            ocpp.configureClock(null, null, 64);
+            ocpp.stopLocal("01");
+            assertTrue(store.load(new SimulatorStateStore.DeviceKey(5L, "ocpp16j", "OCPP-CHARGER-A"))
+                    .isPresent());
+            assertTrue(store.bills.values().stream().anyMatch(t -> t.pileCode().equals("OCPP-CHARGER-A")));
+            ocpp.selectDevice(5L, false);
+            assertEquals(1, ((List<?>) ocpp.state().get("history")).size());
+        } finally {
+            ocpp.shutdown();
+        }
+    }
+
+    @Test
+    void failedFinalSettlementRetriesAfterChargingHasEnded() {
+        start("01");
+        runtime.configureClock(null, null, 64);
+        org.mockito.Mockito.doThrow(new IllegalStateException("database temporarily unavailable"))
+                .when(store)
+                .save(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.anyList());
+        runtime.stopLocal("01");
+        assertEquals("保存模拟器数据到数据库失败，请检查数据库连接", runtime.state().get("lastError"));
+        assertEquals(0, store.bills.size());
+        org.mockito.Mockito.doCallRealMethod()
+                .when(store)
+                .save(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.anyList());
+        runtime.tick();
+        assertNull(runtime.state().get("lastError"));
+        assertEquals(1, store.bills.size());
+    }
+
+    @Test
+    void failedRestoreCannotOverwriteTheDurableCheckpoint() {
+        var brokenStore = org.mockito.Mockito.mock(SimulatorStateStore.class);
+        org.mockito.Mockito.when(brokenStore.load(org.mockito.ArgumentMatchers.any()))
+                .thenThrow(new IllegalStateException("database temporarily unavailable"));
+        var broken = new SimulatorRuntime(
+                props,
+                new top.yealike.ipe.protocol.telemetry.ProtocolTelemetry(
+                        io.micrometer.tracing.Tracer.NOOP,
+                        new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
+                brokenStore);
+        try {
+            assertThrows(IllegalStateException.class, broken::init);
+            broken.tick();
+        } finally {
+            broken.shutdown();
+        }
+        org.mockito.Mockito.verify(brokenStore, org.mockito.Mockito.never())
+                .save(
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.any(),
+                        org.mockito.ArgumentMatchers.anyList());
     }
 }

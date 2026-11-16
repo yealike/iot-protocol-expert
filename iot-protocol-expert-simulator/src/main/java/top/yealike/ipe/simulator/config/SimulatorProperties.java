@@ -77,6 +77,7 @@ public class SimulatorProperties {
     private String pileCode = "32010600000001";
 
     private int gunCount = 2;
+    /** 旧版本状态文件，仅用于数据库首次恢复时只读导入，不再写入。 */
     private String stateFile = "./data/simulator-state.properties";
 
     public String getStateFile() {

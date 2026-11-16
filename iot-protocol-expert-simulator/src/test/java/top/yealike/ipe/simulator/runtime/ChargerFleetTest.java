@@ -31,7 +31,8 @@ class ChargerFleetTest {
         when(interactive.state()).thenReturn(Map.of());
         ProtocolTelemetry telemetry = new ProtocolTelemetry(
                 io.micrometer.tracing.Tracer.NOOP, new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
-        ChargerFleet fleet = new ChargerFleet(config, telemetry, directory, interactive);
+        ChargerFleet fleet =
+                new ChargerFleet(config, telemetry, directory, interactive, new MemorySimulatorStateStore());
         try {
             assertEquals("ykc16", fleet.start(1L).get("protocol"));
             assertEquals("ocpp16j", fleet.start(2L).get("protocol"));
@@ -64,7 +65,8 @@ class ChargerFleetTest {
                 config,
                 new ProtocolTelemetry(
                         io.micrometer.tracing.Tracer.NOOP,
-                        new io.micrometer.core.instrument.simple.SimpleMeterRegistry()));
+                        new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
+                new MemorySimulatorStateStore());
         runtime.init();
         try {
             runtime.fault("01", true, "GroundFailure");
@@ -151,7 +153,8 @@ class ChargerFleetTest {
                             io.micrometer.tracing.Tracer.NOOP,
                             new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
                     directory,
-                    interactive);
+                    interactive,
+                    new MemorySimulatorStateStore());
             try {
                 fleet.start(11L);
                 fleet.start(12L);

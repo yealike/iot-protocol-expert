@@ -32,6 +32,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.json.JsonMapper;
 import top.yealike.ipe.protocol.codec.Frame;
 import top.yealike.ipe.protocol.codec.FrameCodec;
 import top.yealike.ipe.protocol.codec.FrameStreamDecoder;
@@ -240,6 +241,7 @@ public class SimulatorRuntime {
 
     private final SimulatorProperties properties;
     private final ProtocolTelemetry telemetry;
+    private final SimulatorStateStore stateStore;
     private final OcppSimulatorClient ocppClient;
     private final byte[] key;
     private final Map<String, Gun> guns = new LinkedHashMap<>();
@@ -256,6 +258,9 @@ public class SimulatorRuntime {
     private volatile long nextReconnectAt;
     private volatile RegistrationFrames.RateModel rateModel;
     private volatile String lastError;
+    private volatile String persistenceError;
+    private boolean restoringState;
+    private boolean stateRestoreFailed;
     private boolean rateReady;
     private long loginSentAt, rateRequestedAt;
     private final Map<String, OperationFrames.OfflineCard> offlineCards = new ConcurrentHashMap<>();
@@ -280,9 +285,11 @@ public class SimulatorRuntime {
     private Long selectedDeviceId;
     private String selectedDeviceSn;
 
-    public SimulatorRuntime(SimulatorProperties properties, ProtocolTelemetry telemetry) {
+    public SimulatorRuntime(
+            SimulatorProperties properties, ProtocolTelemetry telemetry, SimulatorStateStore stateStore) {
         this.telemetry = telemetry;
         this.properties = properties;
+        this.stateStore = stateStore;
         this.key = TripleDes.keyFromHex(properties.getCryptoKeyHex());
         this.ocppClient = new OcppSimulatorClient(properties, this);
     }
@@ -378,7 +385,10 @@ public class SimulatorRuntime {
         if (guns.values().stream().anyMatch(g -> g.state == GunState.CHARGING)) {
             throw new IllegalStateException("当前设备有在充订单，请先结束充电后再切换");
         }
-        if (saveCurrent) persist();
+        if (saveCurrent) {
+            persist();
+            if (persistenceError != null) throw new IllegalStateException(persistenceError);
+        }
         disconnect();
         selectedDeviceId = device.id();
         selectedDeviceSn = device.sn();
@@ -1322,6 +1332,8 @@ public class SimulatorRuntime {
             advanceCharge(gun);
             if (gun.phase.equals("鉴权中") && pendingParallelNo == null && now > gun.authDeadline) gun.phase = "鉴权超时";
         }
+        // Retry a failed final settlement even when no gun remains charging.
+        if (persistenceError != null) persist();
         if (protocol == Protocol.OCPP16J) {
             tickOcpp(now);
             return;
@@ -1743,7 +1755,7 @@ public class SimulatorRuntime {
         data.put("offlineCards", offlineCards.values());
         data.put("history", List.copyOf(history));
         data.put("upgradeStatus", upgradeStatus);
-        data.put("lastError", lastError);
+        data.put("lastError", persistenceError == null ? lastError : persistenceError);
         data.put("pendingTransactions", pendingTransactions.keySet());
         data.put("serverTime", LocalDateTime.now());
         return data;
@@ -2277,7 +2289,8 @@ public class SimulatorRuntime {
         c.put("idleRealtimeSeconds", properties.getIdleRealtimeSeconds());
         c.put("chargingRealtimeSeconds", properties.getChargingRealtimeSeconds());
         c.put("encryptionEnabled", properties.isEncryptionEnabled());
-        c.put("stateFile", properties.getStateFile());
+        c.put("stateStorage", "PostgreSQL");
+        c.put("stateSchema", "ipe_simulator");
         c.put("platformHttpPort", properties.getPlatformHttpPort());
         c.put("simCard", properties.getSimCard());
         c.put("networkType", properties.getNetworkType());
@@ -2292,6 +2305,8 @@ public class SimulatorRuntime {
     }
 
     private void persist() {
+        // Never replace a good checkpoint with partially restored data.
+        if (restoringState || stateRestoreFailed) return;
         try {
             java.util.Properties p = new java.util.Properties();
             p.setProperty("rate", java.util.HexFormat.of().formatHex(RegistrationFrames.encodeRateModel(rateModel)));
@@ -2299,6 +2314,18 @@ public class SimulatorRuntime {
             for (Gun g : guns.values()) {
                 p.setProperty("meter." + g.gunNo, g.meter.toPlainString());
                 p.setProperty("allow." + g.gunNo, Boolean.toString(g.allowWork));
+                if (g.ledger != null) {
+                    String session = "session." + g.gunNo + ".";
+                    g.ledger.checkpoint(p, session + "ledger.");
+                    p.setProperty(session + "tx", g.transactionNo);
+                    p.setProperty(session + "start", g.startTime.toString());
+                    p.setProperty(session + "meterStart", g.meterStart.toPlainString());
+                    p.setProperty(session + "soc", Integer.toString(g.soc));
+                    p.setProperty(session + "minutes", Integer.toString(g.totalMinutes));
+                    p.setProperty(session + "capacity", Double.toString(g.capacityKwh));
+                    p.setProperty(session + "vin", g.vin);
+                    p.setProperty(session + "card", g.physicalCard);
+                }
                 if (g.state == GunState.CHARGING && g.ledger != null) {
                     String key = "active." + g.gunNo + ".";
                     p.setProperty(key + "tx", g.transactionNo);
@@ -2313,35 +2340,44 @@ public class SimulatorRuntime {
                 }
             }
             for (var c : offlineCards.values()) p.setProperty("card." + c.physicalCard(), c.logicalCard());
-            for (int i = 0; i < history.size(); i++)
-                p.setProperty(
-                        "history." + i,
-                        java.util.HexFormat.of().formatHex(OperationFrames.encodeTransaction(history.get(i))));
+            // Database JSON supports OCPP identities too; they are not constrained to YKC BCD.
+            p.setProperty("history.json", JsonMapper.shared().writeValueAsString(history));
             for (var e : pendingTransactions.entrySet())
                 p.setProperty(
                         "tx." + e.getKey(),
                         java.util.HexFormat.of()
                                 .formatHex(OperationFrames.encodeTransaction(e.getValue().transaction)));
-            java.nio.file.Path path =
-                    java.nio.file.Path.of(properties.getStateFile()).toAbsolutePath();
-            java.nio.file.Files.createDirectories(path.getParent());
-            java.nio.file.Path temp = path.resolveSibling(path.getFileName() + ".tmp");
-            try (var out = java.nio.file.Files.newOutputStream(temp)) {
-                p.store(out, "CloudQuickCharge simulator durable outbox");
-            }
-            java.nio.file.Files.move(temp, path, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+            stateStore.save(deviceKey(), p, List.copyOf(history));
+            persistenceError = null;
         } catch (Exception e) {
-            lastError = "保存模拟器状态失败: " + e.getMessage();
-            log.warn(lastError);
+            persistenceError = "保存模拟器数据到数据库失败，请检查数据库连接";
+            log.warn("保存模拟器数据库状态失败，设备 {}", deviceKey(), e);
         }
     }
 
+    private SimulatorStateStore.DeviceKey deviceKey() {
+        return new SimulatorStateStore.DeviceKey(selectedDeviceId, protocol.code(), properties.getPileCode());
+    }
+
     private void restore() {
-        java.nio.file.Path path = java.nio.file.Path.of(properties.getStateFile());
-        if (!java.nio.file.Files.exists(path)) return;
-        try (var in = java.nio.file.Files.newInputStream(path)) {
-            java.util.Properties p = new java.util.Properties();
-            p.load(in);
+        boolean checkpoint = false;
+        restoringState = true;
+        stateRestoreFailed = false;
+        try {
+            var stored = stateStore.load(deviceKey());
+            java.util.Properties p;
+            boolean imported = stored.isEmpty();
+            checkpoint = imported;
+            if (stored.isPresent()) {
+                p = stored.get();
+            } else {
+                java.nio.file.Path path = java.nio.file.Path.of(properties.getStateFile());
+                if (!java.nio.file.Files.exists(path)) return;
+                p = new java.util.Properties();
+                try (var in = java.nio.file.Files.newInputStream(path)) {
+                    p.load(in);
+                }
+            }
             if (p.containsKey("rate")) {
                 var m = RegistrationFrames.decodeRateModel(
                         java.util.HexFormat.of().parseHex(p.getProperty("rate")));
@@ -2355,6 +2391,22 @@ public class SimulatorRuntime {
                 g.meter = new BigDecimal(p.getProperty("meter." + g.gunNo, "1000"));
                 g.meterStart = g.meter;
                 g.allowWork = Boolean.parseBoolean(p.getProperty("allow." + g.gunNo, "true"));
+                String session = "session." + g.gunNo + ".";
+                if (p.containsKey(session + "tx")) {
+                    g.ledger = ChargingLedger.restore(p, session + "ledger.");
+                    g.transactionNo = p.getProperty(session + "tx");
+                    g.startTime = LocalDateTime.parse(p.getProperty(session + "start"));
+                    g.meterStart = new BigDecimal(p.getProperty(session + "meterStart"));
+                    g.soc = Integer.parseInt(p.getProperty(session + "soc"));
+                    g.socValue = g.soc;
+                    g.totalMinutes = Integer.parseInt(p.getProperty(session + "minutes"));
+                    g.capacityKwh = Double.parseDouble(p.getProperty(session + "capacity"));
+                    g.vin = p.getProperty(session + "vin");
+                    g.physicalCard = p.getProperty(session + "card");
+                    g.energy = g.ledger.energy();
+                    g.amount = g.ledger.amount();
+                    g.phase = "已结束";
+                }
             }
             for (String k : p.stringPropertyNames()) {
                 if (k.startsWith("card.")) {
@@ -2370,12 +2422,17 @@ public class SimulatorRuntime {
                                 new PendingTransaction(tx, properties.getTransactionMaxRetries(), 0));
                 }
             }
-            for (int i = 0; i < 100; i++) {
-                String value = p.getProperty("history." + i);
-                if (value == null) break;
-                var tx = OperationFrames.decodeTransaction(
-                        java.util.HexFormat.of().parseHex(value));
-                if (tx.pileCode().equals(properties.getPileCode())) history.add(tx);
+            if (p.containsKey("history.json")) {
+                history.addAll(List.of(JsonMapper.shared()
+                        .readValue(p.getProperty("history.json"), OperationFrames.Transaction[].class)));
+            } else {
+                for (int i = 0; i < 100; i++) {
+                    String value = p.getProperty("history." + i);
+                    if (value == null) break;
+                    var tx = OperationFrames.decodeTransaction(
+                            java.util.HexFormat.of().parseHex(value));
+                    if (tx.pileCode().equals(properties.getPileCode())) history.add(tx);
+                }
             }
             // An interrupted process cannot safely pretend the hardware kept charging. Settle the
             // last durable meter
@@ -2383,6 +2440,7 @@ public class SimulatorRuntime {
             for (Gun g : guns.values()) {
                 String key = "active." + g.gunNo + ".";
                 if (!p.containsKey(key + "tx")) continue;
+                checkpoint = true;
                 g.transactionNo = p.getProperty(key + "tx");
                 if (!g.transactionNo.startsWith(properties.getPileCode())) continue;
                 g.ledger = ChargingLedger.restore(p, key + "ledger.");
@@ -2402,9 +2460,14 @@ public class SimulatorRuntime {
                 simulatedTime = current;
             }
         } catch (Exception e) {
-            lastError = "恢复模拟器状态失败: " + e.getMessage();
-            log.warn(lastError);
+            stateRestoreFailed = true;
+            persistenceError = "恢复模拟器数据库状态失败，请检查数据库连接";
+            log.warn("恢复模拟器数据库状态失败，设备 {}", deviceKey(), e);
+            throw new IllegalStateException(persistenceError, e);
+        } finally {
+            restoringState = false;
         }
+        if (checkpoint) persist();
     }
 
     private static final class PendingTransaction {
