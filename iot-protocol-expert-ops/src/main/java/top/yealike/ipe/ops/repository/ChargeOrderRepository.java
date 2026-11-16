@@ -46,4 +46,8 @@ public interface ChargeOrderRepository extends JpaRepository<ChargeOrder, Long>,
     @Query("select count(o) as c, coalesce(sum(o.energy), 0) as e, coalesce(sum(o.amount), 0) as a "
             + "from ChargeOrder o where o.status = ?1 and o.endTime >= ?2 and o.endTime < ?3")
     OrderSummary summarizeAll(ChargeOrder.Status status, LocalDateTime from, LocalDateTime to);
+
+    @Query("select coalesce(sum(o.energy), 0) from ChargeOrder o "
+            + "where o.status <> 'FAILED' and o.startTime < ?1 and (o.endTime is null or o.endTime >= ?2)")
+    BigDecimal sumEnergyActiveBetween(LocalDateTime exclusiveEnd, LocalDateTime start);
 }
