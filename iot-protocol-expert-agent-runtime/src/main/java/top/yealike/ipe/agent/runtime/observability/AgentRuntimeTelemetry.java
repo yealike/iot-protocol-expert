@@ -9,7 +9,6 @@ import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Component;
 import top.yealike.ipe.agent.runtime.config.RuntimeProperties;
-import top.yealike.ipe.observability.ContentFilteringTracer;
 
 /** 在真正执行 Agent/模型的 Runtime 进程注册 AgentScope 官方 GenAI 埋点。 */
 @Component
@@ -36,16 +35,10 @@ public class AgentRuntimeTelemetry implements InitializingBean, DisposableBean {
             return;
         }
         var tracer = TelemetryTracer.builder()
-                .tracer(new ContentFilteringTracer(
-                        openTelemetry.getTracer(INSTRUMENTATION_NAME),
-                        config.contentEnabled(),
-                        config.maxContentChars()))
+                .tracer(openTelemetry.getTracer(INSTRUMENTATION_NAME))
                 .build();
         TracerRegistry.register(tracer);
-        log.info(
-                "AgentScope OTel tracing enabled; contentEnabled={} maxContentChars={}",
-                config.contentEnabled(),
-                config.maxContentChars());
+        log.info("AgentScope OTel tracing enabled with full message and tool content");
     }
 
     @Override

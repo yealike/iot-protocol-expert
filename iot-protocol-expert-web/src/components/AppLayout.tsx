@@ -45,6 +45,11 @@ const items = [
     icon: <BuildOutlined />,
     label: <Link to="/ai-admin">AI 能力管理</Link>
   },
+  {
+    key: '/ai-evaluation',
+    icon: <ExperimentOutlined />,
+    label: <Link to="/ai-evaluation">Agent 能力评估</Link>
+  },
   { key: '/users', icon: <UserOutlined />, label: <Link to="/users">用户管理</Link> },
   {
     key: '/ai-knowledge',
@@ -85,13 +90,13 @@ export default function AppLayout({ user, children }: Props) {
           selectedKeys={selected}
           items={items.filter((item) =>
             user.allStations === false &&
-            !['/assistant', '/ai-knowledge', '/ai-admin'].includes(item.key)
+            !['/assistant', '/ai-knowledge', '/ai-admin', '/ai-evaluation'].includes(item.key)
               ? false
               : item.key === '/users'
                 ? user.permissions?.includes('iam:user:manage')
                 : item.key === '/ai-knowledge'
                   ? user.permissions?.includes('ai:admin')
-                  : item.key === '/ai-admin'
+                  : item.key === '/ai-admin' || item.key === '/ai-evaluation'
                     ? user.permissions?.includes('ai:admin')
                     : item.key === '/assistant'
                       ? user.permissions?.includes('ai:use')

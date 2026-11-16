@@ -82,6 +82,8 @@ management:
         include: health,info,metrics,prometheus
 
 ipe:
+  tempo:
+    query-base-url: ${IPE_TEMPO_QUERY_BASE_URL:}
   ai:
     environment: ${IPE_ENVIRONMENT:local}
     request-timeout-ms: ${IPE_AI_REQUEST_TIMEOUT_MS:8000}
@@ -178,8 +180,8 @@ ipe:
         # 官方 AgentScope TelemetryTracer：invoke_agent / chat / execute_tool Span
         enabled: ${IPE_AI_OTEL_ENABLED:${IPE_OTLP_ENABLED:true}}
         # 默认不导出 prompt / response 正文；仅本地排障时显式开启
-        content-enabled: ${IPE_AI_OTEL_CONTENT_ENABLED:false}
-        max-content-chars: ${IPE_AI_OTEL_MAX_CONTENT_CHARS:8192}
+        content-enabled: ${IPE_AI_OTEL_CONTENT_ENABLED:true}
+        max-content-chars: ${IPE_AI_OTEL_MAX_CONTENT_CHARS:0}
 
 logging:
   structured:
@@ -195,3 +197,5 @@ logging:
         spanId: span_id
       stacktrace:
         max-length: 8192
+
+# Tempo 查询只由 AI 后端代理，浏览器不直接访问内部可观测性服务。

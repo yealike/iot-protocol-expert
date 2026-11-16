@@ -26,6 +26,7 @@ public class ModelProfileService {
     private final CredentialStore credentials;
     private final CredentialService credentialService;
     private final RestClient http;
+    private final RestClient evaluationHttp;
 
     public ModelProfileService(
             ModelStore models,
@@ -36,6 +37,12 @@ public class ModelProfileService {
         this.credentials = credentials;
         this.credentialService = credentialService;
         this.http = builder.build();
+        var factory =
+                new org.springframework.http.client.JdkClientHttpRequestFactory(java.net.http.HttpClient.newBuilder()
+                        .connectTimeout(Duration.ofSeconds(10))
+                        .build());
+        factory.setReadTimeout(Duration.ofSeconds(30));
+        this.evaluationHttp = builder.clone().requestFactory(factory).build();
     }
 
     public List<ModelProfile> list() {
@@ -147,6 +154,54 @@ public class ModelProfileService {
                     "模型连通测试失败：" + exception.getStatusCode().value());
         } catch (RuntimeException exception) {
             throw new AiExceptions.AiException(502, "MODEL_TEST_FAILED", "模型服务暂不可用");
+        }
+    }
+
+    /** Run a bounded JSON-style completion for evaluator use without exposing provider credentials. */
+    public String completeEvaluation(UUID id, String systemPrompt, String userPrompt) {
+        ModelProfile profile = require(id);
+        if (!profile.enabled() || profile.credentialId() == null) {
+            throw AiExceptions.unprocessable("EVALUATOR_MODEL_UNAVAILABLE", "Judge 模型未启用或未绑定凭据");
+        }
+        Credential credential = credentials
+                .find(profile.credentialId())
+                .orElseThrow(() -> AiExceptions.unprocessable("EVALUATOR_MODEL_UNAVAILABLE", "Judge 模型凭据不存在"));
+        String secret = credentialService.resolve(credential.id(), credential.currentSecretRevision());
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("model", profile.modelName());
+        body.put(
+                "messages",
+                List.of(
+                        Map.of("role", "system", "content", systemPrompt),
+                        Map.of("role", "user", "content", userPrompt)));
+        body.put("max_tokens", 512);
+        body.put("temperature", 0);
+        try {
+            String response = evaluationHttp
+                    .post()
+                    .uri(URI.create(trimSlash(profile.baseUrl()) + "/chat/completions"))
+                    .header("Authorization", "Bearer " + secret)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(JsonSupport.write(body))
+                    .retrieve()
+                    .body(String.class);
+            Map<String, Object> envelope = JsonSupport.readMap(response);
+            Object rawChoices = envelope.get("choices");
+            if (!(rawChoices instanceof List<?> choices)
+                    || choices.isEmpty()
+                    || !(choices.get(0) instanceof Map<?, ?> choice)
+                    || !(choice.get("message") instanceof Map<?, ?> message)
+                    || !(message.get("content") instanceof String content)) {
+                throw AiExceptions.unavailable("Judge 模型没有返回有效内容");
+            }
+            return content;
+        } catch (org.springframework.web.client.RestClientResponseException exception) {
+            throw AiExceptions.unavailable(
+                    "Judge 模型请求失败：" + exception.getStatusCode().value());
+        } catch (AiExceptions.AiException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw AiExceptions.unavailable("Judge 模型暂不可用");
         }
     }
 

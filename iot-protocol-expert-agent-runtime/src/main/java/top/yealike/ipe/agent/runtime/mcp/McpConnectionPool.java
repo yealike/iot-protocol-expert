@@ -177,12 +177,32 @@ public class McpConnectionPool {
     }
 
     public McpToolEnvelope call(McpConnection connection, String originalToolName, Map<String, Object> arguments) {
+        io.opentelemetry.api.trace.Span.current()
+                .addEvent(
+                        "mcp.request",
+                        io.opentelemetry.api.common.Attributes.builder()
+                                .put("gen_ai.tool.name", originalToolName)
+                                .put("gen_ai.tool.call.arguments", render(arguments, "{}"))
+                                .put(
+                                        "mcp.component.key",
+                                        connection.descriptor().key())
+                                .build());
         long started = System.nanoTime();
         Future<McpSchema.CallToolResult> future = null;
         try {
             future = mcpExecutor.submit(
                     () -> connection.client().callTool(new McpSchema.CallToolRequest(originalToolName, arguments)));
             McpSchema.CallToolResult result = future.get(properties.mcp().callTimeoutMs(), TimeUnit.MILLISECONDS);
+            io.opentelemetry.api.trace.Span.current()
+                    .addEvent(
+                            "mcp.response",
+                            io.opentelemetry.api.common.Attributes.builder()
+                                    .put("gen_ai.tool.name", originalToolName)
+                                    .put("gen_ai.tool.call.result", render(result, "{}"))
+                                    .put(
+                                            "mcp.component.key",
+                                            connection.descriptor().key())
+                                    .build());
             return envelope(connection.descriptor().key(), result);
         } catch (TimeoutException exception) {
             if (future != null) {

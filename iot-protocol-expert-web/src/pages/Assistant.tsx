@@ -304,7 +304,9 @@ export default function Assistant() {
     )
   }, [detail.data, selectedId])
 
+  const creatingConversation = useRef(false)
   const createConversation = async (agentKey: string) => {
+    if (creatingConversation.current) return null
     const agent = agents.data?.find((item) => item.agentKey === agentKey)
     if (!agent) {
       message.error('Agent 不在当前可选目录中')
@@ -315,6 +317,7 @@ export default function Assistant() {
       return null
     }
     try {
+      creatingConversation.current = true
       const created = await api.aiCreateConversation(agentKey, agent.version)
       rememberAgent(agentKey)
       setSelectedId(created.id)
@@ -323,6 +326,8 @@ export default function Assistant() {
     } catch (error) {
       message.error((error as Error).message)
       return null
+    } finally {
+      creatingConversation.current = false
     }
   }
 
@@ -411,6 +416,21 @@ export default function Assistant() {
             icon={<PlusOutlined />}
             disabled={!targetAgent?.healthy}
             onClick={() => {
+              const hasChatRequest = Boolean(
+                detail.data?.messages.some((item) => item.role === 'user') ||
+                detail.data?.conversation.lastMessageAt ||
+                detail.data?.currentRun
+              )
+              if (selectedId) {
+                if (!detail.data) {
+                  message.info('正在读取当前会话，请稍后再试')
+                  return
+                }
+                if (!hasChatRequest) {
+                  message.info('当前会话尚未发起聊天请求，已保留当前会话')
+                  return
+                }
+              }
               if (targetAgentKey) void createConversation(targetAgentKey)
             }}
           >

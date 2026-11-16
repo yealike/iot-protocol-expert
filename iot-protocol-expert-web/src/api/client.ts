@@ -131,7 +131,7 @@ const json = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.strin
 
 const AI_API = '/api/ai/v1'
 
-const aiRequest = <T>(path: string, init: RequestInit = {}) =>
+export const aiRequest = <T>(path: string, init: RequestInit = {}) =>
   request<T>(`${AI_API}${path}`, init, 'ai')
 
 const aiJson = (body: unknown, method: 'POST' | 'PUT' | 'DELETE' = 'POST'): RequestInit => ({

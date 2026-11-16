@@ -299,6 +299,9 @@ public class AgentExecutionService {
     }
 
     private void execute(RunExecution execution) {
+        io.opentelemetry.api.trace.Span.current()
+                .setAttribute("ai.run.id", execution.runId().toString());
+        io.opentelemetry.api.trace.Span.current().setAttribute("ai.agent.release", String.valueOf(execution.release()));
         RunGuard guard = execution.guard();
         StringBuilder answer = new StringBuilder(2048);
         AtomicBoolean timedOut = new AtomicBoolean();
@@ -408,6 +411,13 @@ public class AgentExecutionService {
             ChatUsage usage = modelEvent.getUsage();
             if (usage != null) {
                 execution.addUsage(usage.getInputTokens(), usage.getOutputTokens());
+                io.opentelemetry.api.trace.Span.current()
+                        .addEvent(
+                                "gen_ai.usage",
+                                io.opentelemetry.api.common.Attributes.builder()
+                                        .put("gen_ai.usage.input_tokens", (long) usage.getInputTokens())
+                                        .put("gen_ai.usage.output_tokens", (long) usage.getOutputTokens())
+                                        .build());
             }
             return;
         }
@@ -547,6 +557,9 @@ public class AgentExecutionService {
     }
 
     private void cancelLocal(RunExecution execution, String code, String message) {
+        io.opentelemetry.api.trace.Span.current()
+                .setAttribute("ai.run.id", execution.runId().toString());
+        io.opentelemetry.api.trace.Span.current().setAttribute("ai.agent.release", String.valueOf(execution.release()));
         RunGuard guard = execution.guard();
         if (guard != null) {
             guard.cancel(code, message);
@@ -566,6 +579,9 @@ public class AgentExecutionService {
     }
 
     private Outcome outcome(RunExecution execution, Throwable failure, boolean timedOut, String answer) {
+        io.opentelemetry.api.trace.Span.current()
+                .setAttribute("ai.run.id", execution.runId().toString());
+        io.opentelemetry.api.trace.Span.current().setAttribute("ai.agent.release", String.valueOf(execution.release()));
         RunGuard guard = execution.guard();
         if (guard != null && guard.cancelled()) {
             return cancellationOutcome(guard.cancelCode(), guard.cancelReason());

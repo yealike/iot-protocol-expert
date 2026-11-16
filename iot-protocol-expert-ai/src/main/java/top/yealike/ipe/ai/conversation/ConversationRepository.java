@@ -30,8 +30,29 @@ public class ConversationRepository {
                 conversation.agentReleaseId(),
                 conversation.manifestDigest(),
                 conversation.status(),
+                "USER",
                 conversation.createdAt(),
                 conversation.updatedAt());
+    }
+
+    public void insertEvaluation(Conversation conversation) {
+        mapper.insert(
+                conversation.id(),
+                conversation.userId(),
+                conversation.orgId(),
+                conversation.title(),
+                conversation.agentKey(),
+                conversation.agentVersion(),
+                conversation.agentReleaseId(),
+                conversation.manifestDigest(),
+                conversation.status(),
+                "EVALUATION",
+                conversation.createdAt(),
+                conversation.updatedAt());
+    }
+
+    public String source(UUID id) {
+        return mapper.source(id);
     }
 
     public Optional<Conversation> find(UUID id) {

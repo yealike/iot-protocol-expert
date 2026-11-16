@@ -37,6 +37,15 @@ public class ConversationService {
     }
 
     public Conversation create(UserIdentity identity, String agentKey, String version, String title) {
+        return create(identity, agentKey, version, title, false);
+    }
+
+    public Conversation createEvaluation(UserIdentity identity, String agentKey, String version, String title) {
+        return create(identity, agentKey, version, title, true);
+    }
+
+    private Conversation create(
+            UserIdentity identity, String agentKey, String version, String title, boolean evaluation) {
         if (agentKey == null || agentKey.isBlank()) {
             throw AiExceptions.badRequest("必须指定 Agent");
         }
@@ -67,7 +76,11 @@ public class ConversationService {
                 now,
                 now,
                 null);
-        conversations.insert(conversation);
+        if (evaluation) {
+            conversations.insertEvaluation(conversation);
+        } else {
+            conversations.insert(conversation);
+        }
         return conversation;
     }
 

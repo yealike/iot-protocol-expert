@@ -18,6 +18,7 @@ import NotFound from './pages/NotFound'
 import Simulator from './pages/Simulator'
 import Assistant from './pages/Assistant'
 import AiKnowledge from './pages/AiKnowledge'
+import Evaluation from './pages/Evaluation'
 import Users from './pages/Users'
 import AiAdmin from './pages/ai-admin/AiAdmin'
 import ModelsPage from './pages/ai-admin/ModelsPage'
@@ -82,6 +83,16 @@ export default function App() {
           <Route path="/simulator" element={<Simulator />} />
           <Route path="/alarms" element={<Alarms />} />
           <Route path="/assistant" element={<Assistant />} />
+          <Route
+            path="/ai-evaluation"
+            element={
+              user.permissions?.includes('ai:admin') ? (
+                <Evaluation />
+              ) : (
+                <Navigate to="/assistant" replace />
+              )
+            }
+          />
           <Route path="/users" element={<Users />} />
           <Route path="/ai-knowledge" element={<AiKnowledge user={user} />} />
           <Route path="/ai-admin" element={<AiAdmin user={user} />}>
