@@ -25,7 +25,9 @@ def findings(raw, path):
             result.append((line_number, "access-token"))
         if fixtures:
             continue
-        for value in re.findall(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])", line):
+        # Bundled icon SVG path coordinates may resemble IPv4 addresses.
+        network_line = re.sub(r'\bd:["\'][Mm][^"\']*["\']', 'd:"[SVG]"', line)
+        for value in re.findall(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])", network_line):
             try:
                 address = ipaddress.ip_address(value)
             except ValueError:
@@ -34,8 +36,11 @@ def findings(raw, path):
                 continue
             if any(address in network for network in examples):
                 continue
+            # Public cloud metadata endpoints in explicit SSRF deny rules are intentional.
+            if address.is_link_local and path.endswith("/McpService.java") and "host.equals(" in line:
+                continue
             kind = "server-address"
-            if address in ipaddress.ip_network("100.64.0.0/10"):
+            if address.packed[0] == 100 and 64 <= address.packed[1] <= 127:
                 kind = "shared-network-server-address"
             result.append((line_number, kind))
     return result
