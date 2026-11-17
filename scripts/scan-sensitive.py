@@ -27,7 +27,8 @@ def findings(raw, path):
             continue
         # Bundled icon SVG path coordinates may resemble IPv4 addresses.
         network_line = re.sub(r'\bd:["\'][Mm][^"\']*["\']', 'd:"[SVG]"', line)
-        for value in re.findall(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])", network_line):
+        for match in re.finditer(r"(?<![\d.])(?:\d{1,3}\.){3}\d{1,3}(?![\d.])", network_line):
+            value = match[0]
             try:
                 address = ipaddress.ip_address(value)
             except ValueError:
@@ -39,6 +40,14 @@ def findings(raw, path):
             # Public cloud metadata endpoints in explicit SSRF deny rules are intentional.
             if address.is_link_local and path.endswith("/McpService.java") and "host.equals(" in line:
                 continue
+            # Network definitions are not deployed host addresses; /32 endpoints remain blocked.
+            prefix = re.match(r"/(\d{1,2})(?!\d)", network_line[match.end():])
+            if prefix and int(prefix[1]) < 32:
+                try:
+                    ipaddress.ip_network(value + "/" + prefix[1], strict=True)
+                    continue
+                except ValueError:
+                    pass
             kind = "server-address"
             if address.packed[0] == 100 and 64 <= address.packed[1] <= 127:
                 kind = "shared-network-server-address"
