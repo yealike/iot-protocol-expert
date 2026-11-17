@@ -42,6 +42,13 @@ import type {
   CurrentUser,
   ManagedUser,
   ManagedRole,
+  InvestigationEvidence,
+  InvestigationEvent,
+  InvestigationTask,
+  ProjectInfo,
+  QuotaSnapshot,
+  TenantInfo,
+  UsageItem,
   UserChange,
   DeviceDetail,
   DeviceRow,
@@ -471,7 +478,36 @@ export const api = {
         method: 'POST'
       }
     ),
-  aiRun: (runId: string) => aiRequest<AiRun>(`/runs/${encodeURIComponent(runId)}`)
+  aiRun: (runId: string) => aiRequest<AiRun>(`/runs/${encodeURIComponent(runId)}`),
+
+  tenants: () => request<TenantInfo[]>('/api/control/v1/tenants'),
+  projects: (tenantId: string) =>
+    request<ProjectInfo[]>(`/api/control/v1/tenants/${encodeURIComponent(tenantId)}/projects`),
+
+  investigations: (projectId: string, status?: string) => {
+    const search = new URLSearchParams({ projectId })
+    if (status) search.set('status', status)
+    return request<InvestigationTask[]>(`/api/control/v1/investigations?${search.toString()}`)
+  },
+  createInvestigation: (projectId: string, title: string, goal: string) =>
+    request<InvestigationTask>('/api/control/v1/investigations', {
+      method: 'POST',
+      body: JSON.stringify({ projectId, title, goal, scope: {} })
+    }),
+  transitionInvestigation: (id: string, expectedVersion: number, status: string, reason: string) =>
+    request<InvestigationTask>(`/api/control/v1/investigations/${id}/transitions`, {
+      method: 'POST',
+      body: JSON.stringify({ expectedVersion, status, reason })
+    }),
+  investigationEvidence: (id: string) =>
+    request<InvestigationEvidence[]>(`/api/control/v1/investigations/${id}/evidence`),
+  investigationEvents: (id: string, afterSeq = 0) =>
+    request<InvestigationEvent[]>(
+      `/api/control/v1/investigations/${id}/events?afterSeq=${afterSeq}&limit=200`
+    ),
+
+  myQuota: () => request<QuotaSnapshot>('/api/control/v1/me/quota'),
+  myUsage: (limit = 100) => request<UsageItem[]>(`/api/control/v1/me/usage?limit=${limit}`)
 }
 
 /**

@@ -18,9 +18,14 @@ import { api } from '../api/client'
 import type { ManagedUser, UserChange } from '../api/types'
 
 const roles = [
-  { value: 'ADMIN', label: '管理员' },
-  { value: 'OPS', label: '运营人员' },
-  { value: 'VIEWER', label: '查看人员' }
+  { value: 'PLATFORM_ADMIN', label: '平台管理员' },
+  { value: 'TENANT_OWNER', label: '租户所有者' },
+  { value: 'PROJECT_ADMIN', label: '项目管理员' },
+  { value: 'OPERATOR', label: '运维人员' },
+  { value: 'ANALYST', label: '分析人员' },
+  { value: 'VIEWER', label: '只读人员' },
+  { value: 'QUOTA_ADMIN', label: '额度管理员' },
+  { value: 'AUDITOR', label: '审计人员' }
 ]
 
 export default function Users() {
@@ -170,11 +175,26 @@ export default function Users() {
           onChange={setRolePermissions}
           options={[
             { value: 'iam:user:manage', label: '用户与角色管理' },
+            { value: 'platform:admin', label: '平台管理' },
+            { value: 'tenant:manage', label: '租户管理' },
+            { value: 'project:create', label: '创建项目' },
+            { value: 'project:manage', label: '项目管理' },
+            { value: 'member:manage', label: '成员管理' },
             { value: 'ops:read', label: '运营读取' },
             { value: 'ops:operate', label: '运营操作' },
             { value: 'ops:manage', label: '运营管理' },
             { value: 'ai:use', label: 'AI 使用' },
-            { value: 'ai:admin', label: 'AI 管理' }
+            { value: 'ai:admin', label: 'AI 管理' },
+            { value: 'agent:publish', label: 'Agent 发布' },
+            { value: 'device:manage', label: '设备管理' },
+            { value: 'device:command:start', label: '远程启动' },
+            { value: 'investigation:create', label: '创建调查' },
+            { value: 'investigation:read', label: '查看调查' },
+            { value: 'investigation:operate', label: '操作调查' },
+            { value: 'simulation:run', label: '运行实验' },
+            { value: 'quota:grant', label: '额度分配' },
+            { value: 'usage:read', label: '用量查看' },
+            { value: 'audit:read', label: '审计查看' }
           ]}
         />
       </Modal>

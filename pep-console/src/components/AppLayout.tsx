@@ -9,6 +9,8 @@ import {
   ExperimentOutlined,
   LogoutOutlined,
   RobotOutlined,
+  ThunderboltOutlined,
+  WalletOutlined,
   FileTextOutlined,
   UserOutlined
 } from '@ant-design/icons'
@@ -39,6 +41,12 @@ const items = [
     label: <Link to="/simulator">充电模拟器</Link>
   },
   { key: '/alarms', icon: <AlertOutlined />, label: <Link to="/alarms">告警</Link> },
+  {
+    key: '/investigations',
+    icon: <ThunderboltOutlined />,
+    label: <Link to="/investigations">调查任务</Link>
+  },
+  { key: '/usage', icon: <WalletOutlined />, label: <Link to="/usage">模型额度</Link> },
   { key: '/assistant', icon: <RobotOutlined />, label: <Link to="/assistant">AI 助手</Link> },
   {
     key: '/ai-admin',
@@ -90,7 +98,14 @@ export default function AppLayout({ user, children }: Props) {
           selectedKeys={selected}
           items={items.filter((item) =>
             user.allStations === false &&
-            !['/assistant', '/ai-knowledge', '/ai-admin', '/ai-evaluation'].includes(item.key)
+            ![
+              '/assistant',
+              '/ai-knowledge',
+              '/ai-admin',
+              '/ai-evaluation',
+              '/investigations',
+              '/usage'
+            ].includes(item.key)
               ? false
               : item.key === '/users'
                 ? user.permissions?.includes('iam:user:manage')
@@ -100,7 +115,12 @@ export default function AppLayout({ user, children }: Props) {
                     ? user.permissions?.includes('ai:admin')
                     : item.key === '/assistant'
                       ? user.permissions?.includes('ai:use')
-                      : true
+                      : item.key === '/investigations'
+                        ? user.permissions?.includes('investigation:read')
+                        : item.key === '/usage'
+                          ? user.permissions?.includes('ai:use') ||
+                            user.permissions?.includes('usage:read')
+                          : true
           )}
           style={{ background: 'transparent' }}
         />

@@ -20,6 +20,8 @@ import Assistant from './pages/Assistant'
 import AiKnowledge from './pages/AiKnowledge'
 import Evaluation from './pages/Evaluation'
 import Users from './pages/Users'
+import Investigations from './pages/Investigations'
+import Usage from './pages/Usage'
 import AiAdmin from './pages/ai-admin/AiAdmin'
 import ModelsPage from './pages/ai-admin/ModelsPage'
 import McpsPage from './pages/ai-admin/McpsPage'
@@ -83,6 +85,8 @@ export default function App() {
           <Route path="/simulator" element={<Simulator />} />
           <Route path="/alarms" element={<Alarms />} />
           <Route path="/assistant" element={<Assistant />} />
+          <Route path="/investigations" element={<Investigations />} />
+          <Route path="/usage" element={<Usage />} />
           <Route
             path="/ai-evaluation"
             element={

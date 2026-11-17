@@ -897,3 +897,97 @@ export interface ManagedRole {
   name: string
   permissions: string[]
 }
+
+export interface TenantInfo {
+  id: string
+  code: string
+  name: string
+  state: string
+}
+
+export interface ProjectInfo {
+  id: string
+  tenantId: string
+  code: string
+  name: string
+  state: string
+}
+
+export interface InvestigationTask {
+  id: string
+  tenantId: string
+  projectId: string
+  ownerId: string
+  title: string
+  goal: string
+  scope: string
+  status: string
+  version: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface InvestigationEvidence {
+  id: string
+  tenantId: string
+  projectId: string
+  sourceType: string
+  sourceId: string
+  sourceVersion?: string | null
+  contentHash: string
+  summary: string
+  rawRef?: string | null
+  scope: string
+  collectedAt: string
+  expiresAt?: string | null
+  metadata: string
+  createdAt: string
+}
+
+export interface InvestigationEvent {
+  id: string
+  taskId: string
+  seq: number
+  type: string
+  payload: string
+  actorId?: string | null
+  createdAt: string
+}
+
+export interface QuotaPolicyState {
+  accountId: string
+  policyKey: string
+  mode: string
+  state: string
+  limitUnits: number
+  usedUnits: number
+  heldUnits: number
+  remainingUnits: number
+  activationState: string
+  startAt?: string | null
+  endAt?: string | null
+  debtUnits: number
+}
+
+export interface QuotaSnapshot {
+  scopeKind: string
+  subjectId: string
+  policies: QuotaPolicyState[]
+  pendingReconciliation: number
+}
+
+export interface UsageItem {
+  callId: string
+  logicalCallId: string
+  attemptNo: number
+  model: string
+  provider: string
+  projectId?: string | null
+  runId?: string | null
+  state: string
+  createdAt: string
+  inputTokens: number
+  outputTokens: number
+  quotaUnits: number
+  quality: string
+}
