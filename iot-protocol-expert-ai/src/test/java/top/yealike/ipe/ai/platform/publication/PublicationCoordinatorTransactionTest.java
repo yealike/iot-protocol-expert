@@ -107,6 +107,7 @@ class PublicationCoordinatorTransactionTest {
         private Fixture(boolean complete) {
             when(publications.claimOutbox(anyString(), anyInt(), anyInt())).thenReturn(List.of());
             when(publications.claimPending(anyString(), anyInt(), anyInt())).thenReturn(List.of(publication));
+            when(publications.renewLease(any(), anyString(), anyInt())).thenReturn(true);
             when(mcps.releases(resourceId)).thenReturn(List.of(release));
             when(mcps.setReleaseState(release.id(), "ACTIVE")).thenReturn(1);
             when(mcps.publishComponent(resourceId, "1.0.0", 7L)).thenReturn(true);

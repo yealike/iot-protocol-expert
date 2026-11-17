@@ -86,8 +86,11 @@ public class ConversationService {
 
     public List<Conversation> list(UserIdentity identity, int page, int size) {
         int normalizedSize = Math.min(Math.max(size, 1), 100);
-        int offset = Math.max(page, 0) * normalizedSize;
-        return conversations.listByUser(identity.actor(), normalizedSize, offset);
+        long offset = (long) Math.max(page, 0) * normalizedSize;
+        if (offset > Integer.MAX_VALUE) {
+            throw AiExceptions.badRequest("页码超出范围");
+        }
+        return conversations.listByUser(identity.actor(), normalizedSize, (int) offset);
     }
 
     public long count(UserIdentity identity) {

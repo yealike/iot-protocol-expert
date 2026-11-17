@@ -1,30 +1,21 @@
 package top.yealike.ipe.ai.platform.store;
 
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
+import top.yealike.ipe.ai.mapper.PublicationMapper;
 import top.yealike.ipe.ai.platform.domain.PlatformRecords.Publication;
-import top.yealike.ipe.ai.support.JsonSupport;
 
 @Repository
 public class PublicationStore {
 
-    private static final String SELECT = """
-            select id, resource_type, resource_id, version, draft_revision, state, phase, generation,
-                   idempotency_key, error_code, error_message, attempts, next_attempt_at, deadline_at,
-                   created_at, updated_at
-              from ai_publication
-            """;
+    private final PublicationMapper mapper;
 
-    private final JdbcTemplate jdbc;
-
-    public PublicationStore(JdbcTemplate jdbc) {
-        this.jdbc = jdbc;
+    public PublicationStore(PublicationMapper mapper) {
+        this.mapper = mapper;
     }
 
     public UUID insert(
@@ -36,79 +27,36 @@ public class PublicationStore {
             String idempotencyKey,
             Instant deadlineAt) {
         UUID id = UUID.randomUUID();
-        jdbc.update(
-                "insert into ai_publication (id, resource_type, resource_id, version, draft_revision, state, phase, generation, idempotency_key, deadline_at) values (?, ?, ?, ?, ?, 'VALIDATING', 'VALIDATING', ?, ?, ?)",
-                id,
-                resourceType,
-                resourceId,
-                version,
-                draftRevision,
-                generation,
-                idempotencyKey,
-                Timestamp.from(deadlineAt));
+        mapper.insert(id, resourceType, resourceId, version, draftRevision, generation, idempotencyKey, deadlineAt);
         return id;
     }
 
     public Optional<Publication> find(UUID id) {
-        return jdbc.query(SELECT + " where id = ?", (rows, index) -> map(rows), id).stream()
-                .findFirst();
+        return mapper.find(id).stream().findFirst();
     }
 
     public Optional<Publication> findByIdempotency(String resourceType, UUID resourceId, String key) {
-        return jdbc
-                .query(
-                        SELECT + " where resource_type = ? and resource_id = ? and idempotency_key = ?",
-                        (rows, index) -> map(rows),
-                        resourceType,
-                        resourceId,
-                        key)
-                .stream()
-                .findFirst();
+        return mapper.findByIdempotency(resourceType, resourceId, key).stream().findFirst();
     }
 
     public long nextGeneration(String resourceType, UUID resourceId) {
-        Long value = jdbc.queryForObject(
-                "select coalesce(max(generation), 0) + 1 from ai_publication where resource_type = ? and resource_id = ?",
-                Long.class,
-                resourceType,
-                resourceId);
+        Long value = mapper.nextGeneration(resourceType, resourceId);
         return value == null ? 1 : value;
     }
 
     public List<Publication> claimPending(String worker, int leaseSeconds, int limit) {
-        jdbc.update("""
-                update ai_publication
-                   set lease_owner = ?, lease_until = now() + make_interval(secs => ?), updated_at = now()
-                 where id in (
-                       select id from ai_publication
-                        where state in ('VALIDATING', 'PREPARING', 'REGISTERING')
-                          and next_attempt_at <= now()
-                          and (lease_until is null or lease_until < now())
-                        order by created_at
-                        limit ?
-                          for update skip locked)
-                """, worker, leaseSeconds, limit);
-        return jdbc.query(
-                SELECT
-                        + " where lease_owner = ? and state in ('VALIDATING', 'PREPARING', 'REGISTERING') order by created_at",
-                (rows, index) -> map(rows),
-                worker);
+        mapper.claimPending(worker, leaseSeconds, limit);
+        return mapper.claimedByWorker(worker);
     }
 
     /** 认领指定发布意图；outbox 路径也必须先取得租约，避免与轮询 worker 并发执行同一阶段。 */
     public Optional<Publication> claim(UUID id, String worker, int leaseSeconds) {
-        int changed = jdbc.update("""
-                update ai_publication
-                   set lease_owner = ?, lease_until = now() + make_interval(secs => ?), updated_at = now()
-                 where id = ?
-                   and state in ('VALIDATING', 'PREPARING', 'REGISTERING')
-                   and next_attempt_at <= now()
-                   and (lease_until is null or lease_until < now())
-                """, worker, leaseSeconds, id);
-        if (changed == 0) {
-            return Optional.empty();
-        }
-        return find(id);
+        return mapper.claim(id, worker, leaseSeconds) == 0 ? Optional.empty() : find(id);
+    }
+
+    /** 批次认领后按条续租；必须在执行任何外部副作用前确认仍持有租约。 */
+    public boolean renewLease(UUID id, String worker, int leaseSeconds) {
+        return mapper.renewLease(id, worker, leaseSeconds) > 0;
     }
 
     /**
@@ -125,24 +73,13 @@ public class PublicationStore {
             String nextPhase,
             String errorCode,
             String errorMessage) {
-        return jdbc.update("""
-                        update ai_publication
-                           set state = ?, phase = ?, error_code = ?, error_message = ?,
-                               lease_owner = null, lease_until = null, updated_at = now()
-                         where id = ? and state = ? and lease_owner = ? and lease_until > now()
-                        """, nextState, nextPhase, errorCode, errorMessage, id, expectedState, owner) > 0;
+        return mapper.advance(id, owner, expectedState, nextState, nextPhase, errorCode, errorMessage) > 0;
     }
 
     /** @return 是否已达到最大重试次数并进入 FAILED 终态。 */
     public boolean fail(
             UUID id, String owner, String expectedState, String code, String message, Instant nextAttemptAt) {
-        int changed = jdbc.update("""
-                update ai_publication
-                   set state = case when attempts + 1 >= 5 then 'FAILED' else state end,
-                       error_code = ?, error_message = ?, attempts = attempts + 1, next_attempt_at = ?,
-                       lease_owner = null, lease_until = null, updated_at = now()
-                 where id = ? and state = ? and lease_owner = ? and lease_until > now()
-                """, code, message, Timestamp.from(nextAttemptAt), id, expectedState, owner);
+        int changed = mapper.fail(id, owner, expectedState, code, message, nextAttemptAt);
         if (changed == 0) {
             return false;
         }
@@ -150,112 +87,46 @@ public class PublicationStore {
     }
 
     public void retry(UUID id) {
-        jdbc.update(
-                "update ai_publication set state = 'VALIDATING', phase = 'VALIDATING', error_code = null, error_message = null, attempts = 0, next_attempt_at = now(), deadline_at = now() + interval '60 seconds', lease_owner = null, lease_until = null, updated_at = now() where id = ? and state = 'FAILED'",
-                id);
+        mapper.retry(id);
     }
 
     public boolean expire(UUID id, String owner, String expectedState, Instant deadline) {
-        return jdbc.update(
-                        "update ai_publication set state = 'FAILED', error_code = 'PUBLICATION_TIMEOUT', error_message = '发布超时，请检查注册或运行时状态后重试', lease_owner = null, lease_until = null, updated_at = now() where id = ? and state = ? and lease_owner = ? and lease_until > now() and deadline_at < ?",
-                        id,
-                        expectedState,
-                        owner,
-                        Timestamp.from(deadline))
-                > 0;
+        return mapper.expire(id, owner, expectedState, deadline) > 0;
     }
 
     public boolean markFailed(UUID id, String owner, String expectedState, String code, String message) {
-        return jdbc.update("""
-                update ai_publication
-                   set state = 'FAILED', error_code = ?, error_message = ?, lease_owner = null, lease_until = null,
-                       updated_at = now()
-                 where id = ? and state = ? and lease_owner = ? and lease_until > now()
-                """, code, message, id, expectedState, owner) > 0;
+        return mapper.markFailed(id, owner, expectedState, code, message) > 0;
     }
 
     public UUID insertOutbox(
             String aggregateType, UUID aggregateId, long generation, String eventType, String payloadJson) {
         UUID id = UUID.randomUUID();
-        jdbc.update(
-                "insert into ai_outbox (id, aggregate_type, aggregate_id, generation, event_type, payload) values (?, ?, ?, ?, ?, cast(? as jsonb)) on conflict (aggregate_type, aggregate_id, generation, event_type) do nothing",
-                id,
-                aggregateType,
-                aggregateId,
-                generation,
-                eventType,
-                payloadJson);
+        mapper.insertOutbox(id, aggregateType, aggregateId, generation, eventType, payloadJson);
         return id;
     }
 
     public void markOutboxDone(String aggregateType, UUID aggregateId, long generation, String eventType) {
-        jdbc.update(
-                "update ai_outbox set status = 'DONE' where aggregate_type = ? and aggregate_id = ? and generation = ? and event_type = ?",
-                aggregateType,
-                aggregateId,
-                generation,
-                eventType);
+        mapper.markOutboxDone(aggregateType, aggregateId, generation, eventType);
     }
 
     public List<OutboxEvent> claimOutbox(String worker, int leaseSeconds, int limit) {
-        jdbc.update("""
-                update ai_outbox
-                   set lease_owner = ?, lease_until = now() + make_interval(secs => ?), attempts = attempts + 1
-                 where id in (
-                       select id from ai_outbox
-                        where status = 'PENDING' and next_attempt_at <= now()
-                          and (lease_until is null or lease_until < now())
-                        order by created_at
-                        limit ?
-                          for update skip locked)
-                """, worker, leaseSeconds, limit);
-        return jdbc.query(
-                """
-                select id, aggregate_type, aggregate_id, generation, event_type, payload, attempts
-                  from ai_outbox
-                 where lease_owner = ? and status = 'PENDING'
-                 order by created_at
-                """,
-                (rows, index) -> new OutboxEvent(
-                        JdbcRows.uuid(rows, "id"),
-                        rows.getString("aggregate_type"),
-                        JdbcRows.uuid(rows, "aggregate_id"),
-                        rows.getLong("generation"),
-                        rows.getString("event_type"),
-                        JsonSupport.readMap(rows.getString("payload")),
-                        rows.getInt("attempts")),
-                worker);
+        mapper.claimOutbox(worker, leaseSeconds, limit);
+        return mapper.claimedOutbox(worker);
     }
 
-    public void completeOutbox(UUID id) {
-        jdbc.update("update ai_outbox set status = 'DONE', lease_owner = null, lease_until = null where id = ?", id);
+    /** 批次认领后按条续租；续租失败表示租约已被其他 worker 接管。 */
+    public boolean renewOutbox(UUID id, String worker, int leaseSeconds) {
+        return mapper.renewOutbox(id, worker, leaseSeconds) > 0;
     }
 
-    public void retryOutbox(UUID id, Instant nextAttemptAt) {
-        jdbc.update(
-                "update ai_outbox set lease_owner = null, lease_until = null, next_attempt_at = ?, status = case when attempts >= 8 then 'FAILED' else 'PENDING' end where id = ?",
-                Timestamp.from(nextAttemptAt),
-                id);
+    /** 只有仍持有 outbox 租约的 worker 才能结束事件，租约过期后不得覆盖新 worker 的处理结果。 */
+    public boolean completeOutbox(UUID id, String worker) {
+        return mapper.completeOutbox(id, worker) > 0;
     }
 
-    private Publication map(java.sql.ResultSet rows) throws java.sql.SQLException {
-        return new Publication(
-                JdbcRows.uuid(rows, "id"),
-                rows.getString("resource_type"),
-                JdbcRows.uuid(rows, "resource_id"),
-                rows.getString("version"),
-                rows.getLong("draft_revision"),
-                rows.getString("state"),
-                rows.getString("phase"),
-                rows.getLong("generation"),
-                rows.getString("idempotency_key"),
-                rows.getString("error_code"),
-                rows.getString("error_message"),
-                rows.getInt("attempts"),
-                JdbcRows.instant(rows, "next_attempt_at"),
-                JdbcRows.instant(rows, "deadline_at"),
-                JdbcRows.instant(rows, "created_at"),
-                JdbcRows.instant(rows, "updated_at"));
+    /** 只有仍持有 outbox 租约的 worker 才能释放或重排事件。 */
+    public boolean retryOutbox(UUID id, String worker, Instant nextAttemptAt) {
+        return mapper.retryOutbox(id, worker, nextAttemptAt) > 0;
     }
 
     public record OutboxEvent(

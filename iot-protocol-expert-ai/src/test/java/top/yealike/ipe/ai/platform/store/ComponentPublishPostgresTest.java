@@ -9,8 +9,13 @@ import java.util.UUID;
 import java.util.function.ToIntFunction;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.mybatis.spring.SqlSessionFactoryBean;
+import org.mybatis.spring.SqlSessionTemplate;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.SingleConnectionDataSource;
+import top.yealike.ipe.ai.mapper.McpPlatformMapper;
+import top.yealike.ipe.ai.mapper.SkillPlatformMapper;
 
 /**
  * 隔离 PostgreSQL 验收发布 SQL 的类型与代次推进。
@@ -34,12 +39,21 @@ class ComponentPublishPostgresTest {
             try {
                 connection.setSchema(schema);
                 createTables(connection);
-                JdbcTemplate jdbc = new JdbcTemplate(new SingleConnectionDataSource(connection, true));
+                var dataSource = new SingleConnectionDataSource(connection, true);
+                JdbcTemplate jdbc = new JdbcTemplate(dataSource);
+                var factory = new SqlSessionFactoryBean();
+                factory.setDataSource(dataSource);
+                var configuration = new org.apache.ibatis.session.Configuration();
+                configuration.setMapUnderscoreToCamelCase(true);
+                factory.setConfiguration(configuration);
+                factory.setMapperLocations(
+                        new PathMatchingResourcePatternResolver().getResources("classpath*:mapper/ai/*.xml"));
+                var session = new SqlSessionTemplate(factory.getObject());
 
-                McpStore mcps = new McpStore(jdbc);
+                McpStore mcps = new McpStore(session.getMapper(McpPlatformMapper.class));
                 assertPublished(
                         jdbc, "ai_mcp", releaseId -> mcps.setReleaseState(releaseId, "ACTIVE"), mcps::publishComponent);
-                SkillStore skills = new SkillStore(jdbc);
+                SkillStore skills = new SkillStore(session.getMapper(SkillPlatformMapper.class));
                 assertPublished(
                         jdbc,
                         "ai_skill",

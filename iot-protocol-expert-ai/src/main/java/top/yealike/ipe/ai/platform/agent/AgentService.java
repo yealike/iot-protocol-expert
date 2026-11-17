@@ -137,11 +137,12 @@ public class AgentService {
         if (updated == 0) {
             throw AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "Agent 已被其他请求修改，请刷新后重试");
         }
-        if (mcpBindings != null || skillBindings != null) {
-            agents.replaceBindings(
-                    id,
-                    mcpBindings == null ? List.of() : mcpBindings,
-                    skillBindings == null ? List.of() : skillBindings);
+        if (mcpBindings != null && skillBindings != null) {
+            agents.replaceBindings(id, mcpBindings, skillBindings);
+        } else if (mcpBindings != null) {
+            agents.replaceMcpBindings(id, mcpBindings);
+        } else if (skillBindings != null) {
+            agents.replaceSkillBindings(id, skillBindings);
         }
         return require(id);
     }

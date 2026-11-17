@@ -555,7 +555,7 @@ evaluation/
 | ipe.ai.evaluation.max-judge-cost | 按项目值配置 | Judge 总预算上限 |
 | ipe.ai.evaluation.judge-model-profile | 空 | Judge Model Profile；为空时语义评分标记未配置 |
 | ipe.tempo.query-base-url | 空 | Tempo HTTP 查询地址；未设置时 Trace 面板显示不可用 |
-| ipe.ai.otel.content-enabled | true | 按需求默认采集完整 AI Trace 内容 |
+| ipe.ai.otel.content-enabled | false | 默认只采集元数据；仅在隔离排障环境显式开启正文 |
 | ipe.ai.otel.max-content-chars | 0 / unlimited | 按需求禁用内容截断；实现需避免将其误解释为默认长度 |
 
 最终配置键命名以现有 RuntimeProperties/AiProperties 结构为准，不复制已有 IPE_OTLP_ENDPOINT 等配置。

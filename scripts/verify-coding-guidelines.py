@@ -29,6 +29,10 @@ for module in sorted(ROOT.glob("iot-protocol-expert-*")):
             rules = {
                 "explicit-executor": r"Executors\.new\w+\s*\(",
                 "explicit-locale": r"\.to(?:Lower|Upper)Case\(\)",
+                "mybatis-only-persistence":
+                    r"org\.springframework\.jdbc\.(?:core\.)?(?:JdbcTemplate|NamedParameterJdbcTemplate|JdbcClient)",
+                "no-jpa-persistence": r"org\.hibernate\.|(?:jakarta|javax)\.persistence\.",
+                "no-driver-manager": r"java\.sql\.DriverManager\.getConnection\s*\(",
                 "no-console-stacktrace": r"\.printStackTrace\s*\(",
                 "thread-safe-date-format": r"new\s+SimpleDateFormat\s*\(",
             }

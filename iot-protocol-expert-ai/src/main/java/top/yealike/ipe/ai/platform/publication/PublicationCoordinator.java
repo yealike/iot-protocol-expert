@@ -39,6 +39,7 @@ public class PublicationCoordinator {
 
     private static final Logger log = LoggerFactory.getLogger(PublicationCoordinator.class);
     private static final int MAX_ATTEMPTS = 5;
+    private static final int LEASE_SECONDS = 120;
 
     private final PublicationStore publications;
     private final McpStore mcps;
@@ -80,7 +81,10 @@ public class PublicationCoordinator {
     public void tick() {
         try {
             processOutbox();
-            for (Publication publication : publications.claimPending(worker, 30, 20)) {
+            for (Publication publication : publications.claimPending(worker, LEASE_SECONDS, 20)) {
+                if (!publications.renewLease(publication.id(), worker, LEASE_SECONDS)) {
+                    continue;
+                }
                 try {
                     process(publication);
                 } catch (RuntimeException exception) {
@@ -150,38 +154,42 @@ public class PublicationCoordinator {
     }
 
     private void processOutbox() {
-        List<PublicationStore.OutboxEvent> events = publications.claimOutbox(worker, 30, 10);
+        List<PublicationStore.OutboxEvent> events = publications.claimOutbox(worker, LEASE_SECONDS, 10);
         for (PublicationStore.OutboxEvent event : events) {
+            if (!publications.renewOutbox(event.id(), worker, LEASE_SECONDS)) {
+                continue;
+            }
             try {
                 UUID publicationId = uuid(event.payload().get("publicationId"));
                 if (publicationId == null) {
-                    publications.retryOutbox(event.id(), Instant.now().plusSeconds(30));
+                    publications.retryOutbox(event.id(), worker, Instant.now().plusSeconds(30));
                     continue;
                 }
                 Publication publication = publications.find(publicationId).orElse(null);
                 if (publication == null) {
-                    publications.completeOutbox(event.id());
+                    publications.completeOutbox(event.id(), worker);
                     continue;
                 }
                 if ("PUBLISHED".equals(publication.state()) || "FAILED".equals(publication.state())) {
-                    publications.completeOutbox(event.id());
+                    publications.completeOutbox(event.id(), worker);
                     continue;
                 }
-                publication = publications.claim(publicationId, worker, 30).orElse(null);
+                publication =
+                        publications.claim(publicationId, worker, LEASE_SECONDS).orElse(null);
                 if (publication == null) {
-                    publications.retryOutbox(event.id(), Instant.now().plusSeconds(2));
+                    publications.retryOutbox(event.id(), worker, Instant.now().plusSeconds(2));
                     continue;
                 }
                 Step step = process(publication);
                 if (step == Step.DONE) {
-                    publications.completeOutbox(event.id());
+                    publications.completeOutbox(event.id(), worker);
                 } else if (step == Step.WAIT) {
-                    publications.retryOutbox(event.id(), Instant.now().plusSeconds(2));
+                    publications.retryOutbox(event.id(), worker, Instant.now().plusSeconds(2));
                 } else {
-                    publications.retryOutbox(event.id(), nextAttempt(publication));
+                    publications.retryOutbox(event.id(), worker, nextAttempt(publication));
                 }
             } catch (RuntimeException exception) {
-                publications.retryOutbox(event.id(), Instant.now().plusSeconds(10));
+                publications.retryOutbox(event.id(), worker, Instant.now().plusSeconds(10));
                 log.warn("outbox processing failed: id={} reason={}", event.id(), safeMessage(exception));
             }
         }

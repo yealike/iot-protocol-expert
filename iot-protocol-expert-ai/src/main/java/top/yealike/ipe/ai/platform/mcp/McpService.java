@@ -14,6 +14,7 @@ import top.yealike.ipe.ai.contract.ComponentEndpoint;
 import top.yealike.ipe.ai.contract.ComponentNames;
 import top.yealike.ipe.ai.contract.ComponentType;
 import top.yealike.ipe.ai.contract.Digests;
+import top.yealike.ipe.ai.contract.EndpointPolicy;
 import top.yealike.ipe.ai.contract.ErrorCodes;
 import top.yealike.ipe.ai.contract.McpDescriptor;
 import top.yealike.ipe.ai.contract.McpToolDescriptor;
@@ -101,6 +102,7 @@ public class McpService {
             throw AiExceptions.badRequest("MCP 来源只支持 NATIVE_REGISTRY 或 REMOTE");
         }
         validateConfig(origin, nativeRegistryRef, draft);
+        validateCredential(draft);
         return store.insert(
                 key,
                 displayName,
@@ -121,6 +123,7 @@ public class McpService {
             boolean enabled) {
         McpComponent component = require(id);
         validateConfig(component.origin(), nativeRegistryRef, draft);
+        validateCredential(draft);
         int updated = store.update(
                 id,
                 expectedRevision,
@@ -145,6 +148,7 @@ public class McpService {
             throw AiExceptions.conflict(ErrorCodes.COMPONENT_IN_USE, "MCP 已有发布版本，请停用而不是删除");
         }
         store.deleteToolPolicies(component.id());
+        store.deleteTestReports(component.id());
         store.delete(component.id());
     }
 
@@ -447,21 +451,13 @@ public class McpService {
             String namespace = String.valueOf(component.nativeRegistryRef().getOrDefault("namespace", ""));
             String version = String.valueOf(component.nativeRegistryRef().getOrDefault("version", ""));
             NacosMcpCatalogService.CatalogEntry entry = nativeCatalog.fetch(serverName, namespace, version);
-            return new Resolved(entry.endpoint(), authorization(component));
+            return new Resolved(validatedEndpoint(entry.endpoint()), authorization(component));
         }
         Object endpoint = component.draft().get("endpoint");
-        if (!(endpoint instanceof String text) || !text.startsWith("http")) {
+        if (!(endpoint instanceof String text)) {
             throw AiExceptions.badRequest("远程 MCP 必须提供 http(s) endpoint");
         }
-        URI uri = URI.create(text);
-        if (uri.getHost() == null || uri.getUserInfo() != null || uri.getFragment() != null) {
-            throw AiExceptions.badRequest("MCP endpoint 不能包含用户信息或片段");
-        }
-        String host = uri.getHost().toLowerCase(java.util.Locale.ROOT);
-        if (host.equals("169.254.169.254") || host.equals("metadata.google.internal") || host.equals("fd00:ec2::254")) {
-            throw AiExceptions.badRequest("MCP endpoint 不允许云元数据地址");
-        }
-        return new Resolved(text, authorization(component));
+        return new Resolved(validatedEndpoint(text), authorization(component));
     }
 
     private String authorization(McpComponent component) {
@@ -473,15 +469,42 @@ public class McpService {
     }
 
     private UUID credentialId(McpComponent component) {
-        Object raw = component.draft().get("credentialId");
+        try {
+            return credentialId(component.draft());
+        } catch (IllegalArgumentException exception) {
+            throw AiExceptions.unavailable("MCP 凭据配置无效");
+        }
+    }
+
+    private static UUID credentialId(Map<String, Object> draft) {
+        Object raw = draft == null ? null : draft.get("credentialId");
         if (raw instanceof String text && !text.isBlank()) {
             try {
                 return UUID.fromString(text);
             } catch (IllegalArgumentException exception) {
-                return null;
+                throw new IllegalArgumentException("credentialId 必须是 UUID", exception);
             }
         }
+        if (raw != null && !(raw instanceof String)) {
+            throw new IllegalArgumentException("credentialId 必须是字符串");
+        }
         return null;
+    }
+
+    private void validateCredential(Map<String, Object> draft) {
+        UUID id;
+        try {
+            id = credentialId(draft);
+        } catch (IllegalArgumentException exception) {
+            throw AiExceptions.badRequest("MCP credentialId 必须是 UUID");
+        }
+        if (id == null) {
+            return;
+        }
+        var credential = credentialStore.find(id).orElseThrow(() -> AiExceptions.badRequest("MCP 凭据不存在"));
+        if (!credential.enabled()) {
+            throw AiExceptions.badRequest("MCP 凭据已停用");
+        }
     }
 
     private int timeoutMs(McpComponent component) {
@@ -529,11 +552,20 @@ public class McpService {
                 throw AiExceptions.badRequest("原生目录导入必须指定 serverName");
             }
         } else if ("REMOTE".equals(origin)) {
-            if (draft == null || !(draft.get("endpoint") instanceof String)) {
+            if (draft == null || !(draft.get("endpoint") instanceof String endpoint)) {
                 throw AiExceptions.badRequest("远程 MCP 必须提供 endpoint");
             }
+            validatedEndpoint(endpoint);
         } else {
             throw AiExceptions.badRequest("MCP 来源只支持 NATIVE_REGISTRY 或 REMOTE");
+        }
+    }
+
+    static String validatedEndpoint(String endpoint) {
+        try {
+            return EndpointPolicy.requireAllowed(endpoint).toString();
+        } catch (IllegalArgumentException exception) {
+            throw AiExceptions.badRequest("MCP endpoint " + exception.getMessage());
         }
     }
 

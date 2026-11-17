@@ -24,12 +24,16 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import top.yealike.ipe.ai.contract.ErrorCodes;
+import top.yealike.ipe.ai.contract.InternalRequestBodies;
 import top.yealike.ipe.ai.contract.InternalSignature;
 
 /**
  * Runtime 内部接口 HMAC 校验。
  *
- * <p>时间窗 30 秒 + nonce TTL 缓存防重放；请求体在过滤器内缓存，签名与后续反序列化看到完全相同的字节。
+ * <p>时间窗 30 秒 + 本实例进程内 nonce TTL 缓存防重放；请求体在过滤器内缓存，签名与后续反序列化看到完全相同的字节。
+ *
+ * <p>Runtime 不引入数据库，nonce 不跨实例共享：同一签名请求在时间窗内仍可能被重放到另一个 Runtime 副本。
+ * 需要跨副本重放防护时，必须将 Runtime 固定路由到单副本，或由共享存储统一 claim nonce。
  */
 @Component
 @Order(Ordered.HIGHEST_PRECEDENCE + 10)
@@ -61,13 +65,16 @@ public class InternalSecurityFilter extends OncePerRequestFilter {
             reject(response, HttpStatus.SERVICE_UNAVAILABLE, "内部服务密钥未配置");
             return;
         }
-        byte[] body = request.getInputStream().readAllBytes();
         String service = request.getHeader(InternalSignature.HEADER_SERVICE);
         String timestamp = request.getHeader(InternalSignature.HEADER_TIMESTAMP);
         String nonce = request.getHeader(InternalSignature.HEADER_NONCE);
         String signature = request.getHeader(InternalSignature.HEADER_SIGNATURE);
         if (!properties.controlServiceName().equals(service) || blank(timestamp) || blank(nonce) || blank(signature)) {
             reject(response, HttpStatus.UNAUTHORIZED, "缺少服务身份");
+            return;
+        }
+        if (service.length() > 64 || nonce.length() > 128 || signature.length() > 128) {
+            reject(response, HttpStatus.UNAUTHORIZED, "服务身份头过长");
             return;
         }
         long seconds;
@@ -77,8 +84,16 @@ public class InternalSecurityFilter extends OncePerRequestFilter {
             reject(response, HttpStatus.UNAUTHORIZED, "服务身份时间戳无效");
             return;
         }
-        if (Math.abs(Instant.now().getEpochSecond() - seconds) > WINDOW_SECONDS) {
+        long now = Instant.now().getEpochSecond();
+        if (seconds < now - WINDOW_SECONDS || seconds > now + WINDOW_SECONDS) {
             reject(response, HttpStatus.UNAUTHORIZED, "服务身份已过期");
+            return;
+        }
+        byte[] body;
+        try {
+            body = InternalRequestBodies.read(request.getInputStream(), request.getContentLengthLong());
+        } catch (InternalRequestBodies.TooLargeException exception) {
+            reject(response, HttpStatus.PAYLOAD_TOO_LARGE, "内部请求体过大");
             return;
         }
         String pathAndQuery =

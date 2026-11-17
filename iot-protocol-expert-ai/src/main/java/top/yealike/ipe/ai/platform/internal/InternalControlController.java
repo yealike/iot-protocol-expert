@@ -5,7 +5,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,6 +27,7 @@ import top.yealike.ipe.ai.contract.SkillDescriptor;
 import top.yealike.ipe.ai.contract.SkillFile;
 import top.yealike.ipe.ai.contract.ToolAuthorizeRequest;
 import top.yealike.ipe.ai.contract.ToolAuthorizeResponse;
+import top.yealike.ipe.ai.mapper.InternalControlMapper;
 import top.yealike.ipe.ai.platform.agent.AgentService;
 import top.yealike.ipe.ai.platform.domain.PlatformRecords.AgentRelease;
 import top.yealike.ipe.ai.platform.mcp.McpService;
@@ -45,7 +45,7 @@ public class InternalControlController {
     private final McpService mcps;
     private final SkillService skills;
     private final RuntimeRunCoordinator runs;
-    private final JdbcTemplate jdbc;
+    private final InternalControlMapper control;
 
     public InternalControlController(
             AgentService agents,
@@ -53,13 +53,13 @@ public class InternalControlController {
             McpService mcps,
             SkillService skills,
             RuntimeRunCoordinator runs,
-            JdbcTemplate jdbc) {
+            InternalControlMapper control) {
         this.agents = agents;
         this.agentStore = agentStore;
         this.mcps = mcps;
         this.skills = skills;
         this.runs = runs;
-        this.jdbc = jdbc;
+        this.control = control;
     }
 
     @GetMapping("/releases/{releaseId}/manifest")
@@ -157,7 +157,7 @@ public class InternalControlController {
 
     @GetMapping("/runtime/readiness")
     public Map<String, Object> readiness() {
-        Integer probe = jdbc.queryForObject("select 1", Integer.class);
+        Integer probe = control.probe();
         return Map.of(
                 "status",
                 "UP",

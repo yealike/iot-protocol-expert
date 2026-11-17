@@ -15,12 +15,14 @@ import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import top.yealike.ipe.ai.contract.ErrorCodes;
 import top.yealike.ipe.ai.contract.InternalPaths;
+import top.yealike.ipe.ai.contract.InternalRequestBodies;
 import top.yealike.ipe.ai.contract.InternalSignature;
+import top.yealike.ipe.ai.mapper.InternalControlMapper;
 import top.yealike.ipe.ai.platform.config.PlatformProperties;
 
 /** Control 内部接口 HMAC 校验；时间窗、服务身份与持久化 nonce 共同阻止重放。 */
@@ -31,16 +33,17 @@ public class InternalSignatureFilter extends OncePerRequestFilter {
     private static final long NONCE_TTL_SECONDS = 120;
 
     private final PlatformProperties properties;
-    private final JdbcTemplate jdbc;
+    private final InternalControlMapper control;
 
-    public InternalSignatureFilter(PlatformProperties properties, JdbcTemplate jdbc) {
+    public InternalSignatureFilter(PlatformProperties properties, InternalControlMapper control) {
         this.properties = properties;
-        this.jdbc = jdbc;
+        this.control = control;
     }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
-        return !request.getRequestURI().startsWith(InternalPaths.CONTROL_BASE);
+        String uri = request.getRequestURI();
+        return !(uri.equals(InternalPaths.CONTROL_BASE) || uri.startsWith(InternalPaths.CONTROL_BASE + "/"));
     }
 
     @Override
@@ -52,13 +55,16 @@ public class InternalSignatureFilter extends OncePerRequestFilter {
             reject(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE, "内部服务密钥未配置");
             return;
         }
-        byte[] body = request.getInputStream().readAllBytes();
         String service = request.getHeader(InternalSignature.HEADER_SERVICE);
         String timestamp = request.getHeader(InternalSignature.HEADER_TIMESTAMP);
         String nonce = request.getHeader(InternalSignature.HEADER_NONCE);
         String signature = request.getHeader(InternalSignature.HEADER_SIGNATURE);
         if (!security.runtimeServiceName().equals(service) || blank(timestamp) || blank(nonce) || blank(signature)) {
             reject(response, HttpServletResponse.SC_UNAUTHORIZED, "缺少服务身份");
+            return;
+        }
+        if (service.length() > 64 || nonce.length() > 128 || signature.length() > 128) {
+            reject(response, HttpServletResponse.SC_UNAUTHORIZED, "服务身份长度非法");
             return;
         }
         long seconds;
@@ -68,8 +74,17 @@ public class InternalSignatureFilter extends OncePerRequestFilter {
             reject(response, HttpServletResponse.SC_UNAUTHORIZED, "服务身份时间戳无效");
             return;
         }
-        if (Math.abs(Instant.now().getEpochSecond() - seconds) > Math.max(1, security.clockSkewSeconds())) {
+        long now = Instant.now().getEpochSecond();
+        long skew = Math.max(1, security.clockSkewSeconds());
+        if (seconds < now - skew || seconds > now + skew) {
             reject(response, HttpServletResponse.SC_UNAUTHORIZED, "服务身份已过期");
+            return;
+        }
+        byte[] body;
+        try {
+            body = InternalRequestBodies.read(request.getInputStream(), request.getContentLengthLong());
+        } catch (InternalRequestBodies.TooLargeException exception) {
+            reject(response, HttpServletResponse.SC_REQUEST_ENTITY_TOO_LARGE, "内部请求体过大");
             return;
         }
         String pathAndQuery =
@@ -89,13 +104,16 @@ public class InternalSignatureFilter extends OncePerRequestFilter {
     }
 
     private boolean acceptNonce(String service, String nonce) {
-        jdbc.update("delete from ai_internal_nonce where expires_at < now()");
-        int inserted = jdbc.update(
-                "insert into ai_internal_nonce (service_key, nonce, expires_at) values (?, ?, now() + make_interval(secs => ?)) on conflict do nothing",
-                service,
-                nonce,
-                NONCE_TTL_SECONDS);
-        return inserted > 0;
+        return control.insertNonce(service, nonce, NONCE_TTL_SECONDS) > 0;
+    }
+
+    @Scheduled(fixedDelay = 60_000L)
+    public void purgeExpiredNonces() {
+        try {
+            control.deleteExpiredNonces();
+        } catch (RuntimeException exception) {
+            log.warn("internal nonce cleanup failed: {}", exception.getMessage());
+        }
     }
 
     private static void reject(HttpServletResponse response, int status, String message) throws IOException {

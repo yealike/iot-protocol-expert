@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.ipe.ai.mapper.McpPlatformMapper">
+
+    <resultMap id="McpComponentMap" type="top.yealike.ipe.ai.platform.domain.PlatformRecords$McpComponent">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.ipe.ai.mybatis.UuidTypeHandler"/>
+            <arg column="component_key" javaType="java.lang.String"/>
+            <arg column="display_name" javaType="java.lang.String"/>
+            <arg column="description" javaType="java.lang.String"/>
+            <arg column="origin" javaType="java.lang.String"/>
+            <arg column="native_registry_ref" javaType="java.util.Map" typeHandler="top.yealike.ipe.ai.mybatis.JsonMapTypeHandler"/>
+            <arg column="draft_json" javaType="java.util.Map" typeHandler="top.yealike.ipe.ai.mybatis.JsonMapTypeHandler"/>
+            <arg column="published_version" javaType="java.lang.String"/>
+            <arg column="publication_generation" javaType="_long"/>
+            <arg column="enabled" javaType="_boolean"/>
+            <arg column="revision" javaType="_long"/>
+            <arg column="created_by" javaType="java.lang.String"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+            <arg column="updated_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="McpToolPolicyMap" type="top.yealike.ipe.ai.platform.domain.PlatformRecords$McpToolPolicy">
+        <constructor>
+            <arg column="mcp_id" javaType="java.util.UUID" typeHandler="top.yealike.ipe.ai.mybatis.UuidTypeHandler"/>
+            <arg column="tool_name" javaType="java.lang.String"/>
+            <arg column="execution_category" javaType="top.yealike.ipe.ai.contract.McpToolExecutionCategory"
+                 typeHandler="top.yealike.ipe.ai.mybatis.McpToolExecutionCategoryTypeHandler"/>
+            <arg column="reviewed_by" javaType="java.lang.String"/>
+            <arg column="reviewed_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="McpReleaseMap" type="top.yealike.ipe.ai.platform.domain.PlatformRecords$McpRelease">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.ipe.ai.mybatis.UuidTypeHandler"/>
+            <arg column="component_id" javaType="java.util.UUID" typeHandler="top.yealike.ipe.ai.mybatis.UuidTypeHandler"/>
+            <arg column="component_key" javaType="java.lang.String"/>
+            <arg column="version" javaType="java.lang.String"/>
+            <arg column="transport" javaType="java.lang.String"/>
+            <arg column="endpoint_policy" javaType="java.util.Map" typeHandler="top.yealike.ipe.ai.mybatis.JsonMapTypeHandler"/>
+            <arg column="credential_id" javaType="java.util.UUID" typeHandler="top.yealike.ipe.ai.mybatis.UuidTypeHandler"/>
+            <arg column="tool_catalog" javaType="java.util.List" typeHandler="top.yealike.ipe.ai.mybatis.McpToolListTypeHandler"/>
+            <arg column="catalog_digest" javaType="java.lang.String"/>
+            <arg column="content_digest" javaType="java.lang.String"/>
+            <arg column="state" javaType="java.lang.String"/>
+            <arg column="generation" javaType="_long"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="McpTestReportMap" type="top.yealike.ipe.ai.platform.domain.PlatformRecords$McpTestReport">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.ipe.ai.mybatis.UuidTypeHandler"/>
+            <arg column="mcp_id" javaType="java.util.UUID" typeHandler="top.yealike.ipe.ai.mybatis.UuidTypeHandler"/>
+            <arg column="draft_revision" javaType="_long"/>
+            <arg column="config_digest" javaType="java.lang.String"/>
+            <arg column="result_json" javaType="java.util.Map" typeHandler="top.yealike.ipe.ai.mybatis.JsonMapTypeHandler"/>
+            <arg column="success" javaType="_boolean"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <sql id="ComponentColumns">
+        id, component_key, display_name, description, origin, native_registry_ref, draft_json,
+        published_version, publication_generation, enabled, revision, created_by, created_at, updated_at
+    </sql>
+
+    <sql id="ReleaseColumns">
+        r.id, r.component_id, c.component_key, r.version, r.transport, r.endpoint_policy, r.credential_id,
+        r.tool_catalog, r.catalog_digest, r.content_digest, r.state, r.generation, r.created_at
+    </sql>
+
+    <select id="listComponents" resultMap="McpComponentMap">
+        select <include refid="ComponentColumns"/> from ai_mcp_component order by component_key
+    </select>
+
+    <select id="findComponent" resultMap="McpComponentMap">
+        select <include refid="ComponentColumns"/> from ai_mcp_component where id = #{id}
+    </select>
+
+    <select id="findComponentByKey" resultMap="McpComponentMap">
+        select <include refid="ComponentColumns"/> from ai_mcp_component where component_key = #{key}
+    </select>
+
+    <select id="lockComponent" resultMap="McpComponentMap">
+        select <include refid="ComponentColumns"/> from ai_mcp_component where id = #{id} for update
+    </select>
+
+    <insert id="insertComponent">
+        insert into ai_mcp_component (
+            id, component_key, display_name, description, origin, native_registry_ref, draft_json,
+            enabled, revision, created_by)
+        values (
+            #{id}, #{key}, #{displayName}, #{description}, #{origin},
+            cast(#{nativeRegistryRefJson} as jsonb), cast(#{draftJson} as jsonb), true, 0, #{actor})
+    </insert>
+
+    <update id="updateComponent">
+        update ai_mcp_component
+           set display_name = #{displayName},
+               description = #{description},
+               native_registry_ref = cast(#{nativeRegistryRefJson} as jsonb),
+               draft_json = cast(#{draftJson} as jsonb),
+               enabled = #{enabled},
+               revision = revision + 1,
+               updated_at = now()
+         where id = #{id} and revision = #{expectedRevision}
+    </update>
+
+    <update id="setComponentEnabled">
+        update ai_mcp_component
+           set enabled = #{enabled}, revision = revision + 1, updated_at = now()
+         where id = #{id}
+    </update>
+
+    <delete id="deleteComponent">
+        delete from ai_mcp_component where id = #{id}
+    </delete>
+
+    <select id="toolPolicies" resultMap="McpToolPolicyMap">
+        select mcp_id, tool_name, execution_category, reviewed_by, reviewed_at
+          from ai_mcp_tool_policy
+         where mcp_id = #{mcpId}
+         order by tool_name
+    </select>
+
+    <insert id="upsertToolPolicy">
+        insert into ai_mcp_tool_policy (
+            mcp_id, tool_name, execution_category, reviewed_by, reviewed_at)
+        values (#{mcpId}, #{toolName}, #{executionCategory}, #{reviewedBy}, now())
+        on conflict (mcp_id, tool_name) do update
+           set execution_category = excluded.execution_category,
+               reviewed_by = excluded.reviewed_by,
+               reviewed_at = now()
+    </insert>
+
+    <delete id="deleteToolPolicies">
+        delete from ai_mcp_tool_policy where mcp_id = #{mcpId}
+    </delete>
+
+    <delete id="deleteTestReports">
+        delete from ai_mcp_test_report where mcp_id = #{mcpId}
+    </delete>
+
+    <select id="bindingReferences" resultType="long">
+        select count(*)
+          from ai_agent_mcp_binding b
+          join ai_mcp_release r on r.id = b.mcp_release_id
+         where r.component_id = #{componentId}
+    </select>
+
+    <insert id="insertRelease">
+        insert into ai_mcp_release (
+            id, component_id, version, generation, transport, endpoint_policy, credential_id,
+            tool_catalog, catalog_digest, content_digest, state, created_by)
+        values (
+            #{id}, #{componentId}, #{version}, #{generation}, #{transport},
+            cast(#{endpointPolicyJson} as jsonb), #{credentialId}, cast(#{toolCatalogJson} as jsonb),
+            #{catalogDigest}, #{contentDigest}, 'STAGED', #{actor})
+    </insert>
+
+    <select id="findRelease" resultMap="McpReleaseMap">
+        select <include refid="ReleaseColumns"/>
+          from ai_mcp_release r join ai_mcp_component c on c.id = r.component_id
+         where r.id = #{id}
+    </select>
+
+    <select id="findReleaseByKey" resultMap="McpReleaseMap">
+        select <include refid="ReleaseColumns"/>
+          from ai_mcp_release r join ai_mcp_component c on c.id = r.component_id
+         where c.component_key = #{key} and r.version = #{version}
+    </select>
+
+    <select id="latestActiveRelease" resultMap="McpReleaseMap">
+        select <include refid="ReleaseColumns"/>
+          from ai_mcp_release r join ai_mcp_component c on c.id = r.component_id
+         where r.component_id = #{componentId} and r.state = 'ACTIVE'
+         order by r.created_at desc
+         limit 1
+    </select>
+
+    <select id="releases" resultMap="McpReleaseMap">
+        select <include refid="ReleaseColumns"/>
+          from ai_mcp_release r join ai_mcp_component c on c.id = r.component_id
+         where r.component_id = #{componentId}
+         order by r.created_at desc
+    </select>
+
+    <update id="setReleaseState">
+        update ai_mcp_release
+           set state = #{state}
+         where id = #{releaseId} and state in ('STAGED', 'ACTIVE')
+    </update>
+
+    <update id="publishComponent">
+        update ai_mcp_component c
+           set published_version = #{version},
+               publication_generation = #{expectedGeneration},
+               revision = revision + 1,
+               updated_at = now()
+         where c.id = #{componentId}
+           and publication_generation &lt; #{expectedGeneration}
+           and exists (
+               select 1
+                 from ai_mcp_release r
+                where r.component_id = c.id
+                  and r.version = #{version}
+                  and r.generation = #{expectedGeneration}
+                  and r.state = 'ACTIVE'
+           )
+    </update>
+
+    <select id="countPublished" resultType="int">
+        select count(*)
+          from ai_mcp_component
+         where id = #{componentId}
+           and published_version = #{version}
+           and publication_generation = #{expectedGeneration}
+    </select>
+
+    <insert id="insertTestReport">
+        insert into ai_mcp_test_report (
+            id, mcp_id, draft_revision, config_digest, result_json, success)
+        values (
+            #{id}, #{mcpId}, #{draftRevision}, #{configDigest}, cast(#{resultJson} as jsonb), #{success})
+    </insert>
+
+    <select id="findTestReport" resultMap="McpTestReportMap">
+        select id, mcp_id, draft_revision, config_digest, result_json, success, created_at
+          from ai_mcp_test_report
+         where id = #{reportId}
+    </select>
+
+    <select id="latestTestReport" resultMap="McpTestReportMap">
+        select id, mcp_id, draft_revision, config_digest, result_json, success, created_at
+          from ai_mcp_test_report
+         where mcp_id = #{mcpId}
+         order by created_at desc
+         limit 1
+    </select>
+</mapper>

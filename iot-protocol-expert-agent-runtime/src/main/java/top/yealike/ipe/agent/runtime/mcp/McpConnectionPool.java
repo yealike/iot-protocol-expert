@@ -9,7 +9,6 @@ import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.spec.McpSchema;
 import jakarta.annotation.PreDestroy;
-import java.net.URI;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -34,6 +33,8 @@ import org.springframework.stereotype.Component;
 import top.yealike.ipe.agent.runtime.config.RuntimeProperties;
 import top.yealike.ipe.agent.runtime.prepare.PrepareException;
 import top.yealike.ipe.ai.contract.ComponentDigests;
+import top.yealike.ipe.ai.contract.ComponentEndpoint;
+import top.yealike.ipe.ai.contract.EndpointPolicy;
 import top.yealike.ipe.ai.contract.ErrorCodes;
 import top.yealike.ipe.ai.contract.McpDescriptor;
 import top.yealike.ipe.ai.contract.McpToolDescriptor;
@@ -345,14 +346,18 @@ public class McpConnectionPool {
     }
 
     private McpSyncClient createClient(McpDescriptor descriptor, String secret) {
-        URI endpoint = URI.create(descriptor.endpoint());
-        String base = endpoint.getScheme() + "://" + endpoint.getHost()
-                + (endpoint.getPort() < 0 ? "" : ":" + endpoint.getPort());
-        String path = endpoint.getRawPath() == null || endpoint.getRawPath().isBlank() ? "/mcp" : endpoint.getRawPath();
-        if (endpoint.getRawQuery() != null && !endpoint.getRawQuery().isBlank()) {
-            path = path + "?" + endpoint.getRawQuery();
+        ComponentEndpoint endpoint;
+        try {
+            endpoint = ComponentEndpoint.parse(EndpointPolicy.requireAllowedAndResolvable(descriptor.endpoint())
+                    .toString());
+        } catch (IllegalArgumentException exception) {
+            throw new PrepareException(422, ErrorCodes.MCP_INIT_FAILED, "MCP 入口地址不安全：" + descriptor.key());
         }
-        HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(base)
+        String path = endpoint.path().isBlank() ? "/mcp" : endpoint.path();
+        if (!endpoint.query().isBlank()) {
+            path = path + "?" + endpoint.query();
+        }
+        HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(endpoint.baseUrl())
                 .endpoint(path)
                 .connectTimeout(Duration.ofMillis(properties.mcp().connectTimeoutMs()))
                 .httpRequestCustomizer((request, method, uri, body, context) -> {

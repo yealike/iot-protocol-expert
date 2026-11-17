@@ -180,7 +180,7 @@ ipe:
         # 官方 AgentScope TelemetryTracer：invoke_agent / chat / execute_tool Span
         enabled: ${IPE_AI_OTEL_ENABLED:${IPE_OTLP_ENABLED:true}}
         # 默认不导出 prompt / response 正文；仅本地排障时显式开启
-        content-enabled: ${IPE_AI_OTEL_CONTENT_ENABLED:true}
+        content-enabled: ${IPE_AI_OTEL_CONTENT_ENABLED:false}
         max-content-chars: ${IPE_AI_OTEL_MAX_CONTENT_CHARS:0}
 
 logging:

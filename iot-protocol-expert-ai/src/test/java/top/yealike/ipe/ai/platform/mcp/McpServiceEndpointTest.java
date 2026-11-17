@@ -1,6 +1,7 @@
 package top.yealike.ipe.ai.platform.mcp;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -17,6 +18,7 @@ import top.yealike.ipe.ai.platform.registry.NacosRegistryService;
 import top.yealike.ipe.ai.platform.store.CredentialStore;
 import top.yealike.ipe.ai.platform.store.McpStore;
 import top.yealike.ipe.ai.platform.store.PublicationStore;
+import top.yealike.ipe.ai.support.AiExceptions;
 
 /** Control 描述符必须保留发现实例的 HTTPS 与路径/查询契约，供 prepare 直接使用。 */
 class McpServiceEndpointTest {
@@ -53,6 +55,38 @@ class McpServiceEndpointTest {
 
         assertThat(service(store, registry).descriptor("ops", "1.0.0").endpoint())
                 .isEqualTo("https://10.0.0.2/mcp?tenant=1");
+    }
+
+    @Test
+    void keepsValidatedEndpointPathAndQuery() {
+        assertThat(McpService.validatedEndpoint("https://example.com:8443/mcp?tenant=1"))
+                .isEqualTo("https://example.com:8443/mcp?tenant=1");
+    }
+
+    @Test
+    void rejectsNonHttpAndCredentialBearingEndpoints() {
+        assertThatThrownBy(() -> McpService.validatedEndpoint("file:///tmp/mcp"))
+                .isInstanceOf(AiExceptions.AiException.class)
+                .hasMessageContaining("http(s)");
+        assertThatThrownBy(() -> McpService.validatedEndpoint("http://user:secret@example.com/mcp"))
+                .isInstanceOf(AiExceptions.AiException.class)
+                .hasMessageContaining("http(s)");
+    }
+
+    @Test
+    void rejectsCloudMetadataAddresses() {
+        for (String endpoint : List.of(
+                "http://2852039166/latest/meta-data",
+                "http://169.254.169.254/latest/meta-data",
+                "http://[::ffff:169.254.169.254]/latest/meta-data",
+                "http://metadata.google.internal./computeMetadata",
+                "http://100.100.100.200/latest/meta-data",
+                "http://[fd00:ec2::254]/latest/meta-data",
+                "http://[fe80::1]/mcp")) {
+            assertThatThrownBy(() -> McpService.validatedEndpoint(endpoint))
+                    .isInstanceOf(AiExceptions.AiException.class)
+                    .hasMessageContaining("云元数据");
+        }
     }
 
     private static McpService service(McpStore store, NacosRegistryService registry) {

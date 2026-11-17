@@ -4,7 +4,6 @@ import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.spec.McpSchema;
-import java.net.URI;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -14,6 +13,8 @@ import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Component;
 import top.yealike.ipe.ai.contract.ComponentDigests;
+import top.yealike.ipe.ai.contract.ComponentEndpoint;
+import top.yealike.ipe.ai.contract.EndpointPolicy;
 import top.yealike.ipe.ai.contract.ErrorCodes;
 import top.yealike.ipe.ai.contract.McpToolDescriptor;
 import top.yealike.ipe.ai.support.AiExceptions;
@@ -28,23 +29,21 @@ public class McpProbe {
     private static final int MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 
     public ProbeResult probe(String endpoint, String authorization, int timeoutMs) {
-        URI uri;
+        ComponentEndpoint target;
         try {
-            uri = URI.create(endpoint);
+            target = ComponentEndpoint.parse(
+                    EndpointPolicy.requireAllowedAndResolvable(endpoint).toString());
         } catch (RuntimeException exception) {
             throw AiExceptions.unprocessable(ErrorCodes.MCP_INIT_FAILED, "MCP 入口地址无法解析");
         }
-        if (uri.getHost() == null || !List.of("http", "https").contains(uri.getScheme())) {
-            throw AiExceptions.unprocessable(ErrorCodes.MCP_INIT_FAILED, "MCP 入口必须是 http(s) 地址");
-        }
-        String base = uri.getScheme() + "://" + uri.getAuthority();
-        String path = uri.getPath() == null || uri.getPath().isBlank() ? "/" : uri.getPath();
+        String path = target.path().isBlank() ? "/" : target.path();
+        String requestPath = path + (target.query().isBlank() ? "" : "?" + target.query());
         Duration timeout = Duration.ofMillis(Math.max(1000, timeoutMs));
         long started = System.nanoTime();
         McpSyncClient client = null;
         try {
-            HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(base)
-                    .endpoint(path)
+            HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(target.baseUrl())
+                    .endpoint(requestPath)
                     .connectTimeout(Duration.ofSeconds(3))
                     .httpRequestCustomizer((builder, method, requestUri, body, context) -> {
                         if (authorization != null && !authorization.isBlank()) {

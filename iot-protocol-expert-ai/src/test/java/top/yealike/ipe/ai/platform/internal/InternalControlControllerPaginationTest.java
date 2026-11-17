@@ -10,8 +10,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
 import top.yealike.ipe.ai.contract.AgentManifest;
+import top.yealike.ipe.ai.mapper.InternalControlMapper;
 import top.yealike.ipe.ai.platform.agent.AgentService;
 import top.yealike.ipe.ai.platform.domain.PlatformRecords.AgentRelease;
 import top.yealike.ipe.ai.platform.mcp.McpService;
@@ -79,7 +79,7 @@ class InternalControlControllerPaginationTest {
                 mock(McpService.class),
                 mock(SkillService.class),
                 mock(RuntimeRunCoordinator.class),
-                mock(JdbcTemplate.class));
+                mock(InternalControlMapper.class));
     }
 
     private static List<AgentRelease> releases(int total) {

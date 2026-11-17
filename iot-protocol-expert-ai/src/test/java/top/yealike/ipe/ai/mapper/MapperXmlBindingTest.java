@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
 import java.sql.*;
 import java.time.Instant;
 import java.util.*;
@@ -17,7 +18,12 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mybatis.spring.SqlSessionFactoryBean;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import top.yealike.ipe.ai.contract.AgentManifest;
+import top.yealike.ipe.ai.contract.McpToolDescriptor;
+import top.yealike.ipe.ai.contract.McpToolExecutionCategory;
+import top.yealike.ipe.ai.contract.SkillBundle;
 import top.yealike.ipe.ai.conversation.ConversationRecords.Message;
+import top.yealike.ipe.ai.mybatis.McpToolExecutionCategoryTypeHandler;
 import top.yealike.ipe.ai.mybatis.UuidTypeHandler;
 import top.yealike.ipe.ai.policy.PolicyService.Rule;
 import top.yealike.ipe.ai.run.RunRecords.Run;
@@ -27,11 +33,20 @@ class MapperXmlBindingTest {
     private static final UUID ID = UUID.randomUUID();
     private static final Instant NOW = Instant.parse("2026-11-16T00:00:00Z");
     private static final List<Class<?>> MAPPERS = List.of(
+            AgentPlatformMapper.class,
+            AuditLogMapper.class,
             ConversationMapper.class,
-            RunMapper.class,
+            CredentialMapper.class,
+            EvaluationMapper.class,
+            InternalControlMapper.class,
             KnowledgeMapper.class,
+            McpPlatformMapper.class,
+            ModelProfileMapper.class,
             PermissionPolicyMapper.class,
-            AuditLogMapper.class);
+            PublicationMapper.class,
+            RegistryProjectionMapper.class,
+            RunMapper.class,
+            SkillPlatformMapper.class);
 
     @BeforeAll
     static void loadXml() throws Exception {
@@ -89,10 +104,16 @@ class MapperXmlBindingTest {
     }
 
     private static Object sample(Class<?> type, boolean nullable) {
+        if (type == boolean.class) return true;
         if (type == int.class) return 10;
         if (type == long.class) return 1L;
+        if (type == byte[].class) return new byte[] {1};
         if (type == List.class) return List.of();
         if (nullable) return null;
+        if (type == Boolean.class) return true;
+        if (type == Integer.class) return 10;
+        if (type == Long.class) return 1L;
+        if (type == BigDecimal.class) return BigDecimal.ONE;
         if (type == UUID.class) return ID;
         if (type == Instant.class) return NOW;
         return "value";
@@ -108,6 +129,16 @@ class MapperXmlBindingTest {
             assertTrue(
                     statement.getBoundSql(Map.of("conversationId", ID)).getSql().contains("returning"));
         }
+    }
+
+    @Test
+    void mcpToolCategoryHandlerPreservesLegacyTolerance() throws Exception {
+        var handler = new McpToolExecutionCategoryTypeHandler();
+        ResultSet rows = mock(ResultSet.class);
+        when(rows.getString("execution_category")).thenReturn(" read_only ");
+        assertEquals(McpToolExecutionCategory.READ_ONLY, handler.getNullableResult(rows, "execution_category"));
+        when(rows.getString("execution_category")).thenReturn("legacy-value");
+        assertEquals(McpToolExecutionCategory.UNKNOWN, handler.getNullableResult(rows, "execution_category"));
     }
 
     @Test
@@ -183,7 +214,26 @@ class MapperXmlBindingTest {
                 "RunMapper.listToolCalls",
                 "KnowledgeMapper.listDocuments",
                 "KnowledgeMapper.candidates",
-                "PermissionPolicyMapper.selectEnabled")) {
+                "PermissionPolicyMapper.selectEnabled",
+                "AgentPlatformMapper.find",
+                "AgentPlatformMapper.mcpBindings",
+                "AgentPlatformMapper.skillBindings",
+                "AgentPlatformMapper.findReleaseById",
+                "McpPlatformMapper.findComponent",
+                "McpPlatformMapper.findRelease",
+                "McpPlatformMapper.findTestReport",
+                "McpPlatformMapper.latestTestReport",
+                "McpPlatformMapper.toolPolicies",
+                "SkillPlatformMapper.findComponent",
+                "SkillPlatformMapper.files",
+                "SkillPlatformMapper.findRelease",
+                "CredentialMapper.find",
+                "CredentialMapper.findSecret",
+                "ModelProfileMapper.find",
+                "PublicationMapper.find",
+                "PublicationMapper.claimedByWorker",
+                "PublicationMapper.claimedOutbox",
+                "RegistryProjectionMapper.list")) {
             for (boolean nullable : List.of(false, true)) {
                 Object row = materialize(statement, nullable);
                 assertNotNull(row, statement);
@@ -213,15 +263,30 @@ class MapperXmlBindingTest {
             Class<?> type = mapping.getJavaType();
             Object value;
             if (type == UUID.class) value = ID;
+            else if (type == boolean.class) value = true;
             else if (type == int.class) value = 1;
             else if (type == long.class) value = 1L;
+            else if (type == byte[].class) value = new byte[] {1};
             else if (nullable) value = null;
             else if (type == Instant.class) value = Timestamp.from(NOW);
+            else if (type == Boolean.class) value = true;
             else if (type == Integer.class) value = 1;
             else if (type == Long.class) value = 1L;
+            else if (type == BigDecimal.class) value = BigDecimal.ONE;
             else if (type == Map.class) value = "{\"tokens\":7}";
+            else if (type == AgentManifest.class) {
+                value = "{\"agentKey\":\"agent\",\"version\":\"1.0.0\",\"skills\":[],\"mcp\":[]}";
+            } else if (type == SkillBundle.class) {
+                value = "{\"key\":\"skill\",\"version\":\"1.0.0\",\"name\":\"Skill\",\"files\":[]}";
+            } else if (type == McpToolDescriptor.class) {
+                value =
+                        "{\"name\":\"tool\",\"inputSchema\":{},\"outputSchema\":{},\"annotations\":{},\"readOnly\":true}";
+            } else if (type == McpToolExecutionCategory.class) value = "READ_ONLY";
             else if (mapping.getColumn().equals("citations")) value = "[{\"documentId\":\"doc\",\"title\":\"协议\"}]";
-            else if (type == Set.class || type == List.class) value = "[\"ADMIN\"]";
+            else if (mapping.getColumn().equals("tool_catalog")) {
+                value =
+                        "[{\"name\":\"tool\",\"inputSchema\":{},\"outputSchema\":{},\"annotations\":{},\"readOnly\":true}]";
+            } else if (type == Set.class || type == List.class) value = "[\"ADMIN\"]";
             else value = "value";
             values.put(mapping.getColumn(), value);
         }

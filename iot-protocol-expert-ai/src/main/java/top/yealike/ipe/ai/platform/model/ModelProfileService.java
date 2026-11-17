@@ -9,6 +9,7 @@ import java.util.UUID;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import top.yealike.ipe.ai.contract.EndpointPolicy;
 import top.yealike.ipe.ai.identity.UserIdentity;
 import top.yealike.ipe.ai.platform.credential.CredentialService;
 import top.yealike.ipe.ai.platform.domain.PlatformRecords.Credential;
@@ -67,7 +68,7 @@ public class ModelProfileService {
             UUID credentialId,
             Map<String, Object> options) {
         CredentialService.requireKey(key);
-        validate(baseUrl, modelName, options);
+        URI normalizedBaseUrl = validate(baseUrl, modelName, options);
         if (models.findByKey(key).isPresent()) {
             throw AiExceptions.conflict("REVISION_CONFLICT", "模型 key 已存在");
         }
@@ -77,7 +78,7 @@ public class ModelProfileService {
                 displayName,
                 description,
                 "OPENAI_COMPAT",
-                baseUrl.strip(),
+                normalizedBaseUrl.toString(),
                 modelName.strip(),
                 credentialId,
                 JsonSupport.write(options == null ? Map.of() : options),
@@ -95,14 +96,14 @@ public class ModelProfileService {
             Map<String, Object> options,
             boolean enabled) {
         require(id);
-        validate(baseUrl, modelName, options);
+        URI normalizedBaseUrl = validate(baseUrl, modelName, options);
         requireCredential(credentialId);
         int updated = models.update(
                 id,
                 expectedRevision,
                 displayName,
                 description,
-                baseUrl.strip(),
+                normalizedBaseUrl.toString(),
                 modelName.strip(),
                 credentialId,
                 JsonSupport.write(options == null ? Map.of() : options),
@@ -131,9 +132,10 @@ public class ModelProfileService {
         body.put("max_tokens", 8);
         body.put("temperature", 0);
         long started = System.nanoTime();
+        URI endpoint = modelEndpoint(profile.baseUrl());
         try {
             String response = http.post()
-                    .uri(URI.create(trimSlash(profile.baseUrl()) + "/chat/completions"))
+                    .uri(endpoint)
                     .header("Authorization", "Bearer " + secret)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(JsonSupport.write(body))
@@ -177,9 +179,10 @@ public class ModelProfileService {
         body.put("max_tokens", 512);
         body.put("temperature", 0);
         try {
+            URI endpoint = modelEndpoint(profile.baseUrl());
             String response = evaluationHttp
                     .post()
-                    .uri(URI.create(trimSlash(profile.baseUrl()) + "/chat/completions"))
+                    .uri(endpoint)
                     .header("Authorization", "Bearer " + secret)
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(JsonSupport.write(body))
@@ -206,14 +209,24 @@ public class ModelProfileService {
     }
 
     private void requireCredential(UUID credentialId) {
-        if (credentialId != null && credentials.find(credentialId).isEmpty()) {
-            throw AiExceptions.badRequest("凭据不存在");
+        if (credentialId != null
+                && credentials.find(credentialId).filter(Credential::enabled).isEmpty()) {
+            throw AiExceptions.badRequest("凭据不存在或已停用");
         }
     }
 
-    private static void validate(String baseUrl, String modelName, Map<String, Object> options) {
-        if (baseUrl == null || !baseUrl.startsWith("http")) {
+    private static URI validate(String baseUrl, String modelName, Map<String, Object> options) {
+        if (baseUrl == null || baseUrl.isBlank()) {
             throw AiExceptions.badRequest("模型 baseUrl 必须是 http(s) 地址");
+        }
+        URI uri;
+        try {
+            uri = EndpointPolicy.requireAllowed(baseUrl.strip());
+        } catch (IllegalArgumentException exception) {
+            throw AiExceptions.badRequest("模型 baseUrl " + exception.getMessage());
+        }
+        if (uri.getRawQuery() != null || uri.getFragment() != null) {
+            throw AiExceptions.badRequest("模型 baseUrl 不能包含查询参数或片段");
         }
         if (modelName == null || modelName.isBlank()) {
             throw AiExceptions.badRequest("模型名称不能为空");
@@ -228,9 +241,20 @@ public class ModelProfileService {
                 throw AiExceptions.badRequest("maxTokens 必须在 1-131072 之间");
             }
         }
+        return uri;
     }
 
-    private static String trimSlash(String value) {
-        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+    private static URI modelEndpoint(String baseUrl) {
+        URI base;
+        try {
+            base = EndpointPolicy.requireAllowedAndResolvable(baseUrl);
+        } catch (IllegalArgumentException exception) {
+            throw AiExceptions.badRequest("模型 baseUrl " + exception.getMessage());
+        }
+        String value = base.toString();
+        if (value.endsWith("/")) {
+            value = value.substring(0, value.length() - 1);
+        }
+        return URI.create(value + "/chat/completions");
     }
 }

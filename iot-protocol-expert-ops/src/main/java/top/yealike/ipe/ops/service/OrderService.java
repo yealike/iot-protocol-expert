@@ -267,8 +267,12 @@ public class OrderService {
             int size) {
         int pageIndex = Math.max(0, page);
         int pageSize = Math.max(1, Math.min(size, 500));
+        long offset = (long) pageIndex * pageSize;
+        if (offset > Integer.MAX_VALUE) {
+            throw new IllegalArgumentException("页码超出范围");
+        }
         List<ChargeOrder> content = orders.search(
-                stationId, deviceId, gunNo, protocol, orderNo, from, to, statuses, pageSize, pageIndex * pageSize);
+                stationId, deviceId, gunNo, protocol, orderNo, from, to, statuses, pageSize, (int) offset);
         long total = orders.countSearch(stationId, deviceId, gunNo, protocol, orderNo, from, to, statuses);
         return PageResult.of(content, pageIndex, pageSize, total);
     }

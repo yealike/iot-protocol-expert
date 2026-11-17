@@ -11,7 +11,7 @@ import javax.crypto.spec.SecretKeySpec;
  * Control 与 Runtime 的服务间 HMAC-SHA256 签名。
  *
  * <p>签名覆盖 method、规范 path+query、body SHA-256、timestamp、nonce、audience。时间窗与 nonce
- * 防重放由 Control 侧持久化校验。
+ * 防重放由 Control 侧持久化校验；Runtime 侧 nonce 仅在进程内去重，跨副本重放防护需依赖部署约束或共享存储。
  */
 public final class InternalSignature {
 

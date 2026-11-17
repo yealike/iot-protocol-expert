@@ -40,6 +40,12 @@ def findings(raw, path):
             # Public cloud metadata endpoints in explicit SSRF deny rules are intentional.
             if address.is_link_local and path.endswith("/McpService.java") and "host.equals(" in line:
                 continue
+            if (
+                address.packed == bytes((100, 100, 100, 200))
+                and path.endswith("/EndpointPolicy.java")
+                and "literal.equals(" in line
+            ):
+                continue
             # Network definitions are not deployed host addresses; /32 endpoints remain blocked.
             prefix = re.match(r"/(\d{1,2})(?!\d)", network_line[match.end():])
             if prefix and int(prefix[1]) < 32:

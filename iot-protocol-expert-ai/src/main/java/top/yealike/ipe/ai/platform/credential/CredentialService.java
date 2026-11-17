@@ -39,14 +39,14 @@ public class CredentialService {
         }
         UUID id = UUID.randomUUID();
         store.insert(id, key, displayName, actor.username());
-        rotateInternal(id, secret);
+        rotateInternal(require(id), secret);
         return require(id);
     }
 
     @Transactional
     public Credential rotate(UserIdentity actor, UUID id, String secret) {
-        Credential credential = require(id);
-        rotateInternal(credential.id(), secret);
+        Credential credential = store.lock(id).orElseThrow(() -> AiExceptions.notFound("凭据不存在"));
+        rotateInternal(credential, secret);
         return require(id);
     }
 
@@ -62,6 +62,9 @@ public class CredentialService {
 
     public String resolve(UUID id, long secretRevision) {
         Credential credential = require(id);
+        if (!credential.enabled()) {
+            throw AiExceptions.unavailable("凭据不存在或已停用");
+        }
         long revision = secretRevision > 0 ? secretRevision : credential.currentSecretRevision();
         CredentialSecret secret = store.findSecret(id, revision).orElseThrow(() -> AiExceptions.unavailable("凭据版本不存在"));
         return cipher.decrypt(id.toString(), revision, secret.ciphertext(), secret.nonce());
@@ -73,6 +76,9 @@ public class CredentialService {
 
     public void disable(UUID id) {
         Credential credential = require(id);
+        if (!credential.enabled()) {
+            return;
+        }
         if (store.references(id) > 0) {
             throw AiExceptions.conflict(ErrorCodes.COMPONENT_IN_USE, "凭据仍被模型或 MCP 发布引用");
         }
@@ -94,11 +100,11 @@ public class CredentialService {
         return data;
     }
 
-    private void rotateInternal(UUID id, String secret) {
-        Credential credential = require(id);
+    private void rotateInternal(Credential credential, String secret) {
         long revision = credential.currentSecretRevision() + 1;
-        CredentialCipher.Encrypted encrypted = cipher.encrypt(id.toString(), revision, secret);
-        store.insertSecret(id, revision, encrypted.ciphertext(), encrypted.nonce(), encrypted.keyId(), "system");
+        CredentialCipher.Encrypted encrypted = cipher.encrypt(credential.id().toString(), revision, secret);
+        store.insertSecret(
+                credential.id(), revision, encrypted.ciphertext(), encrypted.nonce(), encrypted.keyId(), "system");
     }
 
     public static void requireKey(String key) {
