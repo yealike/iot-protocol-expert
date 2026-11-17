@@ -22,8 +22,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import top.yealike.pep.runtime.contract.ComponentNames;
-import top.yealike.pep.runtime.contract.ComponentType;
 import top.yealike.pep.control.access.CurrentUser;
 import top.yealike.pep.control.access.UserIdentity;
 import top.yealike.pep.control.agents.AgentService;
@@ -44,6 +42,8 @@ import top.yealike.pep.control.agents.store.AgentStore.SkillBindingInput;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.RegistryStore;
 import top.yealike.pep.control.support.AiExceptions;
+import top.yealike.pep.runtime.contract.ComponentNames;
+import top.yealike.pep.runtime.contract.ComponentType;
 
 /** 浏览器管理 API：模型、凭据、MCP、Skill、Agent 与发布/注册投影。只对 AI 管理员开放。 */
 @RestController

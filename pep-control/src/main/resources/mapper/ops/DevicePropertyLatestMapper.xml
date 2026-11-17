@@ -25,7 +25,7 @@
 
     <select id="selectByDeviceAndProperty" resultMap="DevicePropertyLatestMap">
         select <include refid="columns"/>
-        from ipe_ops.device_property_latest
+        from pep_domain.device_property_latest
         where device_id = #{deviceId}
           and channel_no = #{channelNo}
           and property_id = #{propertyId}
@@ -33,14 +33,14 @@
 
     <select id="selectByDeviceId" resultMap="DevicePropertyLatestMap">
         select <include refid="columns"/>
-        from ipe_ops.device_property_latest
+        from pep_domain.device_property_latest
         where device_id = #{deviceId}
         order by channel_no, property_id
     </select>
 
     <select id="selectByDeviceIds" resultMap="DevicePropertyLatestMap">
         select <include refid="columns"/>
-        from ipe_ops.device_property_latest
+        from pep_domain.device_property_latest
         where device_id in
         <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
             #{deviceId}
@@ -50,7 +50,7 @@
 
     <select id="selectCountByPropertyIdAndValueTextAndDeviceIdIn" resultType="long">
         select count(*)
-        from ipe_ops.device_property_latest
+        from pep_domain.device_property_latest
         where property_id = #{propertyId}
           and value_text = #{valueText}
           and device_id in
@@ -60,7 +60,7 @@
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        insert into ipe_ops.device_property_latest
+        insert into pep_domain.device_property_latest
             (device_id, channel_no, property_id, value_type, value_num, value_text, value_json,
              value_time, updated_at)
         values
@@ -69,7 +69,7 @@
     </insert>
 
     <update id="update">
-        update ipe_ops.device_property_latest
+        update pep_domain.device_property_latest
         set device_id = #{deviceId},
             channel_no = #{channelNo},
             property_id = #{propertyId},
@@ -83,10 +83,10 @@
     </update>
 
     <delete id="deleteById">
-        delete from ipe_ops.device_property_latest where id = #{id}
+        delete from pep_domain.device_property_latest where id = #{id}
     </delete>
 
     <delete id="deleteByDeviceId">
-        delete from ipe_ops.device_property_latest where device_id = #{deviceId}
+        delete from pep_domain.device_property_latest where device_id = #{deviceId}
     </delete>
 </mapper>

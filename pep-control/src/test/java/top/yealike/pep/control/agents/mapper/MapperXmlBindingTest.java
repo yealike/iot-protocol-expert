@@ -18,15 +18,18 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 import org.mybatis.spring.SqlSessionFactoryBean;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import top.yealike.pep.control.access.policy.PolicyService.Rule;
+import top.yealike.pep.control.conversations.ConversationRecords.Message;
+import top.yealike.pep.control.conversations.mapper.ConversationMapper;
+import top.yealike.pep.control.evaluations.mapper.EvaluationMapper;
+import top.yealike.pep.control.knowledge.mapper.KnowledgeMapper;
+import top.yealike.pep.control.mybatis.McpToolExecutionCategoryTypeHandler;
+import top.yealike.pep.control.mybatis.UuidTypeHandler;
+import top.yealike.pep.control.runs.RunRecords.Run;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.McpToolDescriptor;
 import top.yealike.pep.runtime.contract.McpToolExecutionCategory;
 import top.yealike.pep.runtime.contract.SkillBundle;
-import top.yealike.pep.control.conversations.ConversationRecords.Message;
-import top.yealike.pep.control.mybatis.McpToolExecutionCategoryTypeHandler;
-import top.yealike.pep.control.mybatis.UuidTypeHandler;
-import top.yealike.pep.control.access.policy.PolicyService.Rule;
-import top.yealike.pep.control.runs.RunRecords.Run;
 
 class MapperXmlBindingTest {
     private static Configuration configuration;
@@ -34,7 +37,7 @@ class MapperXmlBindingTest {
     private static final Instant NOW = Instant.parse("2026-11-16T00:00:00Z");
     private static final List<Class<?>> MAPPERS = List.of(
             AgentPlatformMapper.class,
-            AuditLogMapper.class,
+            AiAuditLogMapper.class,
             ConversationMapper.class,
             CredentialMapper.class,
             EvaluationMapper.class,
@@ -121,8 +124,10 @@ class MapperXmlBindingTest {
 
     @Test
     void atomicCountersAreDirtySelectsAndNeverCached() {
-        for (String id : List.of("ConversationMapper.nextMessageSeq", "RunMapper.nextEventCursor")) {
-            var statement = configuration.getMappedStatement("top.yealike.pep.control.agents.mapper." + id);
+        for (String id : List.of(
+                ConversationMapper.class.getName() + ".nextMessageSeq",
+                RunMapper.class.getName() + ".nextEventCursor")) {
+            var statement = configuration.getMappedStatement(id);
             assertTrue(statement.isDirtySelect());
             assertTrue(statement.isFlushCacheRequired());
             assertFalse(statement.isUseCache());
@@ -255,7 +260,17 @@ class MapperXmlBindingTest {
     }
 
     private Object materialize(String name, boolean nullable) throws Exception {
-        MappedStatement mapped = configuration.getMappedStatement("top.yealike.pep.control.agents.mapper." + name);
+        String statementId;
+        if (name.startsWith("ConversationMapper.")) {
+            statementId = ConversationMapper.class.getName() + name.substring("ConversationMapper".length());
+        } else if (name.startsWith("KnowledgeMapper.")) {
+            statementId = KnowledgeMapper.class.getName() + name.substring("KnowledgeMapper".length());
+        } else if (name.startsWith("EvaluationMapper.")) {
+            statementId = EvaluationMapper.class.getName() + name.substring("EvaluationMapper".length());
+        } else {
+            statementId = "top.yealike.pep.control.agents.mapper." + name;
+        }
+        MappedStatement mapped = configuration.getMappedStatement(statementId);
         ResultMap resultMap = mapped.getResultMaps().getFirst();
         var columns = resultMap.getConstructorResultMappings();
         Map<String, Object> values = new LinkedHashMap<>();

@@ -8,7 +8,7 @@ spring:
   main:
     banner-mode: "off"
   application:
-    name: iot-protocol-expert-agent-runtime
+    name: pep-agent-runtime
   jackson:
     time-zone: Asia/Shanghai
     date-format: yyyy-MM-dd HH:mm:ss
@@ -42,13 +42,13 @@ management:
 ipe:
   runtime:
     port: ${IPE_RUNTIME_PORT:19084}
-    control-base-url: ${IPE_CONTROL_BASE_URL:http://127.0.0.1:19083}
-    service-name: ${IPE_RUNTIME_SERVICE_NAME:runtime}
+    control-base-url: ${IPE_CONTROL_BASE_URL:http://127.0.0.1:19082}
+    service-name: ${IPE_RUNTIME_SERVICE_NAME:pep-agent-runtime}
     service-key-id: ${IPE_RUNTIME_KEY_ID:runtime}
     service-key: ${IPE_INTERNAL_SERVICE_KEY:}
     service-key-file: ${IPE_INTERNAL_SERVICE_KEY_FILE:}
     # 与 Control 的注册名默认保持一致；若显式设置，Control 与 Runtime 必须使用同一值
-    control-service-name: ${IPE_CONTROL_SERVICE_NAME:ipe-ai-control}
+    control-service-name: ${IPE_CONTROL_SERVICE_NAME:pep-control}
     advertise-ip: ${IPE_RUNTIME_ADVERTISE_IP:}
     nacos:
       enabled: ${IPE_AI_REGISTRY_ENABLED:false}

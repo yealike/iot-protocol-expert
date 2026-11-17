@@ -43,7 +43,7 @@
             <if test="(deviceType != null and deviceType != '') or stationId != null">
                 and exists (
                     select 1
-                    from ipe_ops.device_instance d
+                    from pep_domain.device_instance d
                     where d.id = r.device_id
                     <if test="deviceType != null and deviceType != ''">
                         and d.device_type = #{deviceType}
@@ -58,13 +58,13 @@
 
     <select id="selectById" resultMap="AlarmRecordMap">
         select <include refid="columns"/>
-        from ipe_ops.alarm_record
+        from pep_domain.alarm_record
         where id = #{id}
     </select>
 
     <select id="selectTopOpen" resultMap="AlarmRecordMap">
         select <include refid="columns"/>
-        from ipe_ops.alarm_record
+        from pep_domain.alarm_record
         where rule_id = #{ruleId}
           and device_id = #{deviceId}
           and channel_no = #{channelNo}
@@ -75,7 +75,7 @@
 
     <select id="selectByDeviceIdAndState" resultMap="AlarmRecordMap">
         select <include refid="columns"/>
-        from ipe_ops.alarm_record
+        from pep_domain.alarm_record
         where device_id = #{deviceId}
           and state = #{state}
         order by last_at desc
@@ -83,7 +83,7 @@
 
     <select id="selectTopByState" resultMap="AlarmRecordMap">
         select <include refid="columns"/>
-        from ipe_ops.alarm_record
+        from pep_domain.alarm_record
         where state = #{state}
         order by last_at desc
         limit #{limit}
@@ -91,7 +91,7 @@
 
     <select id="search" resultMap="AlarmRecordMap">
         select <include refid="columns"/>
-        from ipe_ops.alarm_record r
+        from pep_domain.alarm_record r
         <include refid="searchWhere"/>
         order by ${orderBy}
         limit #{limit} offset #{offset}
@@ -99,23 +99,23 @@
 
     <select id="countSearch" resultType="long">
         select count(*)
-        from ipe_ops.alarm_record r
+        from pep_domain.alarm_record r
         <include refid="searchWhere"/>
     </select>
 
     <select id="countByState" resultType="long">
-        select count(*) from ipe_ops.alarm_record where state = #{state}
+        select count(*) from pep_domain.alarm_record where state = #{state}
     </select>
 
     <select id="countByStateAndLevel" resultType="long">
         select count(*)
-        from ipe_ops.alarm_record
+        from pep_domain.alarm_record
         where state = #{state}
           and level = #{level}
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        insert into ipe_ops.alarm_record
+        insert into pep_domain.alarm_record
             (rule_id, device_id, channel_no, level, title, detail, state, first_at, last_at,
              handled_by, handled_at, handling_note, created_at)
         values
@@ -124,7 +124,7 @@
     </insert>
 
     <update id="update">
-        update ipe_ops.alarm_record
+        update pep_domain.alarm_record
         set rule_id = #{ruleId},
             device_id = #{deviceId},
             channel_no = #{channelNo},

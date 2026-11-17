@@ -1,15 +1,12 @@
 package top.yealike.pep.control.agents.model;
 
-import java.net.URI;
 import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
-import top.yealike.pep.runtime.contract.EndpointPolicy;
 import top.yealike.pep.control.access.UserIdentity;
 import top.yealike.pep.control.agents.credential.CredentialService;
 import top.yealike.pep.control.agents.domain.PlatformRecords.Credential;
@@ -26,6 +23,9 @@ public class ModelProfileService {
     private final ModelStore models;
     private final CredentialStore credentials;
     private final CredentialService credentialService;
+    private final GatewayTokenIssuer gatewayTokens;
+    private final ModelGatewayClient gateway;
+    private final top.yealike.pep.control.config.ModelGatewayProperties gatewayProperties;
     private final RestClient http;
     private final RestClient evaluationHttp;
 
@@ -33,10 +33,16 @@ public class ModelProfileService {
             ModelStore models,
             CredentialStore credentials,
             CredentialService credentialService,
+            GatewayTokenIssuer gatewayTokens,
+            ModelGatewayClient gateway,
+            top.yealike.pep.control.config.ModelGatewayProperties gatewayProperties,
             RestClient.Builder builder) {
         this.models = models;
         this.credentials = credentials;
         this.credentialService = credentialService;
+        this.gatewayTokens = gatewayTokens;
+        this.gateway = gateway;
+        this.gatewayProperties = gatewayProperties;
         this.http = builder.build();
         var factory =
                 new org.springframework.http.client.JdkClientHttpRequestFactory(java.net.http.HttpClient.newBuilder()
@@ -68,19 +74,18 @@ public class ModelProfileService {
             UUID credentialId,
             Map<String, Object> options) {
         CredentialService.requireKey(key);
-        URI normalizedBaseUrl = validate(baseUrl, modelName, options);
+        validateOptions(options);
         if (models.findByKey(key).isPresent()) {
             throw AiExceptions.conflict("REVISION_CONFLICT", "模型 key 已存在");
         }
-        requireCredential(credentialId);
         return models.insert(
                 key,
                 displayName,
                 description,
                 "OPENAI_COMPAT",
-                normalizedBaseUrl.toString(),
-                modelName.strip(),
-                credentialId,
+                gatewayBaseUrl(),
+                key,
+                null,
                 JsonSupport.write(options == null ? Map.of() : options),
                 actor.username());
     }
@@ -96,16 +101,15 @@ public class ModelProfileService {
             Map<String, Object> options,
             boolean enabled) {
         require(id);
-        URI normalizedBaseUrl = validate(baseUrl, modelName, options);
-        requireCredential(credentialId);
+        validateOptions(options);
         int updated = models.update(
                 id,
                 expectedRevision,
                 displayName,
                 description,
-                normalizedBaseUrl.toString(),
-                modelName.strip(),
-                credentialId,
+                gatewayBaseUrl(),
+                models.find(id).orElseThrow().key(),
+                null,
                 JsonSupport.write(options == null ? Map.of() : options),
                 enabled);
         if (updated == 0) {
@@ -119,41 +123,23 @@ public class ModelProfileService {
         if (!profile.enabled()) {
             throw AiExceptions.conflict("MODEL_DISABLED", "模型已停用");
         }
-        if (profile.credentialId() == null) {
-            throw AiExceptions.unprocessable("MODEL_CREDENTIAL_MISSING", "模型未绑定凭据");
-        }
-        Credential credential = credentials
-                .find(profile.credentialId())
-                .orElseThrow(() -> AiExceptions.unprocessable("MODEL_CREDENTIAL_MISSING", "模型凭据不存在"));
-        String secret = credentialService.resolve(credential.id(), credential.currentSecretRevision());
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", profile.modelName());
+        body.put("model", profile.key());
         body.put("messages", List.of(Map.of("role", "user", "content", "只回复 OK")));
         body.put("max_tokens", 8);
         body.put("temperature", 0);
         long started = System.nanoTime();
-        URI endpoint = modelEndpoint(profile.baseUrl());
         try {
-            String response = http.post()
-                    .uri(endpoint)
-                    .header("Authorization", "Bearer " + secret)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(JsonSupport.write(body))
-                    .retrieve()
-                    .body(String.class);
-            Map<String, Object> result = JsonSupport.readMap(response);
+            Map<String, Object> result = gateway.chat(gatewayTokens.issueForEvaluator(profile.key()), body);
             Map<String, Object> data = new LinkedHashMap<>();
             data.put("success", true);
-            data.put("model", profile.modelName());
+            data.put("model", profile.key());
             data.put("latencyMs", Duration.ofNanos(System.nanoTime() - started).toMillis());
             data.put("usage", result.get("usage"));
-            data.put("note", "测试会产生少量模型 token 消耗");
+            data.put("note", "测试会产生少量模型 token 消耗，并按评测服务账号计量");
             return data;
-        } catch (org.springframework.web.client.HttpClientErrorException exception) {
-            throw new AiExceptions.AiException(
-                    exception.getStatusCode().value(),
-                    "MODEL_TEST_FAILED",
-                    "模型连通测试失败：" + exception.getStatusCode().value());
+        } catch (AiExceptions.AiException exception) {
+            throw exception;
         } catch (RuntimeException exception) {
             throw new AiExceptions.AiException(502, "MODEL_TEST_FAILED", "模型服务暂不可用");
         }
@@ -162,15 +148,11 @@ public class ModelProfileService {
     /** Run a bounded JSON-style completion for evaluator use without exposing provider credentials. */
     public String completeEvaluation(UUID id, String systemPrompt, String userPrompt) {
         ModelProfile profile = require(id);
-        if (!profile.enabled() || profile.credentialId() == null) {
-            throw AiExceptions.unprocessable("EVALUATOR_MODEL_UNAVAILABLE", "Judge 模型未启用或未绑定凭据");
+        if (!profile.enabled()) {
+            throw AiExceptions.unprocessable("EVALUATOR_MODEL_UNAVAILABLE", "Judge 模型未启用");
         }
-        Credential credential = credentials
-                .find(profile.credentialId())
-                .orElseThrow(() -> AiExceptions.unprocessable("EVALUATOR_MODEL_UNAVAILABLE", "Judge 模型凭据不存在"));
-        String secret = credentialService.resolve(credential.id(), credential.currentSecretRevision());
         Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", profile.modelName());
+        body.put("model", profile.key());
         body.put(
                 "messages",
                 List.of(
@@ -179,16 +161,7 @@ public class ModelProfileService {
         body.put("max_tokens", 512);
         body.put("temperature", 0);
         try {
-            URI endpoint = modelEndpoint(profile.baseUrl());
-            String response = evaluationHttp
-                    .post()
-                    .uri(endpoint)
-                    .header("Authorization", "Bearer " + secret)
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .body(JsonSupport.write(body))
-                    .retrieve()
-                    .body(String.class);
-            Map<String, Object> envelope = JsonSupport.readMap(response);
+            Map<String, Object> envelope = gateway.chat(gatewayTokens.issueForEvaluator(profile.key()), body);
             Object rawChoices = envelope.get("choices");
             if (!(rawChoices instanceof List<?> choices)
                     || choices.isEmpty()
@@ -198,9 +171,6 @@ public class ModelProfileService {
                 throw AiExceptions.unavailable("Judge 模型没有返回有效内容");
             }
             return content;
-        } catch (org.springframework.web.client.RestClientResponseException exception) {
-            throw AiExceptions.unavailable(
-                    "Judge 模型请求失败：" + exception.getStatusCode().value());
         } catch (AiExceptions.AiException exception) {
             throw exception;
         } catch (RuntimeException exception) {
@@ -215,22 +185,7 @@ public class ModelProfileService {
         }
     }
 
-    private static URI validate(String baseUrl, String modelName, Map<String, Object> options) {
-        if (baseUrl == null || baseUrl.isBlank()) {
-            throw AiExceptions.badRequest("模型 baseUrl 必须是 http(s) 地址");
-        }
-        URI uri;
-        try {
-            uri = EndpointPolicy.requireAllowed(baseUrl.strip());
-        } catch (IllegalArgumentException exception) {
-            throw AiExceptions.badRequest("模型 baseUrl " + exception.getMessage());
-        }
-        if (uri.getRawQuery() != null || uri.getFragment() != null) {
-            throw AiExceptions.badRequest("模型 baseUrl 不能包含查询参数或片段");
-        }
-        if (modelName == null || modelName.isBlank()) {
-            throw AiExceptions.badRequest("模型名称不能为空");
-        }
+    private static void validateOptions(Map<String, Object> options) {
         if (options != null) {
             Object temperature = options.get("temperature");
             if (temperature instanceof Number number && (number.doubleValue() < 0 || number.doubleValue() > 2)) {
@@ -241,20 +196,14 @@ public class ModelProfileService {
                 throw AiExceptions.badRequest("maxTokens 必须在 1-131072 之间");
             }
         }
-        return uri;
     }
 
-    private static URI modelEndpoint(String baseUrl) {
-        URI base;
-        try {
-            base = EndpointPolicy.requireAllowedAndResolvable(baseUrl);
-        } catch (IllegalArgumentException exception) {
-            throw AiExceptions.badRequest("模型 baseUrl " + exception.getMessage());
+    private String gatewayBaseUrl() {
+        String base = gatewayProperties.getBaseUrl();
+        if (base == null || base.isBlank()) {
+            return "http://127.0.0.1:19085/v1";
         }
-        String value = base.toString();
-        if (value.endsWith("/")) {
-            value = value.substring(0, value.length() - 1);
-        }
-        return URI.create(value + "/chat/completions");
+        String value = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
+        return value.endsWith("/v1") ? value : value + "/v1";
     }
 }

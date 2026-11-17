@@ -10,7 +10,30 @@ import org.apache.ibatis.session.Configuration;
 import org.junit.jupiter.api.Test;
 import org.mybatis.spring.SqlSessionFactoryBean;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
+import top.yealike.pep.control.access.mapper.IdentityMapper;
+import top.yealike.pep.control.access.mapper.OpsUserMapper;
+import top.yealike.pep.control.alarms.mapper.AlarmRecordMapper;
+import top.yealike.pep.control.alarms.mapper.AlarmRuleMapper;
+import top.yealike.pep.control.audit.mapper.AuditLogMapper;
+import top.yealike.pep.control.charging.mapper.BillMapper;
+import top.yealike.pep.control.charging.mapper.ChargeOrderMapper;
+import top.yealike.pep.control.charging.mapper.CommandRecordMapper;
+import top.yealike.pep.control.charging.mapper.RateModelMapper;
+import top.yealike.pep.control.charging.mapper.StationMapper;
+import top.yealike.pep.control.devices.mapper.DeviceChannelMapper;
+import top.yealike.pep.control.devices.mapper.DeviceEventLogMapper;
+import top.yealike.pep.control.devices.mapper.DeviceInstanceMapper;
+import top.yealike.pep.control.devices.mapper.DevicePropertyLatestMapper;
+import top.yealike.pep.control.devices.mapper.DevicePropertyTsMapper;
+import top.yealike.pep.control.devices.mapper.DeviceTagMapper;
+import top.yealike.pep.control.devices.mapper.FrameLogMapper;
+import top.yealike.pep.control.devices.mapper.ProductMapper;
+import top.yealike.pep.control.devices.mapper.ProtocolDocMapper;
+import top.yealike.pep.control.devices.mapper.ProtocolDocSectionMapper;
+import top.yealike.pep.control.devices.mapper.ProtocolDocumentMapper;
+import top.yealike.pep.control.diagnostic.mapper.TroubleCaseMapper;
 import top.yealike.pep.control.telemetry.TdengineMapper;
+import top.yealike.pep.control.telemetry.mapper.OrderTelemetryMapper;
 
 class MapperXmlBindingTest {
 

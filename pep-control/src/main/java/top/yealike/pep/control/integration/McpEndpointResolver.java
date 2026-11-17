@@ -170,11 +170,15 @@ public class McpEndpointResolver implements SmartInitializingSingleton {
             service.unsubscribeMcpServer(ai.mcp().registry().serverName(), listener);
         } catch (NacosException ex) {
             log.debug("取消 MCP 目录订阅失败：{}", ex.getErrMsg());
+        } catch (RuntimeException ex) {
+            log.debug("取消 MCP 目录订阅失败：{}", ex.getMessage());
         }
         try {
             service.shutdown();
         } catch (NacosException ex) {
             log.debug("关闭 Nacos AI 客户端失败：{}", ex.getErrMsg());
+        } catch (RuntimeException ex) {
+            log.debug("关闭 Nacos AI 客户端失败：{}", ex.getMessage());
         }
     }
 

@@ -5,8 +5,8 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
-import top.yealike.pep.control.config.AiProperties;
 import top.yealike.pep.control.access.UserIdentity;
+import top.yealike.pep.control.config.AiProperties;
 import top.yealike.pep.control.support.AiExceptions;
 
 /** Typed access to MCP capabilities used by application code, outside the model's tool list. */

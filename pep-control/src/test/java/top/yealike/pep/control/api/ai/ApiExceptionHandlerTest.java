@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
+import top.yealike.pep.control.api.ApiExceptionHandler;
 
 class ApiExceptionHandlerTest {
     @Test
@@ -17,7 +18,7 @@ class ApiExceptionHandlerTest {
                         .value());
         assertEquals(
                 400,
-                handler.handleBadRequest(new IllegalArgumentException())
+                handler.badRequest(new IllegalArgumentException())
                         .getStatusCode()
                         .value());
     }

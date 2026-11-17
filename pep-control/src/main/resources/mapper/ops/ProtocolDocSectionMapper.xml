@@ -18,7 +18,7 @@
 
     <select id="selectByFrame" resultMap="ProtocolDocSectionMap">
         select id, doc_id, protocol, version, frame_or_action, heading, content, locator, keywords
-        from ipe_ops.protocol_doc_section
+        from pep_domain.protocol_doc_section
         where protocol = #{protocol}
           and version = #{version}
           and lower(frame_or_action) = lower(#{frameOrAction})
@@ -27,7 +27,7 @@
 
     <select id="search" resultMap="ProtocolDocSectionMap">
         select id, doc_id, protocol, version, frame_or_action, heading, content, locator, keywords
-        from ipe_ops.protocol_doc_section
+        from pep_domain.protocol_doc_section
         where protocol = #{protocol}
           and version = #{version}
           and (

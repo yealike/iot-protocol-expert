@@ -18,10 +18,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import top.yealike.pep.runtime.contract.ComponentNames;
-import top.yealike.pep.runtime.contract.ComponentType;
 import top.yealike.pep.control.agents.config.PlatformProperties;
 import top.yealike.pep.control.support.AiExceptions;
+import top.yealike.pep.runtime.contract.ComponentNames;
+import top.yealike.pep.runtime.contract.ComponentType;
 
 /**
  * Nacos 普通 Naming 注册与发现。
@@ -41,7 +41,7 @@ public class NacosRegistryService {
 
     public NacosRegistryService(
             PlatformProperties properties,
-            @Value("${server.port:19083}") int serverPort,
+            @Value("${server.port:19082}") int serverPort,
             @Value("${ipe.environment:local}") String environment) {
         this.properties = properties;
         this.serverPort = serverPort;

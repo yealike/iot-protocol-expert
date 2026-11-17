@@ -29,19 +29,19 @@
 
     <select id="selectById" resultMap="AlarmRuleMap">
         select <include refid="columns"/>
-        from ipe_ops.alarm_rule
+        from pep_domain.alarm_rule
         where id = #{id}
     </select>
 
     <select id="selectByRuleCode" resultMap="AlarmRuleMap">
         select <include refid="columns"/>
-        from ipe_ops.alarm_rule
+        from pep_domain.alarm_rule
         where rule_code = #{ruleCode}
     </select>
 
     <select id="selectEnabledByProductId" resultMap="AlarmRuleMap">
         select <include refid="columns"/>
-        from ipe_ops.alarm_rule
+        from pep_domain.alarm_rule
         where product_id = #{productId}
           and enabled = true
         order by id
@@ -49,7 +49,7 @@
 
     <select id="selectEnabledByDeviceId" resultMap="AlarmRuleMap">
         select <include refid="columns"/>
-        from ipe_ops.alarm_rule
+        from pep_domain.alarm_rule
         where device_id = #{deviceId}
           and enabled = true
         order by id
@@ -57,19 +57,19 @@
 
     <select id="selectByProductId" resultMap="AlarmRuleMap">
         select <include refid="columns"/>
-        from ipe_ops.alarm_rule
+        from pep_domain.alarm_rule
         where product_id = #{productId}
         order by id
     </select>
 
     <select id="selectAll" resultMap="AlarmRuleMap">
         select <include refid="columns"/>
-        from ipe_ops.alarm_rule
+        from pep_domain.alarm_rule
         order by id
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        insert into ipe_ops.alarm_rule
+        insert into pep_domain.alarm_rule
             (rule_code, name, product_id, device_id, channel_no, level, metric_property, operator,
              threshold, duration_seconds, enabled, description, created_at, updated_at)
         values
@@ -79,7 +79,7 @@
     </insert>
 
     <update id="update">
-        update ipe_ops.alarm_rule
+        update pep_domain.alarm_rule
         set rule_code = #{ruleCode},
             name = #{name},
             product_id = #{productId},
@@ -98,6 +98,6 @@
     </update>
 
     <delete id="deleteById">
-        delete from ipe_ops.alarm_rule where id = #{id}
+        delete from pep_domain.alarm_rule where id = #{id}
     </delete>
 </mapper>

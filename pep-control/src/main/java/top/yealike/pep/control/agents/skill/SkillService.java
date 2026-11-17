@@ -9,13 +9,6 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.pep.runtime.contract.ComponentDigests;
-import top.yealike.pep.runtime.contract.Digests;
-import top.yealike.pep.runtime.contract.ErrorCodes;
-import top.yealike.pep.runtime.contract.SkillBundle;
-import top.yealike.pep.runtime.contract.SkillDescriptor;
-import top.yealike.pep.runtime.contract.SkillFile;
-import top.yealike.pep.runtime.contract.SkillFileInfo;
 import top.yealike.pep.control.access.UserIdentity;
 import top.yealike.pep.control.agents.domain.PlatformRecords.SkillComponent;
 import top.yealike.pep.control.agents.domain.PlatformRecords.SkillDraftFile;
@@ -24,6 +17,13 @@ import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.control.support.JsonSupport;
+import top.yealike.pep.runtime.contract.ComponentDigests;
+import top.yealike.pep.runtime.contract.Digests;
+import top.yealike.pep.runtime.contract.ErrorCodes;
+import top.yealike.pep.runtime.contract.SkillBundle;
+import top.yealike.pep.runtime.contract.SkillDescriptor;
+import top.yealike.pep.runtime.contract.SkillFile;
+import top.yealike.pep.runtime.contract.SkillFileInfo;
 
 /** 文本 Skill 的在线编辑、校验、不可变发布与按版本读取。 */
 @Service

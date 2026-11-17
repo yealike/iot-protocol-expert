@@ -4,8 +4,8 @@ import java.time.Duration;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
-import top.yealike.pep.control.config.OpsProperties;
 import top.yealike.pep.control.api.dto.OpsDtos;
+import top.yealike.pep.control.config.OpsProperties;
 
 /** 运维平台到协议通道的内部调用。有限超时，失败时命令记录保留未知状态。 */
 @Component

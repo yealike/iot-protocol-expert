@@ -23,9 +23,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import top.yealike.pep.runtime.TestFixtures;
 import top.yealike.pep.runtime.config.RuntimeProperties;
-import top.yealike.pep.runtime.control.ControlClient;
-import top.yealike.pep.runtime.mcp.McpConnectionPool;
-import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.runtime.contract.ManifestDigests;
@@ -34,6 +31,9 @@ import top.yealike.pep.runtime.contract.ReleasePrepareRequest;
 import top.yealike.pep.runtime.contract.ReleasePrepareResponse;
 import top.yealike.pep.runtime.contract.SkillDescriptor;
 import top.yealike.pep.runtime.contract.SkillFileInfo;
+import top.yealike.pep.runtime.control.ControlClient;
+import top.yealike.pep.runtime.mcp.McpConnectionPool;
+import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 
 @ExtendWith(MockitoExtension.class)
 class PrepareServiceTest {

@@ -6,8 +6,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
-import top.yealike.pep.control.agents.mapper.PublicationMapper;
 import top.yealike.pep.control.agents.domain.PlatformRecords.Publication;
+import top.yealike.pep.control.agents.mapper.PublicationMapper;
 
 @Repository
 public class PublicationStore {

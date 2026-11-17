@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import top.yealike.pep.control.support.AiExceptions.AiException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -43,6 +44,12 @@ public class ApiExceptionHandler {
         return ResponseEntity.badRequest().body(Map.of("error", "BAD_REQUEST", "message", message(e)));
     }
 
+    @ExceptionHandler(AiException.class)
+    public ResponseEntity<Map<String, Object>> ai(AiException exception) {
+        return ResponseEntity.status(exception.status())
+                .body(Map.of("error", exception.code(), "message", message(exception)));
+    }
+
     @ExceptionHandler({
         top.yealike.pep.control.devices.service.DeviceService.DeviceRejectedException.class,
         top.yealike.pep.control.charging.service.OrderService.OrderConflictException.class
@@ -51,8 +58,8 @@ public class ApiExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "CONFLICT", "message", message(e)));
     }
 
-    @ExceptionHandler(RuntimeException.class)
-    public ResponseEntity<Map<String, Object>> serverError(RuntimeException e) {
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Map<String, Object>> serverError(Exception e) {
         log.error("请求处理失败: {}", e.getMessage(), e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(Map.of("error", "INTERNAL_ERROR", "message", "服务暂时不可用，请稍后重试"));

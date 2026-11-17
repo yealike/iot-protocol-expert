@@ -130,10 +130,15 @@ public class SecurityConfig {
                     response.sendError(HttpStatus.UNAUTHORIZED.value());
                     return;
                 }
+                var current = identity.get();
+                var principal = new top.yealike.pep.control.access.UserIdentity(
+                        String.valueOf(current.id()),
+                        current.username(),
+                        current.roles(),
+                        current.permissions(),
+                        current.authVersion());
                 var updated = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
-                        auth.getPrincipal(),
-                        auth.getCredentials(),
-                        identity.get().authorities());
+                        principal, null, current.authorities());
                 updated.setDetails(auth.getDetails());
                 context.setAuthentication(updated);
                 // OPS queries do not yet apply row-level station filters. Fail closed for restricted users.
@@ -160,7 +165,7 @@ public class SecurityConfig {
         @Override
         protected boolean shouldNotFilter(HttpServletRequest request) {
             String uri = request.getRequestURI();
-            return uri.startsWith("/internal/ai/rest/")
+            return uri.startsWith("/internal/ai/")
                     || (!uri.startsWith("/internal/") && !uri.startsWith("/api/ops/simulator/"));
         }
 

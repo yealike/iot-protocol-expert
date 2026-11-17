@@ -10,10 +10,6 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
-import top.yealike.pep.runtime.contract.AgentManifest;
-import top.yealike.pep.runtime.contract.ManifestDigests;
-import top.yealike.pep.runtime.contract.McpToolDescriptor;
-import top.yealike.pep.runtime.contract.ToolAliasCodec;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentComponent;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentMcpBinding;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentSkillBinding;
@@ -22,11 +18,17 @@ import top.yealike.pep.control.agents.domain.PlatformRecords.CompileResult;
 import top.yealike.pep.control.agents.domain.PlatformRecords.McpRelease;
 import top.yealike.pep.control.agents.domain.PlatformRecords.ModelProfile;
 import top.yealike.pep.control.agents.domain.PlatformRecords.SkillRelease;
+import top.yealike.pep.control.agents.model.GatewayTokenIssuer;
 import top.yealike.pep.control.agents.store.AgentStore;
 import top.yealike.pep.control.agents.store.CredentialStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.ModelStore;
 import top.yealike.pep.control.agents.store.SkillStore;
+import top.yealike.pep.control.config.ModelGatewayProperties;
+import top.yealike.pep.runtime.contract.AgentManifest;
+import top.yealike.pep.runtime.contract.ManifestDigests;
+import top.yealike.pep.runtime.contract.McpToolDescriptor;
+import top.yealike.pep.runtime.contract.ToolAliasCodec;
 
 /** Agent 草稿编译：把草稿与精确版本绑定冻结为可执行 manifest，无远程副作用。 */
 @Component
@@ -45,14 +47,21 @@ public class AgentCompiler {
     private final McpStore mcps;
     private final SkillStore skills;
     private final CredentialStore credentials;
+    private final ModelGatewayProperties gateway;
 
     public AgentCompiler(
-            AgentStore agents, ModelStore models, McpStore mcps, SkillStore skills, CredentialStore credentials) {
+            AgentStore agents,
+            ModelStore models,
+            McpStore mcps,
+            SkillStore skills,
+            CredentialStore credentials,
+            ModelGatewayProperties gateway) {
         this.agents = agents;
         this.models = models;
         this.mcps = mcps;
         this.skills = skills;
         this.credentials = credentials;
+        this.gateway = gateway;
     }
 
     public CompileResult compile(AgentComponent draft, String version) {
@@ -139,18 +148,6 @@ public class AgentCompiler {
         if (!"OPENAI_COMPAT".equals(model.providerType())) {
             errors.add(new CompileIssue("MODEL_PROVIDER_UNSUPPORTED", "一期只支持 OpenAI 兼容模型", "modelProfileId"));
         }
-        if (model.credentialId() == null) {
-            errors.add(new CompileIssue("MODEL_CREDENTIAL_REQUIRED", "模型必须绑定凭据", "credentialId"));
-        }
-        var credential = model.credentialId() == null
-                ? null
-                : credentials.find(model.credentialId()).orElse(null);
-        if (model.credentialId() != null && credential == null) {
-            errors.add(new CompileIssue("CREDENTIAL_NOT_FOUND", "模型凭据不存在", "credentialId"));
-        }
-        if (credential != null && !credential.enabled()) {
-            errors.add(new CompileIssue("CREDENTIAL_DISABLED", "模型凭据已停用", "credentialId"));
-        }
         Map<String, Object> options = new LinkedHashMap<>(model.options());
         if (draft.modelOptions() != null) {
             options.putAll(draft.modelOptions());
@@ -163,17 +160,23 @@ public class AgentCompiler {
         if (maxTokens instanceof Number number && (number.intValue() < 1 || number.intValue() > 32768)) {
             errors.add(new CompileIssue("MAX_TOKENS_OUT_OF_RANGE", "maxTokens 必须在 1 到 32768 之间", "model.options"));
         }
-        if (credentials == null || credential == null) {
-            return null;
-        }
         return new AgentManifest.ModelSpec(
                 model.key(),
-                model.providerType(),
-                model.baseUrl(),
-                model.modelName(),
-                credential.key(),
-                credential.currentSecretRevision(),
+                "OPENAI_COMPAT",
+                gatewayBaseUrl(),
+                model.key(),
+                GatewayTokenIssuer.CREDENTIAL_REF,
+                1,
                 options);
+    }
+
+    private String gatewayBaseUrl() {
+        String base = gateway.getBaseUrl();
+        if (base == null || base.isBlank()) {
+            return "http://127.0.0.1:19085/v1";
+        }
+        String value = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
+        return value.endsWith("/v1") ? value : value + "/v1";
     }
 
     private AgentManifest.Budget compileBudget(AgentComponent draft, List<CompileIssue> errors) {
@@ -299,7 +302,8 @@ public class AgentCompiler {
                     continue;
                 }
                 if (!mcps.toolCategories(release.componentId())
-                        .getOrDefault(binding.toolName(), top.yealike.pep.runtime.contract.McpToolExecutionCategory.UNKNOWN)
+                        .getOrDefault(
+                                binding.toolName(), top.yealike.pep.runtime.contract.McpToolExecutionCategory.UNKNOWN)
                         .readOnly()) {
                     errors.add(new CompileIssue(
                             "MCP_TOOL_NOT_READ_ONLY",

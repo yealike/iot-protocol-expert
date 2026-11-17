@@ -15,7 +15,6 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.ObjectMapper;
 import top.yealike.pep.runtime.config.RuntimeProperties;
-import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.ComponentNames;
 import top.yealike.pep.runtime.contract.ComponentType;
@@ -34,6 +33,7 @@ import top.yealike.pep.runtime.contract.SkillDescriptor;
 import top.yealike.pep.runtime.contract.SkillFile;
 import top.yealike.pep.runtime.contract.ToolAuthorizeRequest;
 import top.yealike.pep.runtime.contract.ToolAuthorizeResponse;
+import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 
 /**
  * Control 内部接口客户端。

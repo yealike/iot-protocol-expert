@@ -19,7 +19,7 @@
     <select id="selectSeries" resultMap="DevicePropertyTsMap">
         select id, device_id, channel_no, property_id, value_num, value_text,
                value_json::text as value_json, collected_at, created_at
-        from ipe_ops.device_property_ts
+        from pep_domain.device_property_ts
         where device_id = #{deviceId}
           and property_id = #{propertyId}
           and collected_at &gt;= #{from}
@@ -28,7 +28,7 @@
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        insert into ipe_ops.device_property_ts
+        insert into pep_domain.device_property_ts
             (device_id, channel_no, property_id, value_num, value_text, value_json,
              collected_at, created_at)
         values
@@ -37,10 +37,10 @@
     </insert>
 
     <delete id="deleteOlderThan">
-        delete from ipe_ops.device_property_ts where collected_at &lt; #{before}
+        delete from pep_domain.device_property_ts where collected_at &lt; #{before}
     </delete>
 
     <delete id="deleteByDevice">
-        delete from ipe_ops.device_property_ts where device_id = #{deviceId}
+        delete from pep_domain.device_property_ts where device_id = #{deviceId}
     </delete>
 </mapper>

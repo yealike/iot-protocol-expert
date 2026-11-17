@@ -17,21 +17,21 @@
 
     <select id="selectTop" resultMap="TroubleCaseMap">
         select id, device_id, order_no, protocol, question, result_json, created_by, created_at
-        from ipe_ops.trouble_case
+        from pep_domain.trouble_case
         order by id desc
         limit #{limit}
     </select>
 
     <select id="selectTopByDevice" resultMap="TroubleCaseMap">
         select id, device_id, order_no, protocol, question, result_json, created_by, created_at
-        from ipe_ops.trouble_case
+        from pep_domain.trouble_case
         where device_id = #{deviceId}
         order by id desc
         limit #{limit}
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        insert into ipe_ops.trouble_case
+        insert into pep_domain.trouble_case
             (device_id, order_no, protocol, question, result_json, created_by, created_at)
         values
             (#{deviceId}, #{orderNo}, #{protocol}, #{question}, #{resultJson}, #{createdBy}, #{createdAt})

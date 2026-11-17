@@ -9,11 +9,6 @@ import java.util.Map;
 import java.util.UUID;
 import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
-import top.yealike.pep.runtime.control.ControlClient;
-import top.yealike.pep.runtime.control.ControlException;
-import top.yealike.pep.runtime.execution.RunGuard;
-import top.yealike.pep.runtime.observability.RuntimeObservability;
-import top.yealike.pep.runtime.prepare.PreparedTool;
 import top.yealike.pep.runtime.contract.CredentialResolveRequest;
 import top.yealike.pep.runtime.contract.CredentialResolveResponse;
 import top.yealike.pep.runtime.contract.Digests;
@@ -21,6 +16,11 @@ import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.runtime.contract.McpDescriptor;
 import top.yealike.pep.runtime.contract.ToolAuthorizeRequest;
 import top.yealike.pep.runtime.contract.ToolAuthorizeResponse;
+import top.yealike.pep.runtime.control.ControlClient;
+import top.yealike.pep.runtime.control.ControlException;
+import top.yealike.pep.runtime.execution.RunGuard;
+import top.yealike.pep.runtime.observability.RuntimeObservability;
+import top.yealike.pep.runtime.prepare.PreparedTool;
 
 /** 动态 MCP 工具：模型只看到 alias 与冻结 Schema，实际调用前每次向 Control 申请授权。 */
 public final class McpAgentTool implements AgentTool {

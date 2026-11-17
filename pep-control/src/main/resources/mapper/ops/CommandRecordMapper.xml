@@ -26,13 +26,13 @@
 
     <select id="selectById" resultMap="CommandRecordMap">
         select <include refid="columns"/>
-        from ipe_ops.command_record
+        from pep_domain.command_record
         where id = #{id}
     </select>
 
     <select id="selectTopByDevice" resultMap="CommandRecordMap">
         select <include refid="columns"/>
-        from ipe_ops.command_record
+        from pep_domain.command_record
         where device_id = #{deviceId}
         order by id desc
         limit #{limit}
@@ -40,13 +40,13 @@
 
     <select id="selectTop" resultMap="CommandRecordMap">
         select <include refid="columns"/>
-        from ipe_ops.command_record
+        from pep_domain.command_record
         order by id desc
         limit #{limit}
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        insert into ipe_ops.command_record
+        insert into pep_domain.command_record
             (device_id, protocol, command_type, request_payload, status, sent_at, ack_at,
              response_payload, operator, created_at, updated_at)
         values
@@ -55,7 +55,7 @@
     </insert>
 
     <update id="update">
-        update ipe_ops.command_record
+        update pep_domain.command_record
         set device_id = #{deviceId},
             protocol = #{protocol},
             command_type = #{commandType},

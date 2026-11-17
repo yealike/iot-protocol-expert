@@ -20,7 +20,7 @@
     </resultMap>
 
     <insert id="insertSample">
-        insert into ipe_ops.order_telemetry_outbox
+        insert into pep_domain.order_telemetry_outbox
             (order_no, sample_time, time_source, voltage, current_amp, power_kw, gun_temp, battery_temp, soc)
         values
             (#{orderNo}, #{sampleTime}, #{timeSource}, #{voltage}, #{current}, #{power}, #{gunTemperature},
@@ -28,7 +28,7 @@
     </insert>
 
     <select id="existsPending" resultType="boolean">
-        select exists (select 1 from ipe_ops.order_telemetry_outbox where order_no = #{orderNo})
+        select exists (select 1 from pep_domain.order_telemetry_outbox where order_no = #{orderNo})
     </select>
 
     <select id="tryAdvisoryLock" resultType="boolean">
@@ -38,13 +38,13 @@
     <select id="selectPendingSamples" resultMap="SampleMap">
         select id, order_no, sample_time, time_source, voltage, current_amp, power_kw, gun_temp,
                battery_temp, soc
-        from ipe_ops.order_telemetry_outbox
+        from pep_domain.order_telemetry_outbox
         order by id
         limit #{limit}
         for update
     </select>
 
     <delete id="deleteOutboxById">
-        delete from ipe_ops.order_telemetry_outbox where id = #{id}
+        delete from pep_domain.order_telemetry_outbox where id = #{id}
     </delete>
 </mapper>

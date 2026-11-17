@@ -39,6 +39,11 @@
         </dependency>
         <dependency>
             <groupId>top.yealike.pep</groupId>
+            <artifactId>pep-model-contract</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>top.yealike.pep</groupId>
             <artifactId>pep-observability</artifactId>
             <version>${project.version}</version>
         </dependency>

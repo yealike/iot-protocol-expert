@@ -9,14 +9,14 @@ import static org.mockito.Mockito.when;
 
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import top.yealike.pep.control.conversations.ConversationRecords.Conversation;
-import top.yealike.pep.control.conversations.ConversationRepository;
 import top.yealike.pep.control.access.UserIdentity;
-import top.yealike.pep.control.observability.AiObservability;
+import top.yealike.pep.control.access.policy.PolicyService;
 import top.yealike.pep.control.agents.AgentService;
 import top.yealike.pep.control.agents.config.PlatformProperties;
 import top.yealike.pep.control.agents.dispatch.RuntimeDispatchClient;
-import top.yealike.pep.control.access.policy.PolicyService;
+import top.yealike.pep.control.conversations.ConversationRecords.Conversation;
+import top.yealike.pep.control.conversations.ConversationRepository;
+import top.yealike.pep.control.observability.AiObservability;
 import top.yealike.pep.control.support.AiExceptions;
 
 class RunServiceTest {

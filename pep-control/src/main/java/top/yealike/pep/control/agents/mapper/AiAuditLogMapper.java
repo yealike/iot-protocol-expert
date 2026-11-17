@@ -2,7 +2,7 @@ package top.yealike.pep.control.agents.mapper;
 
 import org.apache.ibatis.annotations.Param;
 
-public interface AuditLogMapper {
+public interface AiAuditLogMapper {
 
     int audit(
             @Param("actor") String actor,

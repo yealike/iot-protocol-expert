@@ -9,10 +9,8 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.pep.runtime.contract.ComponentNames;
-import top.yealike.pep.runtime.contract.ComponentType;
-import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.control.access.UserIdentity;
+import top.yealike.pep.control.access.policy.PolicyService;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentCatalogItem;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentComponent;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentMcpBinding;
@@ -29,9 +27,11 @@ import top.yealike.pep.control.agents.store.AgentStore.SkillBindingInput;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
-import top.yealike.pep.control.access.policy.PolicyService;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.control.support.JsonSupport;
+import top.yealike.pep.runtime.contract.ComponentNames;
+import top.yealike.pep.runtime.contract.ComponentType;
+import top.yealike.pep.runtime.contract.ErrorCodes;
 
 /** Agent 草稿、绑定、编译、发布与目录。发布只生成不可变 release 与异步 publication。 */
 @Service

@@ -17,13 +17,13 @@
 
     <select id="selectRecent" resultMap="AuditLogMap">
         select id, actor, action, target_type, target_id, result, detail, created_at
-        from ipe_ops.audit_log
+        from pep_domain.audit_log
         order by id desc
         limit #{limit}
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        insert into ipe_ops.audit_log
+        insert into pep_domain.audit_log
             (actor, action, target_type, target_id, result, detail, created_at)
         values
             (#{actor}, #{action}, #{targetType}, #{targetId}, #{result}, #{detail}, #{createdAt})

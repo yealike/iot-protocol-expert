@@ -9,16 +9,6 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.pep.runtime.contract.ComponentDigests;
-import top.yealike.pep.runtime.contract.ComponentEndpoint;
-import top.yealike.pep.runtime.contract.ComponentNames;
-import top.yealike.pep.runtime.contract.ComponentType;
-import top.yealike.pep.runtime.contract.Digests;
-import top.yealike.pep.runtime.contract.EndpointPolicy;
-import top.yealike.pep.runtime.contract.ErrorCodes;
-import top.yealike.pep.runtime.contract.McpDescriptor;
-import top.yealike.pep.runtime.contract.McpToolDescriptor;
-import top.yealike.pep.runtime.contract.McpToolExecutionCategory;
 import top.yealike.pep.control.access.UserIdentity;
 import top.yealike.pep.control.agents.credential.CredentialService;
 import top.yealike.pep.control.agents.domain.PlatformRecords.McpComponent;
@@ -31,6 +21,16 @@ import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.control.support.JsonSupport;
+import top.yealike.pep.runtime.contract.ComponentDigests;
+import top.yealike.pep.runtime.contract.ComponentEndpoint;
+import top.yealike.pep.runtime.contract.ComponentNames;
+import top.yealike.pep.runtime.contract.ComponentType;
+import top.yealike.pep.runtime.contract.Digests;
+import top.yealike.pep.runtime.contract.EndpointPolicy;
+import top.yealike.pep.runtime.contract.ErrorCodes;
+import top.yealike.pep.runtime.contract.McpDescriptor;
+import top.yealike.pep.runtime.contract.McpToolDescriptor;
+import top.yealike.pep.runtime.contract.McpToolExecutionCategory;
 
 /** MCP 组件的管理、测试、发布与精确版本描述。 */
 @Service

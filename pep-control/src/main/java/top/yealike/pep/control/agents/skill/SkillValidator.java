@@ -12,9 +12,9 @@ import org.springframework.stereotype.Component;
 import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
-import top.yealike.pep.runtime.contract.SkillFile;
 import top.yealike.pep.control.agents.domain.PlatformRecords.CompileIssue;
 import top.yealike.pep.control.support.AiExceptions;
+import top.yealike.pep.runtime.contract.SkillFile;
 
 /** SKILL.md 格式校验：安全 YAML、名称/描述、引用路径与大小上限。 */
 @Component

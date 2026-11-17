@@ -13,8 +13,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.control.access.UserIdentity;
+import top.yealike.pep.control.access.policy.PolicyService;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentCatalogItem;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
 import top.yealike.pep.control.agents.registry.NacosRegistryService;
@@ -22,7 +22,7 @@ import top.yealike.pep.control.agents.store.AgentStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
-import top.yealike.pep.control.access.policy.PolicyService;
+import top.yealike.pep.runtime.contract.AgentManifest;
 
 class AgentServiceCatalogTest {
 

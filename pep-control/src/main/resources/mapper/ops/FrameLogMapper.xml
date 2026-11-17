@@ -30,7 +30,7 @@
 
     <select id="search" resultMap="FrameLogMap">
         select <include refid="columns"/>
-        from ipe_ops.frame_log
+        from pep_domain.frame_log
         <where>
             <if test="deviceId != null">
                 and device_id = #{deviceId}
@@ -57,25 +57,25 @@
 
     <select id="selectRecent" resultMap="FrameLogMap">
         select <include refid="columns"/>
-        from ipe_ops.frame_log
+        from pep_domain.frame_log
         order by id desc
         limit #{limit}
     </select>
 
     <select id="selectRecentByDevice" resultMap="FrameLogMap">
         select <include refid="columns"/>
-        from ipe_ops.frame_log
+        from pep_domain.frame_log
         where device_id = #{deviceId}
         order by created_at desc
         limit #{limit}
     </select>
 
     <select id="countByDirection" resultType="long">
-        select count(*) from ipe_ops.frame_log where direction = #{direction}
+        select count(*) from pep_domain.frame_log where direction = #{direction}
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        insert into ipe_ops.frame_log
+        insert into pep_domain.frame_log
             (device_id, protocol, protocol_device_id, direction, frame_type, frame_label, message_id,
              sequence_no, encrypted, body_hex, wire_hex, summary, error_message, trace_id, created_at)
         values

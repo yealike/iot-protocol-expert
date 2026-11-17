@@ -2,9 +2,9 @@ package top.yealike.pep.runtime.execution;
 
 import java.util.List;
 import org.springframework.stereotype.Component;
-import top.yealike.pep.runtime.prepare.PreparedRelease;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.SkillBundle;
+import top.yealike.pep.runtime.prepare.PreparedRelease;
 
 /**
  * 指令层级：平台规则 > Agent 系统指令 > 已绑定 Skill 工作方法 > 用户任务。

@@ -78,19 +78,19 @@
 
     <select id="selectById" resultMap="ChargeOrderMap">
         select <include refid="columns"/>
-        from ipe_ops.charge_order
+        from pep_domain.charge_order
         where id = #{id}
     </select>
 
     <select id="selectByOrderNo" resultMap="ChargeOrderMap">
         select <include refid="columns"/>
-        from ipe_ops.charge_order
+        from pep_domain.charge_order
         where order_no = #{orderNo}
     </select>
 
     <select id="selectTopActive" resultMap="ChargeOrderMap">
         select <include refid="columns"/>
-        from ipe_ops.charge_order
+        from pep_domain.charge_order
         where device_id = #{deviceId}
           and gun_no = #{gunNo}
           and status in
@@ -103,7 +103,7 @@
 
     <select id="selectTopByOcppTransaction" resultMap="ChargeOrderMap">
         select <include refid="columns"/>
-        from ipe_ops.charge_order
+        from pep_domain.charge_order
         where ocpp_transaction_id = #{ocppTransactionId}
           and protocol = #{protocol}
         order by created_at desc
@@ -112,7 +112,7 @@
 
     <select id="selectTopByDevice" resultMap="ChargeOrderMap">
         select <include refid="columns"/>
-        from ipe_ops.charge_order
+        from pep_domain.charge_order
         where device_id = #{deviceId}
         order by id desc
         limit 1
@@ -120,14 +120,14 @@
 
     <select id="selectTop200" resultMap="ChargeOrderMap">
         select <include refid="columns"/>
-        from ipe_ops.charge_order
+        from pep_domain.charge_order
         order by id desc
         limit 200
     </select>
 
     <select id="search" resultMap="ChargeOrderMap">
         select <include refid="columns"/>
-        from ipe_ops.charge_order
+        from pep_domain.charge_order
         <include refid="searchWhere"/>
         order by id desc
         limit #{limit} offset #{offset}
@@ -135,19 +135,19 @@
 
     <select id="countSearch" resultType="long">
         select count(*)
-        from ipe_ops.charge_order
+        from pep_domain.charge_order
         <include refid="searchWhere"/>
     </select>
 
     <select id="maxOcppTransactionId" resultType="long">
         select coalesce(max(ocpp_transaction_id), 0)
-        from ipe_ops.charge_order
+        from pep_domain.charge_order
         where protocol = 'OCPP16J'
     </select>
 
     <select id="countByStatusIn" resultType="long">
         select count(*)
-        from ipe_ops.charge_order
+        from pep_domain.charge_order
         where status in
         <foreach collection="statuses" item="status" open="(" separator="," close=")">
             #{status}
@@ -158,7 +158,7 @@
         select count(*) as c,
                coalesce(sum(energy), 0) as e,
                coalesce(sum(amount), 0) as a
-        from ipe_ops.charge_order
+        from pep_domain.charge_order
         where station_id = #{stationId}
           and status = #{status}
           and end_time &gt;= #{from}
@@ -169,7 +169,7 @@
         select count(*) as c,
                coalesce(sum(energy), 0) as e,
                coalesce(sum(amount), 0) as a
-        from ipe_ops.charge_order
+        from pep_domain.charge_order
         where device_id = #{deviceId}
           and status = #{status}
           and end_time &gt;= #{from}
@@ -180,7 +180,7 @@
         select count(*) as c,
                coalesce(sum(energy), 0) as e,
                coalesce(sum(amount), 0) as a
-        from ipe_ops.charge_order
+        from pep_domain.charge_order
         where status = #{status}
           and end_time &gt;= #{from}
           and end_time &lt; #{to}
@@ -188,14 +188,14 @@
 
     <select id="sumEnergyActiveBetween" resultType="java.math.BigDecimal">
         select coalesce(sum(energy), 0)
-        from ipe_ops.charge_order
+        from pep_domain.charge_order
         where status &lt;&gt; 'FAILED'
           and start_time &lt; #{exclusiveEnd}
           and (end_time is null or end_time &gt;= #{start})
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        insert into ipe_ops.charge_order
+        insert into pep_domain.charge_order
             (order_no, device_id, gun_no, station_id, protocol, protocol_transaction_id,
              ocpp_transaction_id, meter_start_wh, status, start_type, physical_card, logical_card,
              start_time, end_time, energy, amount, amount_source, stop_reason, fail_reason,
@@ -208,7 +208,7 @@
     </insert>
 
     <update id="update">
-        update ipe_ops.charge_order
+        update pep_domain.charge_order
         set order_no = #{orderNo},
             device_id = #{deviceId},
             gun_no = #{gunNo},

@@ -41,13 +41,13 @@
 
     <select id="selectById" resultMap="BillMap">
         select <include refid="columns"/>
-        from ipe_ops.bill
+        from pep_domain.bill
         where id = #{id}
     </select>
 
     <select id="selectBySource" resultMap="BillMap">
         select <include refid="columns"/>
-        from ipe_ops.bill
+        from pep_domain.bill
         where protocol = #{protocol}
           and source_type = #{sourceType}
           and source_transaction_no = #{sourceTransactionNo}
@@ -55,7 +55,7 @@
 
     <select id="search" resultMap="BillMap">
         select <include refid="columns"/>
-        from ipe_ops.bill
+        from pep_domain.bill
         <where>
             <if test="stationId != null">
                 and station_id = #{stationId}
@@ -85,19 +85,19 @@
 
     <select id="selectByOrderId" resultMap="BillMap">
         select <include refid="columns"/>
-        from ipe_ops.bill
+        from pep_domain.bill
         where order_id = #{orderId}
         order by id desc
     </select>
 
     <select id="countByOrderId" resultType="long">
-        select count(*) from ipe_ops.bill where order_id = #{orderId}
+        select count(*) from pep_domain.bill where order_id = #{orderId}
     </select>
 
     <select id="summarizeStation" resultMap="BillSummaryMap">
         select count(*) as c,
                coalesce(sum(amount), 0) as a
-        from ipe_ops.bill
+        from pep_domain.bill
         where station_id = #{stationId}
           and accepted = true
           and amount_type = #{amountType}
@@ -106,11 +106,11 @@
     </select>
 
     <select id="countByStationIdIsNull" resultType="long">
-        select count(*) from ipe_ops.bill where station_id is null
+        select count(*) from pep_domain.bill where station_id is null
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        insert into ipe_ops.bill
+        insert into pep_domain.bill
             (order_id, order_no, device_id, station_id, protocol, source_type, source_transaction_no,
              energy, amount, currency, amount_type, stop_reason, ended_at, received_at, accepted,
              reject_reason, raw_payload, created_at)
@@ -121,7 +121,7 @@
     </insert>
 
     <update id="update">
-        update ipe_ops.bill
+        update pep_domain.bill
         set order_id = #{orderId},
             order_no = #{orderNo},
             device_id = #{deviceId},

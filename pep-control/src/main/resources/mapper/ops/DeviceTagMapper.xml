@@ -19,21 +19,21 @@
 
     <select id="selectByDeviceIdAndTagKey" resultMap="DeviceTagMap">
         select <include refid="columns"/>
-        from ipe_ops.device_tag
+        from pep_domain.device_tag
         where device_id = #{deviceId}
           and tag_key = #{tagKey}
     </select>
 
     <select id="selectByDeviceIdOrderByTagKeyAsc" resultMap="DeviceTagMap">
         select <include refid="columns"/>
-        from ipe_ops.device_tag
+        from pep_domain.device_tag
         where device_id = #{deviceId}
         order by tag_key
     </select>
 
     <select id="selectByDeviceIds" resultMap="DeviceTagMap">
         select <include refid="columns"/>
-        from ipe_ops.device_tag
+        from pep_domain.device_tag
         where device_id in
         <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
             #{deviceId}
@@ -42,12 +42,12 @@
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        insert into ipe_ops.device_tag (device_id, tag_key, tag_value, value_type, updated_at)
+        insert into pep_domain.device_tag (device_id, tag_key, tag_value, value_type, updated_at)
         values (#{deviceId}, #{tagKey}, #{tagValue}, #{valueType}, #{updatedAt})
     </insert>
 
     <update id="update">
-        update ipe_ops.device_tag
+        update pep_domain.device_tag
         set device_id = #{deviceId},
             tag_key = #{tagKey},
             tag_value = #{tagValue},
@@ -57,10 +57,10 @@
     </update>
 
     <delete id="deleteById">
-        delete from ipe_ops.device_tag where id = #{id}
+        delete from pep_domain.device_tag where id = #{id}
     </delete>
 
     <delete id="deleteByDeviceId">
-        delete from ipe_ops.device_tag where device_id = #{deviceId}
+        delete from pep_domain.device_tag where device_id = #{deviceId}
     </delete>
 </mapper>

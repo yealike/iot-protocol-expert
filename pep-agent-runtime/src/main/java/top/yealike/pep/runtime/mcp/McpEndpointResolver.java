@@ -1,9 +1,9 @@
 package top.yealike.pep.runtime.mcp;
 
 import org.springframework.stereotype.Component;
-import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 import top.yealike.pep.runtime.contract.ComponentEndpoint;
 import top.yealike.pep.runtime.contract.McpDescriptor;
+import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 
 /**
  * 每次工具调用前从注册中心解析 MCP 当前健康入口。

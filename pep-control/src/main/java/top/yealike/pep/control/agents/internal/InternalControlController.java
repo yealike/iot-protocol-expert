@@ -12,6 +12,13 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import top.yealike.pep.control.agents.AgentService;
+import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
+import top.yealike.pep.control.agents.mapper.InternalControlMapper;
+import top.yealike.pep.control.agents.mcp.McpService;
+import top.yealike.pep.control.agents.skill.SkillService;
+import top.yealike.pep.control.agents.store.AgentStore;
+import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.CredentialResolveRequest;
 import top.yealike.pep.runtime.contract.CredentialResolveResponse;
@@ -27,13 +34,6 @@ import top.yealike.pep.runtime.contract.SkillDescriptor;
 import top.yealike.pep.runtime.contract.SkillFile;
 import top.yealike.pep.runtime.contract.ToolAuthorizeRequest;
 import top.yealike.pep.runtime.contract.ToolAuthorizeResponse;
-import top.yealike.pep.control.agents.mapper.InternalControlMapper;
-import top.yealike.pep.control.agents.AgentService;
-import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
-import top.yealike.pep.control.agents.mcp.McpService;
-import top.yealike.pep.control.agents.skill.SkillService;
-import top.yealike.pep.control.agents.store.AgentStore;
-import top.yealike.pep.control.support.AiExceptions;
 
 /** Runtime 依赖的 Control 内部接口；鉴权由 InternalSignatureFilter 完成。 */
 @RestController

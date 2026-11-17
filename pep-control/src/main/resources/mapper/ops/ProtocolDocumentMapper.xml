@@ -40,14 +40,14 @@
                status,
                uploaded_by as "uploadedBy",
                created_at as "createdAt"
-        from ipe_ops.protocol_document
+        from pep_domain.protocol_document
         where status = 'ACTIVE'
           and (#{protocol} = '' or protocol_code = #{protocol})
         order by id desc
     </select>
 
     <select id="insertDocument" resultType="java.lang.Long">
-        insert into ipe_ops.protocol_document
+        insert into pep_domain.protocol_document
             (protocol_code, protocol_name_en, document_version, title, original_filename, storage_key,
              content_type, file_size, sha256, uploaded_by)
         values
@@ -58,25 +58,25 @@
 
     <select id="selectFileInfo" resultMap="FileInfoMap">
         select storage_key, original_filename, content_type
-        from ipe_ops.protocol_document
+        from pep_domain.protocol_document
         where id = #{id}
           and status = 'ACTIVE'
     </select>
 
     <select id="selectActiveIdForUpdate" resultType="java.lang.Long">
         select id
-        from ipe_ops.protocol_document
+        from pep_domain.protocol_document
         where id = #{id}
           and status = 'ACTIVE'
         for update
     </select>
 
     <select id="countProductReferences" resultType="long">
-        select count(*) from ipe_ops.product where protocol_document_id = #{id}
+        select count(*) from pep_domain.product where protocol_document_id = #{id}
     </select>
 
     <update id="archive">
-        update ipe_ops.protocol_document
+        update pep_domain.protocol_document
         set status = 'ARCHIVED',
             updated_at = now()
         where id = #{id}
@@ -94,22 +94,22 @@
                file_size as "fileSize",
                sha256,
                created_at as "createdAt"
-        from ipe_ops.protocol_document
+        from pep_domain.protocol_document
         where status = 'ACTIVE'
         order by created_at desc
     </select>
 
     <select id="selectActiveStorageKey" resultType="string">
         select storage_key
-        from ipe_ops.protocol_document
+        from pep_domain.protocol_document
         where id = #{id}
           and status = 'ACTIVE'
     </select>
 
     <select id="selectProductRefs" resultMap="RefMap">
         select p.id, d.protocol_code, d.protocol_name_en, d.document_version
-        from ipe_ops.product p
-        join ipe_ops.protocol_document d on d.id = p.protocol_document_id
+        from pep_domain.product p
+        join pep_domain.protocol_document d on d.id = p.protocol_document_id
         where p.id in
         <foreach collection="productIds" item="productId" open="(" separator="," close=")">
             #{productId}
@@ -118,14 +118,14 @@
 
     <select id="selectPolicyForUpdate" resultMap="PolicyMap">
         select protocol_name_en, document_version, status
-        from ipe_ops.protocol_document
+        from pep_domain.protocol_document
         where id = #{id}
         for update
     </select>
 
     <select id="selectRef" resultMap="RefMap">
         select id, protocol_code, protocol_name_en, document_version
-        from ipe_ops.protocol_document
+        from pep_domain.protocol_document
         where id = #{id}
     </select>
 </mapper>

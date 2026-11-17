@@ -105,22 +105,19 @@ class ChargerFleetTest {
                                     input.readFully(wire, 2, length + 2);
                                     var frame = top.yealike.pep.codec.FrameCodec.decode(wire, null);
                                     if (frame.frameType() == top.yealike.pep.codec.FrameType.LOGIN.code()) {
-                                        var login =
-                                                top.yealike.pep.codec.frames.RegistrationFrames.decodeLogin(
-                                                        frame.body());
+                                        var login = top.yealike.pep.codec.frames.RegistrationFrames.decodeLogin(
+                                                frame.body());
                                         var ack = new top.yealike.pep.codec.Frame(
                                                 frame.sequence(),
                                                 false,
                                                 top.yealike.pep.codec.FrameType.LOGIN_ACK.code(),
                                                 top.yealike.pep.codec.frames.RegistrationFrames.encodeLoginAck(
-                                                        new top.yealike.pep.codec.frames.RegistrationFrames
-                                                                .LoginAck(login.pileCode(), true)));
+                                                        new top.yealike.pep.codec.frames.RegistrationFrames.LoginAck(
+                                                                login.pileCode(), true)));
                                         socket.getOutputStream()
-                                                .write(top.yealike.pep.codec.FrameCodec.encode(
-                                                        ack, false, null));
+                                                .write(top.yealike.pep.codec.FrameCodec.encode(ack, false, null));
                                         socket.getOutputStream().flush();
-                                    } else if (frame.frameType()
-                                            == top.yealike.pep.codec.FrameType.REALTIME.code()) {
+                                    } else if (frame.frameType() == top.yealike.pep.codec.FrameType.REALTIME.code()) {
                                         var value = top.yealike.pep.codec.frames.RealtimeFrames.decodeRealtime(
                                                 frame.body());
                                         if (value.hardwareFault() != 0

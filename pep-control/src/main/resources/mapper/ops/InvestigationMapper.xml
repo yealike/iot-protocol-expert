@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.control.investigations.mapper.InvestigationMapper">
+
+    <sql id="taskColumns">
+        id, tenant_id as tenantId, project_id as projectId, owner_id as ownerId,
+        title, goal, scope, status, version, created_at as createdAt, updated_at as updatedAt
+    </sql>
+
+    <insert id="insertTask">
+        insert into pep_agent.investigation_task
+            (id, tenant_id, project_id, owner_id, title, goal, scope, status, version)
+        values (#{id}, #{tenantId}, #{projectId}, #{ownerId}, #{title}, #{goal},
+                cast(#{scope} as jsonb), #{status}, 0)
+    </insert>
+
+    <select id="findTask" resultType="top.yealike.pep.control.investigations.InvestigationRecords$Task">
+        select <include refid="taskColumns"/>
+          from pep_agent.investigation_task
+         where id = #{id}
+    </select>
+
+    <select id="lockTask" resultType="top.yealike.pep.control.investigations.InvestigationRecords$Task">
+        select <include refid="taskColumns"/>
+          from pep_agent.investigation_task
+         where id = #{id}
+           for update
+    </select>
+
+    <select id="listTasks" resultType="top.yealike.pep.control.investigations.InvestigationRecords$Task">
+        select <include refid="taskColumns"/>
+          from pep_agent.investigation_task
+         where project_id = #{projectId}
+           and (owner_id = #{ownerId} or #{allRead} = true)
+        <if test="status != null and status != ''">
+           and status = #{status}
+        </if>
+         order by updated_at desc, id desc
+         limit #{limit}
+    </select>
+
+    <update id="updateTaskStatus">
+        update pep_agent.investigation_task
+           set status = #{status}, version = version + 1, updated_at = now()
+         where id = #{id} and version = #{expectedVersion}
+    </update>
+
+    <select id="maxEventSeq" resultType="long">
+        select coalesce(max(seq), 0) from pep_agent.task_event where task_id = #{taskId}
+    </select>
+
+    <insert id="insertEvent">
+        insert into pep_agent.task_event (id, task_id, seq, type, payload, actor_id)
+        values (#{id}, #{taskId}, #{seq}, #{type}, cast(#{payload} as jsonb), #{actorId})
+    </insert>
+
+    <select id="listEvents" resultType="top.yealike.pep.control.investigations.InvestigationRecords$TaskEvent">
+        select id, task_id as taskId, seq, type, payload, actor_id as actorId, created_at as createdAt
+          from pep_agent.task_event
+         where task_id = #{taskId} and seq > #{afterSeq}
+         order by seq
+         limit #{limit}
+    </select>
+
+    <select id="findEvidenceByHash" resultType="top.yealike.pep.control.investigations.InvestigationRecords$Evidence">
+        select id, tenant_id as tenantId, project_id as projectId, source_type as sourceType,
+               source_id as sourceId, source_version as sourceVersion, content_hash as contentHash,
+               summary, raw_ref as rawRef, scope, collected_at as collectedAt, expires_at as expiresAt,
+               metadata, created_at as createdAt
+          from pep_agent.evidence_item
+         where project_id = #{projectId} and source_type = #{sourceType}
+           and source_id = #{sourceId} and content_hash = #{contentHash}
+         order by created_at
+         limit 1
+    </select>
+
+    <insert id="insertEvidence">
+        insert into pep_agent.evidence_item
+            (id, tenant_id, project_id, source_type, source_id, source_version, content_hash,
+             summary, raw_ref, scope, collected_at, expires_at, metadata)
+        values (#{id}, #{tenantId}, #{projectId}, #{sourceType}, #{sourceId}, #{sourceVersion},
+                #{contentHash}, #{summary}, #{rawRef}, cast(#{scope} as jsonb), #{collectedAt},
+                #{expiresAt}, cast(#{metadata} as jsonb))
+    </insert>
+
+    <insert id="linkEvidence">
+        insert into pep_agent.task_evidence (task_id, evidence_id, added_by)
+        values (#{taskId}, #{evidenceId}, #{addedBy})
+        on conflict do nothing
+    </insert>
+
+    <select id="listEvidence" resultType="top.yealike.pep.control.investigations.InvestigationRecords$Evidence">
+        select e.id, e.tenant_id as tenantId, e.project_id as projectId, e.source_type as sourceType,
+               e.source_id as sourceId, e.source_version as sourceVersion, e.content_hash as contentHash,
+               e.summary, e.raw_ref as rawRef, e.scope, e.collected_at as collectedAt,
+               e.expires_at as expiresAt, e.metadata, e.created_at as createdAt
+          from pep_agent.task_evidence te
+          join pep_agent.evidence_item e on e.id = te.evidence_id
+         where te.task_id = #{taskId}
+         order by te.created_at, e.id
+    </select>
+
+    <select id="countLinkedEvidence" resultType="int">
+        select count(*) from pep_agent.task_evidence
+         where task_id = #{taskId}
+           and evidence_id in
+        <foreach collection="evidenceIds" item="id" open="(" separator="," close=")">
+            #{id, javaType=java.util.UUID, typeHandler=top.yealike.pep.control.mybatis.UuidTypeHandler}
+        </foreach>
+    </select>
+
+    <insert id="insertHypothesis">
+        insert into pep_agent.diagnostic_hypothesis
+            (id, task_id, statement, status, support_refs, created_by)
+        values (#{id}, #{taskId}, #{statement}, #{status}, cast(#{supportRefs} as jsonb), #{createdBy})
+    </insert>
+
+    <select id="listHypotheses" resultType="top.yealike.pep.control.investigations.InvestigationRecords$Hypothesis">
+        select id, task_id as taskId, statement, status, support_refs as supportRefs,
+               created_by as createdBy, created_at as createdAt, updated_at as updatedAt
+          from pep_agent.diagnostic_hypothesis
+         where task_id = #{taskId}
+         order by created_at, id
+    </select>
+
+    <update id="updateHypothesisStatus">
+        update pep_agent.diagnostic_hypothesis
+           set status = #{status}, updated_at = now()
+         where task_id = #{taskId} and id = #{id}
+    </update>
+
+    <insert id="insertExperiment">
+        insert into pep_agent.task_experiment
+            (id, task_id, scenario_release_id, sim_run_id, status, result_summary, result_ref,
+             expected_assertion, created_by)
+        values (#{id}, #{taskId}, #{scenarioReleaseId}, #{simRunId}, #{status}, #{resultSummary},
+                #{resultRef}, cast(#{expectedAssertion} as jsonb), #{createdBy})
+    </insert>
+
+    <select id="listExperiments" resultType="top.yealike.pep.control.investigations.InvestigationRecords$Experiment">
+        select id, task_id as taskId, scenario_release_id as scenarioReleaseId, sim_run_id as simRunId,
+               status, result_summary as resultSummary, result_ref as resultRef,
+               expected_assertion as expectedAssertion, created_by as createdBy,
+               created_at as createdAt, updated_at as updatedAt
+          from pep_agent.task_experiment
+         where task_id = #{taskId}
+         order by created_at, id
+    </select>
+
+    <update id="updateExperiment">
+        update pep_agent.task_experiment
+           set status = #{status},
+               sim_run_id = coalesce(#{simRunId}, sim_run_id),
+               result_summary = coalesce(#{resultSummary}, result_summary),
+               result_ref = coalesce(#{resultRef}, result_ref),
+               updated_at = now()
+         where task_id = #{taskId} and id = #{id}
+    </update>
+
+    <select id="nextConclusionVersion" resultType="long">
+        select coalesce(max(version), 0) + 1 from pep_agent.task_conclusion where task_id = #{taskId}
+    </select>
+
+    <insert id="insertConclusion">
+        insert into pep_agent.task_conclusion
+            (id, task_id, version, conclusion, evidence_refs, validation_status, created_by)
+        values (#{id}, #{taskId}, #{version}, #{conclusion}, cast(#{evidenceRefs} as jsonb),
+                #{validationStatus}, #{createdBy})
+    </insert>
+
+    <select id="listConclusions" resultType="top.yealike.pep.control.investigations.InvestigationRecords$Conclusion">
+        select id, task_id as taskId, version, conclusion, evidence_refs as evidenceRefs,
+               validation_status as validationStatus, created_by as createdBy, created_at as createdAt
+          from pep_agent.task_conclusion
+         where task_id = #{taskId}
+         order by version desc
+    </select>
+
+    <insert id="insertApproval">
+        insert into pep_agent.action_approval
+            (id, task_id, action_type, target, param_hash, approved_by, expires_at, state)
+        values (#{id}, #{taskId}, #{actionType}, cast(#{target} as jsonb), #{paramHash},
+                #{approvedBy}, #{expiresAt}, #{state})
+    </insert>
+
+    <select id="findApproval" resultType="top.yealike.pep.control.investigations.InvestigationRecords$Approval">
+        select id, task_id as taskId, action_type as actionType, target, param_hash as paramHash,
+               approved_by as approvedBy, expires_at as expiresAt, used_at as usedAt,
+               state, created_at as createdAt
+          from pep_agent.action_approval
+         where task_id = #{taskId} and id = #{id}
+    </select>
+
+    <update id="useApproval">
+        update pep_agent.action_approval
+           set state = 'USED', used_at = now()
+         where task_id = #{taskId} and id = #{id}
+           and state = 'PENDING' and expires_at > now()
+    </update>
+
+    <select id="listApprovals" resultType="top.yealike.pep.control.investigations.InvestigationRecords$Approval">
+        select id, task_id as taskId, action_type as actionType, target, param_hash as paramHash,
+               approved_by as approvedBy, expires_at as expiresAt, used_at as usedAt,
+               state, created_at as createdAt
+          from pep_agent.action_approval
+         where task_id = #{taskId}
+         order by created_at desc, id desc
+    </select>
+</mapper>

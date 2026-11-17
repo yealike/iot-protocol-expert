@@ -15,7 +15,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
-import top.yealike.pep.control.config.AiProperties;
 import top.yealike.pep.control.access.UserIdentity;
 import top.yealike.pep.control.agents.AgentService;
 import top.yealike.pep.control.agents.config.PlatformProperties;
@@ -35,6 +34,8 @@ import top.yealike.pep.control.agents.skill.SkillService;
 import top.yealike.pep.control.agents.store.AgentStore.McpBindingInput;
 import top.yealike.pep.control.agents.store.AgentStore.SkillBindingInput;
 import top.yealike.pep.control.agents.store.PublicationStore;
+import top.yealike.pep.control.config.AiProperties;
+import top.yealike.pep.control.config.ModelGatewayProperties;
 
 /**
  * 演示环境幂等引导：补凭据、发布 MCP/Skill、绑定并发布 Agent。
@@ -46,7 +47,8 @@ import top.yealike.pep.control.agents.store.PublicationStore;
 public class PlatformBootstrap {
 
     private static final Logger log = LoggerFactory.getLogger(PlatformBootstrap.class);
-    private static final UserIdentity SYSTEM = new UserIdentity("system", "system", List.of("ADMIN"), List.of("*"), 1);
+    private static final UserIdentity SYSTEM =
+            new UserIdentity("system", "system", List.of("PLATFORM_ADMIN"), List.of("*"), 1);
     private static final Duration PUBLICATION_TIMEOUT = Duration.ofSeconds(90);
 
     private final PlatformProperties properties;
@@ -57,6 +59,7 @@ public class PlatformBootstrap {
     private final SkillService skills;
     private final AgentService agents;
     private final PublicationStore publications;
+    private final ModelGatewayProperties gatewayProperties;
     private final ExecutorService executor = new ThreadPoolExecutor(
             1,
             1,
@@ -78,7 +81,8 @@ public class PlatformBootstrap {
             McpService mcps,
             SkillService skills,
             AgentService agents,
-            PublicationStore publications) {
+            PublicationStore publications,
+            ModelGatewayProperties gatewayProperties) {
         this.properties = properties;
         this.aiProperties = aiProperties;
         this.credentials = credentials;
@@ -87,6 +91,7 @@ public class PlatformBootstrap {
         this.skills = skills;
         this.agents = agents;
         this.publications = publications;
+        this.gatewayProperties = gatewayProperties;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -107,47 +112,20 @@ public class PlatformBootstrap {
 
     private void run() {
         PlatformProperties.Bootstrap config = properties.bootstrap();
-        Credential credential = ensureCredential(config);
-        if (credential == null) {
-            log.warn("AI platform bootstrap skipped: 未提供模型密钥且不存在已有凭据");
-            return;
-        }
-        ModelProfile model = ensureModel(config, credential);
+        ModelProfile model = ensureModel(config);
         McpRelease mcp = ensureMcp(config);
         List<SkillRelease> skillReleases = ensureSkills(config);
         ensureAgent(model, mcp, skillReleases, config);
     }
 
-    private Credential ensureCredential(PlatformProperties.Bootstrap config) {
-        String key = config.modelCredentialKey();
-        Credential existing = credentials.list().stream()
-                .filter(item -> item.key().equals(key))
-                .findFirst()
-                .orElse(null);
-        if (existing != null) {
-            return existing;
-        }
-        String secret = config.modelApiKey();
-        if (secret == null || secret.isBlank()) {
-            return null;
-        }
-        return credentials.create(SYSTEM, key, "模型默认凭据", secret);
-    }
-
-    private ModelProfile ensureModel(PlatformProperties.Bootstrap config, Credential credential) {
+    private ModelProfile ensureModel(PlatformProperties.Bootstrap config) {
         ModelProfile model = models.list().stream()
                 .filter(item -> item.key().equals("deepseek-default"))
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("缺少模型草稿 deepseek-default"));
-        String baseUrl = blank(config.modelBaseUrl())
-                ? model.baseUrl()
-                : config.modelBaseUrl().strip();
-        String modelName = blank(config.modelName())
-                ? model.modelName()
-                : config.modelName().strip();
-        if (credential.id().equals(model.credentialId())
-                && baseUrl.equals(model.baseUrl())
-                && modelName.equals(model.modelName())) {
+        String baseUrl = gatewayBaseUrl();
+        String modelName = model.key();
+        if (model.credentialId() == null && baseUrl.equals(model.baseUrl()) && modelName.equals(model.modelName())) {
             return model;
         }
         return models.update(
@@ -157,9 +135,18 @@ public class PlatformBootstrap {
                 model.description(),
                 baseUrl,
                 modelName,
-                credential.id(),
+                null,
                 model.options(),
                 model.enabled());
+    }
+
+    private String gatewayBaseUrl() {
+        String base = gatewayProperties.getBaseUrl();
+        if (blank(base)) {
+            return "http://127.0.0.1:19085/v1";
+        }
+        String value = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
+        return value.endsWith("/v1") ? value : value + "/v1";
     }
 
     private McpRelease ensureMcp(PlatformProperties.Bootstrap config) {

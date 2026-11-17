@@ -68,7 +68,7 @@
                 <foreach collection="tagFilters" index="tagKey" item="tagValue">
                     and exists (
                         select 1
-                        from ipe_ops.device_tag t
+                        from pep_domain.device_tag t
                         where t.device_id = d.id
                           and t.tag_key = #{tagKey}
                           and t.tag_value = #{tagValue}
@@ -80,32 +80,32 @@
 
     <select id="selectById" resultMap="DeviceInstanceMap">
         select <include refid="columns"/>
-        from ipe_ops.device_instance
+        from pep_domain.device_instance
         where id = #{id}
     </select>
 
     <select id="selectByDeviceCode" resultMap="DeviceInstanceMap">
         select <include refid="columns"/>
-        from ipe_ops.device_instance
+        from pep_domain.device_instance
         where device_code = #{deviceCode}
     </select>
 
     <select id="selectByProtocolAndProtocolDeviceId" resultMap="DeviceInstanceMap">
         select <include refid="columns"/>
-        from ipe_ops.device_instance
+        from pep_domain.device_instance
         where protocol = #{protocol}
           and protocol_device_id = #{protocolDeviceId}
     </select>
 
     <select id="selectAll" resultMap="DeviceInstanceMap">
         select <include refid="columns"/>
-        from ipe_ops.device_instance
+        from pep_domain.device_instance
         order by id
     </select>
 
     <select id="selectByIds" resultMap="DeviceInstanceMap">
         select <include refid="columns"/>
-        from ipe_ops.device_instance
+        from pep_domain.device_instance
         where id in
         <foreach collection="ids" item="id" open="(" separator="," close=")">
             #{id}
@@ -115,28 +115,28 @@
 
     <select id="selectByStationId" resultMap="DeviceInstanceMap">
         select <include refid="columns"/>
-        from ipe_ops.device_instance
+        from pep_domain.device_instance
         where station_id = #{stationId}
         order by id
     </select>
 
     <select id="selectByProductId" resultMap="DeviceInstanceMap">
         select <include refid="columns"/>
-        from ipe_ops.device_instance
+        from pep_domain.device_instance
         where product_id = #{productId}
         order by id
     </select>
 
     <select id="selectByDeviceType" resultMap="DeviceInstanceMap">
         select <include refid="columns"/>
-        from ipe_ops.device_instance
+        from pep_domain.device_instance
         where device_type = #{deviceType}
         order by id
     </select>
 
     <select id="search" resultMap="DeviceInstanceMap">
         select <include refid="columns"/>
-        from ipe_ops.device_instance d
+        from pep_domain.device_instance d
         <include refid="searchWhere"/>
         order by ${orderBy}
         limit #{limit} offset #{offset}
@@ -144,16 +144,16 @@
 
     <select id="countSearch" resultType="long">
         select count(*)
-        from ipe_ops.device_instance d
+        from pep_domain.device_instance d
         <include refid="searchWhere"/>
     </select>
 
     <select id="selectCountByProductId" resultType="long">
-        select count(*) from ipe_ops.device_instance where product_id = #{productId}
+        select count(*) from pep_domain.device_instance where product_id = #{productId}
     </select>
 
     <update id="expireGatewayDevices">
-        update ipe_ops.device_instance
+        update pep_domain.device_instance
         set state = 'OFFLINE',
             session_id = null,
             updated_at = #{now}
@@ -163,7 +163,7 @@
     </update>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        insert into ipe_ops.device_instance
+        insert into pep_domain.device_instance
             (device_code, name, product_id, device_type, protocol, protocol_device_id, station_id,
              parent_id, state, enabled, allow_simulate, allow_work, derive_metadata, configuration,
              scene_anchor, session_id, last_seen, online_at, registry_time, remark, created_at, updated_at)
@@ -176,7 +176,7 @@
     </insert>
 
     <update id="update">
-        update ipe_ops.device_instance
+        update pep_domain.device_instance
         set device_code = #{deviceCode},
             name = #{name},
             product_id = #{productId},
@@ -203,31 +203,31 @@
     </update>
 
     <select id="hasDeletionBlockers" resultType="boolean">
-        select exists (select 1 from ipe_ops.device_instance where parent_id = #{id})
-            or exists (select 1 from ipe_ops.charge_order where device_id = #{id})
-            or exists (select 1 from ipe_ops.bill where device_id = #{id})
-            or exists (select 1 from ipe_ops.alarm_rule where device_id = #{id})
-            or exists (select 1 from ipe_ops.alarm_record where device_id = #{id})
-            or exists (select 1 from ipe_ops.device_property_ts where device_id = #{id})
-            or exists (select 1 from ipe_ops.device_event_log where device_id = #{id})
-            or exists (select 1 from ipe_ops.command_record where device_id = #{id})
-            or exists (select 1 from ipe_ops.frame_log where device_id = #{id})
-            or exists (select 1 from ipe_ops.trouble_case where device_id = #{id})
+        select exists (select 1 from pep_domain.device_instance where parent_id = #{id})
+            or exists (select 1 from pep_domain.charge_order where device_id = #{id})
+            or exists (select 1 from pep_domain.bill where device_id = #{id})
+            or exists (select 1 from pep_domain.alarm_rule where device_id = #{id})
+            or exists (select 1 from pep_domain.alarm_record where device_id = #{id})
+            or exists (select 1 from pep_domain.device_property_ts where device_id = #{id})
+            or exists (select 1 from pep_domain.device_event_log where device_id = #{id})
+            or exists (select 1 from pep_domain.command_record where device_id = #{id})
+            or exists (select 1 from pep_domain.frame_log where device_id = #{id})
+            or exists (select 1 from pep_domain.trouble_case where device_id = #{id})
     </select>
 
     <delete id="deleteTags">
-        delete from ipe_ops.device_tag where device_id = #{id}
+        delete from pep_domain.device_tag where device_id = #{id}
     </delete>
 
     <delete id="deleteChannels">
-        delete from ipe_ops.device_channel where device_id = #{id}
+        delete from pep_domain.device_channel where device_id = #{id}
     </delete>
 
     <delete id="deleteLatestProperties">
-        delete from ipe_ops.device_property_latest where device_id = #{id}
+        delete from pep_domain.device_property_latest where device_id = #{id}
     </delete>
 
     <delete id="deleteById">
-        delete from ipe_ops.device_instance where id = #{id}
+        delete from pep_domain.device_instance where id = #{id}
     </delete>
 </mapper>

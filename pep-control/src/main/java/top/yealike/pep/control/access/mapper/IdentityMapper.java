@@ -37,6 +37,8 @@ public interface IdentityMapper {
 
     int insertUser(@Param("user") OpsUser user, @Param("allStations") boolean allStations);
 
+    int insertMemberships(@Param("userId") long userId);
+
     int updateUserAccess(
             @Param("id") long id, @Param("enabled") boolean enabled, @Param("allStations") boolean allStations);
 

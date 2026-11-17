@@ -10,6 +10,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import top.yealike.pep.control.api.dto.OpsDtos;
 import top.yealike.pep.control.charging.mapper.RateModelMapper;
+import top.yealike.pep.control.charging.service.RateModelService;
 
 class RateModelServiceTest {
     @Test

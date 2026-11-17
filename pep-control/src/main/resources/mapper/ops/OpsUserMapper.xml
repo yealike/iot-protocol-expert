@@ -13,13 +13,18 @@
     </resultMap>
 
     <select id="selectByUsername" resultMap="OpsUserMap">
-        select id, username, password_hash, enabled, created_at
-        from ipe_ops.ops_user
+        select id, username, password_hash, (state = 'ACTIVE') as enabled, created_at
+        from pep_platform.app_user
         where username = #{username}
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        insert into ipe_ops.ops_user (username, password_hash, enabled, created_at)
-        values (#{username}, #{passwordHash}, #{enabled}, #{createdAt})
+        insert into pep_platform.app_user
+            (username, password_hash, enabled, created_at, issuer, subject, display_name,
+             state, tenant_id, updated_at)
+        values (#{username}, #{passwordHash}, #{enabled}, #{createdAt},
+                'local', #{username}, #{username},
+                case when #{enabled} then 'ACTIVE' else 'DISABLED' end,
+                '00000000-0000-0000-0000-000000000001', now())
     </insert>
 </mapper>

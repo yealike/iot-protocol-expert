@@ -11,8 +11,26 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.mybatis.spring.SqlSessionFactoryBean;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
+import top.yealike.pep.control.access.domain.OpsUser;
+import top.yealike.pep.control.access.mapper.IdentityMapper;
+import top.yealike.pep.control.access.mapper.OpsUserMapper;
 import top.yealike.pep.control.alarms.entity.AlarmRecord;
 import top.yealike.pep.control.alarms.entity.AlarmRule;
+import top.yealike.pep.control.alarms.mapper.AlarmRecordMapper;
+import top.yealike.pep.control.alarms.mapper.AlarmRuleMapper;
+import top.yealike.pep.control.audit.AuditLog;
+import top.yealike.pep.control.audit.mapper.AuditLogMapper;
+import top.yealike.pep.control.charging.domain.Bill;
+import top.yealike.pep.control.charging.domain.ChargeOrder;
+import top.yealike.pep.control.charging.domain.CommandRecord;
+import top.yealike.pep.control.charging.domain.RateModel;
+import top.yealike.pep.control.charging.domain.Station;
+import top.yealike.pep.control.charging.mapper.BillMapper;
+import top.yealike.pep.control.charging.mapper.ChargeOrderMapper;
+import top.yealike.pep.control.charging.mapper.CommandRecordMapper;
+import top.yealike.pep.control.charging.mapper.RateModelMapper;
+import top.yealike.pep.control.charging.mapper.StationMapper;
+import top.yealike.pep.control.devices.domain.FrameLog;
 import top.yealike.pep.control.devices.entity.DeviceChannel;
 import top.yealike.pep.control.devices.entity.DeviceEventLog;
 import top.yealike.pep.control.devices.entity.DeviceInstance;
@@ -20,15 +38,18 @@ import top.yealike.pep.control.devices.entity.DevicePropertyLatest;
 import top.yealike.pep.control.devices.entity.DevicePropertyTs;
 import top.yealike.pep.control.devices.entity.DeviceTag;
 import top.yealike.pep.control.devices.entity.Product;
-import top.yealike.pep.control.audit.AuditLog;
-import top.yealike.pep.control.charging.domain.Bill;
-import top.yealike.pep.control.charging.domain.ChargeOrder;
-import top.yealike.pep.control.charging.domain.CommandRecord;
-import top.yealike.pep.control.devices.domain.FrameLog;
-import top.yealike.pep.control.access.domain.OpsUser;
-import top.yealike.pep.control.charging.domain.RateModel;
-import top.yealike.pep.control.charging.domain.Station;
+import top.yealike.pep.control.devices.mapper.DeviceChannelMapper;
+import top.yealike.pep.control.devices.mapper.DeviceEventLogMapper;
+import top.yealike.pep.control.devices.mapper.DeviceInstanceMapper;
+import top.yealike.pep.control.devices.mapper.DevicePropertyLatestMapper;
+import top.yealike.pep.control.devices.mapper.DevicePropertyTsMapper;
+import top.yealike.pep.control.devices.mapper.DeviceTagMapper;
+import top.yealike.pep.control.devices.mapper.FrameLogMapper;
+import top.yealike.pep.control.devices.mapper.ProductMapper;
+import top.yealike.pep.control.devices.mapper.ProtocolDocumentMapper;
 import top.yealike.pep.control.diagnostic.TroubleCase;
+import top.yealike.pep.control.diagnostic.mapper.TroubleCaseMapper;
+import top.yealike.pep.control.telemetry.mapper.OrderTelemetryMapper;
 
 @EnabledIfEnvironmentVariable(named = "IPE_OPS_DB_URL", matches = ".+")
 class MapperWriteSmokeTest {
@@ -269,7 +290,8 @@ class MapperWriteSmokeTest {
                 identities.deleteUserStations(managed.id);
                 String testRole = "T" + suffix;
                 try (var statement = session.getConnection()
-                        .prepareStatement("insert into ipe_ops.iam_role(code, name) values (?, ?)")) {
+                        .prepareStatement("insert into pep_platform.role(id, code, name, scope_type, built_in) "
+                                + "values (gen_random_uuid(), ?, ?, 'PROJECT', false)")) {
                     statement.setString(1, testRole);
                     statement.setString(2, "test");
                     assertEquals(1, statement.executeUpdate());

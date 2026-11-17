@@ -15,7 +15,7 @@
 
     <select id="selectByProtocolAndVersion" resultMap="ProtocolDocMap">
         select id, protocol, version, title, source, created_at
-        from ipe_ops.protocol_doc
+        from pep_domain.protocol_doc
         where protocol = #{protocol}
           and version = #{version}
     </select>

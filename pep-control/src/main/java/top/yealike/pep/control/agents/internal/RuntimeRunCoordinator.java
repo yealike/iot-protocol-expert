@@ -13,7 +13,29 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import top.yealike.pep.control.access.UserIdentity;
+import top.yealike.pep.control.access.policy.PolicyService;
+import top.yealike.pep.control.agents.AgentService;
+import top.yealike.pep.control.agents.config.PlatformProperties;
+import top.yealike.pep.control.agents.credential.CredentialService;
+import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
+import top.yealike.pep.control.agents.domain.PlatformRecords.Credential;
+import top.yealike.pep.control.agents.domain.PlatformRecords.McpRelease;
+import top.yealike.pep.control.agents.domain.PlatformRecords.Publication;
+import top.yealike.pep.control.agents.model.GatewayTokenIssuer;
+import top.yealike.pep.control.agents.store.CredentialStore;
+import top.yealike.pep.control.agents.store.McpStore;
+import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.config.AiProperties;
+import top.yealike.pep.control.conversations.ConversationRecords.Citation;
+import top.yealike.pep.control.conversations.ConversationRecords.Message;
+import top.yealike.pep.control.conversations.ConversationRepository;
+import top.yealike.pep.control.integration.OpsIdentityClient;
+import top.yealike.pep.control.runs.RunEventService;
+import top.yealike.pep.control.runs.RunRecords;
+import top.yealike.pep.control.runs.RunRecords.Run;
+import top.yealike.pep.control.runs.RunRepository;
+import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.CredentialResolveRequest;
 import top.yealike.pep.runtime.contract.CredentialResolveResponse;
@@ -27,27 +49,6 @@ import top.yealike.pep.runtime.contract.RunMessage;
 import top.yealike.pep.runtime.contract.RunTerminalStatus;
 import top.yealike.pep.runtime.contract.ToolAuthorizeRequest;
 import top.yealike.pep.runtime.contract.ToolAuthorizeResponse;
-import top.yealike.pep.control.conversations.ConversationRecords.Citation;
-import top.yealike.pep.control.conversations.ConversationRecords.Message;
-import top.yealike.pep.control.conversations.ConversationRepository;
-import top.yealike.pep.control.access.UserIdentity;
-import top.yealike.pep.control.agents.AgentService;
-import top.yealike.pep.control.agents.config.PlatformProperties;
-import top.yealike.pep.control.agents.credential.CredentialService;
-import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
-import top.yealike.pep.control.agents.domain.PlatformRecords.Credential;
-import top.yealike.pep.control.agents.domain.PlatformRecords.McpRelease;
-import top.yealike.pep.control.agents.domain.PlatformRecords.Publication;
-import top.yealike.pep.control.integration.OpsIdentityClient;
-import top.yealike.pep.control.agents.store.CredentialStore;
-import top.yealike.pep.control.agents.store.McpStore;
-import top.yealike.pep.control.agents.store.PublicationStore;
-import top.yealike.pep.control.access.policy.PolicyService;
-import top.yealike.pep.control.runs.RunEventService;
-import top.yealike.pep.control.runs.RunRecords;
-import top.yealike.pep.control.runs.RunRecords.Run;
-import top.yealike.pep.control.runs.RunRepository;
-import top.yealike.pep.control.support.AiExceptions;
 
 /** 内部执行协调：claim/heartbeat/context/events/complete/authorize/credential。 */
 @Service
@@ -62,6 +63,7 @@ public class RuntimeRunCoordinator {
     private final McpStore mcps;
     private final CredentialStore credentialStore;
     private final CredentialService credentialService;
+    private final GatewayTokenIssuer gatewayTokens;
     private final PublicationStore publications;
     private final OpsIdentityClient identities;
     private final PolicyService policy;
@@ -78,6 +80,7 @@ public class RuntimeRunCoordinator {
             McpStore mcps,
             CredentialStore credentialStore,
             CredentialService credentialService,
+            GatewayTokenIssuer gatewayTokens,
             PublicationStore publications,
             OpsIdentityClient identities,
             PolicyService policy,
@@ -92,6 +95,7 @@ public class RuntimeRunCoordinator {
         this.mcps = mcps;
         this.credentialStore = credentialStore;
         this.credentialService = credentialService;
+        this.gatewayTokens = gatewayTokens;
         this.publications = publications;
         this.identities = identities;
         this.policy = policy;
@@ -337,7 +341,8 @@ public class RuntimeRunCoordinator {
                 .orElse(null);
         if (boundTool == null
                 || !mcps.toolCategories(mcpRelease.componentId())
-                        .getOrDefault(boundTool.name(), top.yealike.pep.runtime.contract.McpToolExecutionCategory.UNKNOWN)
+                        .getOrDefault(
+                                boundTool.name(), top.yealike.pep.runtime.contract.McpToolExecutionCategory.UNKNOWN)
                         .readOnly()) {
             return denied(run, ErrorCodes.TOOL_DENIED, "一期仅允许调用平台审核通过的只读工具");
         }
@@ -361,10 +366,11 @@ public class RuntimeRunCoordinator {
 
     public CredentialResolveResponse resolveCredential(CredentialResolveRequest request) {
         Set<String> allowedRefs = new java.util.HashSet<>();
+        Run resolvedRun = null;
         if (request.runId() != null) {
             requireActiveExecution(request.runId(), request.executionToken(), false);
-            Run run = runs.find(request.runId()).orElseThrow(() -> AiExceptions.notFound("Run 不存在"));
-            AgentRelease release = agents.release(run.agentReleaseId());
+            resolvedRun = runs.find(request.runId()).orElseThrow(() -> AiExceptions.notFound("Run 不存在"));
+            AgentRelease release = agents.release(resolvedRun.agentReleaseId());
             collectManifestCredentials(release.manifest(), allowedRefs);
         } else if (request.publicationId() != null) {
             Publication publication = publications.find(request.publicationId()).orElse(null);
@@ -378,6 +384,15 @@ public class RuntimeRunCoordinator {
         }
         if (request.credentialRef() == null || !allowedRefs.contains(request.credentialRef())) {
             throw AiExceptions.forbidden(ErrorCodes.CREDENTIAL_UNAVAILABLE, "运行清单未引用该凭据");
+        }
+        if (GatewayTokenIssuer.CREDENTIAL_REF.equals(request.credentialRef())) {
+            if (resolvedRun == null) {
+                throw AiExceptions.forbidden(ErrorCodes.CREDENTIAL_UNAVAILABLE, "只有运行中的 Run 可以获取模型网关凭据");
+            }
+            // 上游供应商密钥只在模型网关；Runtime 仅拿到受众限定的短期运行凭据。
+            String token = gatewayTokens.issueForRun(resolvedRun, resolvedRun.modelKey());
+            return new CredentialResolveResponse(
+                    request.credentialRef(), 1L, token, Instant.now().plusSeconds(600));
         }
         String secret = credentialService.resolve(request.credentialRef(), request.secretRevision());
         return new CredentialResolveResponse(

@@ -8,16 +8,44 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
-import top.yealike.pep.control.audit.AuditLog;
 import top.yealike.pep.control.access.domain.OpsUser;
-import top.yealike.pep.control.audit.mapper.AuditLogMapper;
 import top.yealike.pep.control.access.mapper.IdentityMapper;
+import top.yealike.pep.control.audit.AuditLog;
+import top.yealike.pep.control.audit.mapper.AuditLogMapper;
 
 @Service
 public class UserAdministrationService {
-    private static final Set<String> ROLES = Set.of("ADMIN", "OPS", "VIEWER");
-    private static final Set<String> PERMISSIONS =
-            Set.of("iam:user:manage", "ops:read", "ops:operate", "ops:manage", "ai:use", "ai:admin");
+    private static final Set<String> ROLES = Set.of(
+            "PLATFORM_ADMIN",
+            "TENANT_OWNER",
+            "PROJECT_ADMIN",
+            "OPERATOR",
+            "ANALYST",
+            "VIEWER",
+            "QUOTA_ADMIN",
+            "AUDITOR");
+    private static final Set<String> PERMISSIONS = Set.of(
+            "iam:user:manage",
+            "platform:admin",
+            "tenant:manage",
+            "project:create",
+            "project:manage",
+            "member:manage",
+            "ops:read",
+            "ops:operate",
+            "ops:manage",
+            "ai:use",
+            "ai:admin",
+            "agent:publish",
+            "device:manage",
+            "device:command:start",
+            "investigation:create",
+            "investigation:read",
+            "investigation:operate",
+            "simulation:run",
+            "quota:grant",
+            "usage:read",
+            "audit:read");
 
     public record Role(String code, String name, List<String> permissions) {}
 
@@ -57,7 +85,7 @@ public class UserAdministrationService {
     @Transactional
     public Role updateRole(String code, List<String> permissions, String actor) {
         if (!ROLES.contains(code) || permissions == null || !PERMISSIONS.containsAll(permissions)) throw bad("角色或权限无效");
-        if (code.equals("ADMIN") && !permissions.contains("iam:user:manage")) throw bad("管理员角色必须保留用户管理权限");
+        if (code.equals("PLATFORM_ADMIN") && !permissions.contains("iam:user:manage")) throw bad("平台管理员角色必须保留用户管理权限");
         if ((permissions.contains("ops:manage") || permissions.contains("ops:operate"))
                 && !permissions.contains("ops:read")) throw bad("运营操作和管理权限需要运营读取权限");
         if (permissions.contains("ai:admin") && !permissions.contains("ai:use")) throw bad("AI 管理权限需要 AI 使用权限");
@@ -82,6 +110,7 @@ public class UserAdministrationService {
         user.createdAt = LocalDateTime.now();
         iam.insertUser(user, change.allStations());
         long id = user.id;
+        iam.insertMemberships(id);
         assign(id, change);
         audit(actor, "USER_CREATE", "USER", String.valueOf(id));
         return identities.byId(id).orElseThrow();
@@ -93,7 +122,8 @@ public class UserAdministrationService {
         var target = identities.byId(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在"));
         if (!target.username().equals(change.username())) throw bad("用户名不能修改");
         if (target.username().equals(actor)
-                && (!change.enabled() || !change.roles().contains("ADMIN") || !change.allStations()))
+                && target.roles().contains("PLATFORM_ADMIN")
+                && (!change.enabled() || !change.roles().contains("PLATFORM_ADMIN") || !change.allStations()))
             throw bad("不能停用或移除自己的管理员权限");
         iam.updateUserAccess(id, change.enabled(), change.allStations());
         if (change.password() != null && !change.password().isBlank())

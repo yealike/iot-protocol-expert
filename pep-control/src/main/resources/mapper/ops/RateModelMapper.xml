@@ -28,19 +28,19 @@
 
     <select id="selectById" resultMap="RateModelMap">
         select <include refid="columns"/>
-        from ipe_ops.rate_model
+        from pep_domain.rate_model
         where id = #{id}
     </select>
 
     <select id="selectByModelNo" resultMap="RateModelMap">
         select <include refid="columns"/>
-        from ipe_ops.rate_model
+        from pep_domain.rate_model
         where model_no = #{modelNo}
     </select>
 
     <select id="selectTopActive" resultMap="RateModelMap">
         select <include refid="columns"/>
-        from ipe_ops.rate_model
+        from pep_domain.rate_model
         where active = true
         order by updated_at desc
         limit 1
@@ -48,12 +48,12 @@
 
     <select id="selectAll" resultMap="RateModelMap">
         select <include refid="columns"/>
-        from ipe_ops.rate_model
+        from pep_domain.rate_model
         order by id
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        insert into ipe_ops.rate_model
+        insert into pep_domain.rate_model
             (model_no, sharp_energy, sharp_service, peak_energy, peak_service, flat_energy,
              flat_service, valley_energy, valley_service, loss_ratio, segments, active, updated_at)
         values
@@ -63,7 +63,7 @@
     </insert>
 
     <update id="update">
-        update ipe_ops.rate_model
+        update pep_domain.rate_model
         set model_no = #{modelNo},
             sharp_energy = #{sharpEnergy},
             sharp_service = #{sharpService},

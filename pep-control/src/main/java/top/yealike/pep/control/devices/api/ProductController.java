@@ -8,11 +8,11 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-import top.yealike.pep.control.support.page.PageResult;
+import top.yealike.pep.control.audit.AuditService;
 import top.yealike.pep.control.devices.dto.DeviceDtos;
 import top.yealike.pep.control.devices.entity.Product;
 import top.yealike.pep.control.devices.service.ProductService;
-import top.yealike.pep.control.audit.AuditService;
+import top.yealike.pep.control.support.page.PageResult;
 
 /** 产品与物模型。 */
 @RestController

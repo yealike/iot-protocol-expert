@@ -18,8 +18,6 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import top.yealike.pep.runtime.contract.Digests;
-import top.yealike.pep.runtime.contract.McpToolDescriptor;
 import top.yealike.pep.control.access.UserIdentity;
 import top.yealike.pep.control.agents.credential.CredentialService;
 import top.yealike.pep.control.agents.domain.PlatformRecords.McpComponent;
@@ -30,6 +28,8 @@ import top.yealike.pep.control.agents.registry.NacosRegistryService;
 import top.yealike.pep.control.agents.store.CredentialStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
+import top.yealike.pep.runtime.contract.Digests;
+import top.yealike.pep.runtime.contract.McpToolDescriptor;
 
 class McpServicePublicationTest {
 

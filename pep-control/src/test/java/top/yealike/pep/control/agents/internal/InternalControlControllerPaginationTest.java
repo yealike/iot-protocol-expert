@@ -10,13 +10,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import top.yealike.pep.runtime.contract.AgentManifest;
-import top.yealike.pep.control.agents.mapper.InternalControlMapper;
 import top.yealike.pep.control.agents.AgentService;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
+import top.yealike.pep.control.agents.mapper.InternalControlMapper;
 import top.yealike.pep.control.agents.mcp.McpService;
 import top.yealike.pep.control.agents.skill.SkillService;
 import top.yealike.pep.control.agents.store.AgentStore;
+import top.yealike.pep.runtime.contract.AgentManifest;
 
 class InternalControlControllerPaginationTest {
 

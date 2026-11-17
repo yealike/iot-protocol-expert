@@ -8,9 +8,9 @@ import static org.mockito.Mockito.when;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
-import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 import top.yealike.pep.runtime.contract.ComponentEndpoint;
 import top.yealike.pep.runtime.contract.McpDescriptor;
+import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 
 class McpEndpointResolverTest {
 

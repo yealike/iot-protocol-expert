@@ -8,8 +8,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Component;
-import top.yealike.pep.runtime.config.RuntimeProperties;
 import top.yealike.pep.observability.ContentFilteringTracer;
+import top.yealike.pep.runtime.config.RuntimeProperties;
 
 /** 在真正执行 Agent/模型的 Runtime 进程注册 AgentScope 官方 GenAI 埋点。 */
 @Component

@@ -71,7 +71,7 @@ class TelemetryPipelineIntegrationTest {
                             throw new IllegalStateException(ex);
                         }
                     }));
-            assertEquals(1, jdbc.queryForObject("select count(*) from ipe_ops.order_telemetry_outbox", Integer.class));
+            assertEquals(1, jdbc.queryForObject("select count(*) from pep_domain.order_telemetry_outbox", Integer.class));
             var publisher = new TelemetryOutboxPublisher(telemetryMapper, store);
             tx.executeWithoutResult(status -> {
                 try {
@@ -80,7 +80,7 @@ class TelemetryPipelineIntegrationTest {
                     throw new IllegalStateException(ex);
                 }
             });
-            assertEquals(0, jdbc.queryForObject("select count(*) from ipe_ops.order_telemetry_outbox", Integer.class));
+            assertEquals(0, jdbc.queryForObject("select count(*) from pep_domain.order_telemetry_outbox", Integer.class));
             assertEquals(
                     0,
                     BigDecimal.TEN.compareTo(

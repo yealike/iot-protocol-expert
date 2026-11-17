@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 
 import org.junit.jupiter.api.Test;
-import top.yealike.pep.runtime.prepare.PreparedRelease;
 import top.yealike.pep.runtime.contract.RunDispatchRequest;
+import top.yealike.pep.runtime.prepare.PreparedRelease;
 
 class RunExecutionTest {
 

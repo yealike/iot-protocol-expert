@@ -11,7 +11,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import top.yealike.pep.runtime.contract.McpDescriptor;
 import top.yealike.pep.control.agents.credential.CredentialService;
 import top.yealike.pep.control.agents.domain.PlatformRecords.McpRelease;
 import top.yealike.pep.control.agents.registry.NacosRegistryService;
@@ -19,6 +18,7 @@ import top.yealike.pep.control.agents.store.CredentialStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.support.AiExceptions;
+import top.yealike.pep.runtime.contract.McpDescriptor;
 
 /** Control 描述符必须保留发现实例的 HTTPS 与路径/查询契约，供 prepare 直接使用。 */
 class McpServiceEndpointTest {

@@ -16,12 +16,12 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import top.yealike.pep.runtime.contract.Digests;
 import top.yealike.pep.control.access.UserIdentity;
 import top.yealike.pep.control.agents.domain.PlatformRecords.SkillComponent;
 import top.yealike.pep.control.agents.domain.PlatformRecords.SkillDraftFile;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
+import top.yealike.pep.runtime.contract.Digests;
 
 class SkillServicePublicationTest {
 

@@ -15,9 +15,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.yealike.pep.control.access.CurrentUser;
 import top.yealike.pep.control.access.UserIdentity;
-import top.yealike.pep.control.knowledge.KnowledgeService;
-import top.yealike.pep.control.agents.mapper.AuditLogMapper;
 import top.yealike.pep.control.access.policy.PolicyService;
+import top.yealike.pep.control.agents.mapper.AiAuditLogMapper;
+import top.yealike.pep.control.knowledge.KnowledgeService;
 
 /** 知识索引与策略管理。管理类接口要求 ADMIN，权限不自动等于可看所有业务数据。 */
 @RestController
@@ -27,9 +27,9 @@ public class AdminController {
 
     private final PolicyService policy;
     private final KnowledgeService knowledge;
-    private final AuditLogMapper mapper;
+    private final AiAuditLogMapper mapper;
 
-    public AdminController(PolicyService policy, KnowledgeService knowledge, AuditLogMapper mapper) {
+    public AdminController(PolicyService policy, KnowledgeService knowledge, AiAuditLogMapper mapper) {
         this.policy = policy;
         this.knowledge = knowledge;
         this.mapper = mapper;

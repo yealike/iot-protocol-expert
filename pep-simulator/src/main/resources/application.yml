@@ -5,11 +5,11 @@ spring:
   main:
     banner-mode: "off"
   application:
-    name: iot-protocol-expert-simulator
+    name: pep-simulator
   datasource:
-    url: ${IPE_SIMULATOR_DB_URL:${IPE_OPS_DB_URL:jdbc:postgresql://127.0.0.1:55432/ipe_ops}}
-    username: ${IPE_SIMULATOR_DB_USER:${IPE_OPS_DB_USER:ipe}}
-    password: ${IPE_SIMULATOR_DB_PASSWORD:${IPE_OPS_DB_PASSWORD:}}
+    url: ${IPE_SIMULATOR_DB_URL:${PEP_CONTROL_DB_URL:${IPE_OPS_DB_URL:jdbc:postgresql://127.0.0.1:55432/ipe_ops}}}
+    username: ${IPE_SIMULATOR_DB_USER:${PEP_CONTROL_DB_USER:${IPE_OPS_DB_USER:ipe}}}
+    password: ${IPE_SIMULATOR_DB_PASSWORD:${PEP_CONTROL_DB_PASSWORD:${IPE_OPS_DB_PASSWORD:}}}
     hikari:
       maximum-pool-size: 8
       minimum-idle: 1

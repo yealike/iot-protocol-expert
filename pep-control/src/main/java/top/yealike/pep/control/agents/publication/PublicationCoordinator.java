@@ -14,10 +14,6 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import top.yealike.pep.runtime.contract.ComponentNames;
-import top.yealike.pep.runtime.contract.ComponentType;
-import top.yealike.pep.runtime.contract.ErrorCodes;
-import top.yealike.pep.runtime.contract.ReleasePrepareRequest;
 import top.yealike.pep.control.agents.dispatch.RuntimeDispatchClient;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
 import top.yealike.pep.control.agents.domain.PlatformRecords.McpComponent;
@@ -32,6 +28,10 @@ import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
 import top.yealike.pep.control.support.AiExceptions;
+import top.yealike.pep.runtime.contract.ComponentNames;
+import top.yealike.pep.runtime.contract.ComponentType;
+import top.yealike.pep.runtime.contract.ErrorCodes;
+import top.yealike.pep.runtime.contract.ReleasePrepareRequest;
 
 /** 发布协调：outbox 触发 + publication 轮询，按阶段幂等推进，失败指数退避。 */
 @Service

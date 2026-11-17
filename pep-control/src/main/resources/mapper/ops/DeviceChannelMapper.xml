@@ -23,21 +23,21 @@
 
     <select id="selectByDeviceIdAndChannelNo" resultMap="DeviceChannelMap">
         select <include refid="columns"/>
-        from ipe_ops.device_channel
+        from pep_domain.device_channel
         where device_id = #{deviceId}
           and channel_no = #{channelNo}
     </select>
 
     <select id="selectByDeviceIdOrderByChannelNoAsc" resultMap="DeviceChannelMap">
         select <include refid="columns"/>
-        from ipe_ops.device_channel
+        from pep_domain.device_channel
         where device_id = #{deviceId}
         order by channel_no
     </select>
 
     <select id="selectByDeviceIds" resultMap="DeviceChannelMap">
         select <include refid="columns"/>
-        from ipe_ops.device_channel
+        from pep_domain.device_channel
         where device_id in
         <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
             #{deviceId}
@@ -46,18 +46,18 @@
     </select>
 
     <select id="countByDeviceId" resultType="long">
-        select count(*) from ipe_ops.device_channel where device_id = #{deviceId}
+        select count(*) from pep_domain.device_channel where device_id = #{deviceId}
     </select>
 
     <select id="countByDeviceIdAndChannelType" resultType="long">
         select count(*)
-        from ipe_ops.device_channel
+        from pep_domain.device_channel
         where device_id = #{deviceId}
           and channel_type = #{channelType}
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        insert into ipe_ops.device_channel
+        insert into pep_domain.device_channel
             (device_id, channel_no, channel_type, name, enabled, metadata, created_at, updated_at)
         values
             (#{deviceId}, #{channelNo}, #{channelType}, #{name}, #{enabled},
@@ -65,7 +65,7 @@
     </insert>
 
     <update id="update">
-        update ipe_ops.device_channel
+        update pep_domain.device_channel
         set device_id = #{deviceId},
             channel_no = #{channelNo},
             channel_type = #{channelType},
@@ -78,10 +78,10 @@
     </update>
 
     <delete id="deleteById">
-        delete from ipe_ops.device_channel where id = #{id}
+        delete from pep_domain.device_channel where id = #{id}
     </delete>
 
     <delete id="deleteByDeviceId">
-        delete from ipe_ops.device_channel where device_id = #{deviceId}
+        delete from pep_domain.device_channel where device_id = #{deviceId}
     </delete>
 </mapper>

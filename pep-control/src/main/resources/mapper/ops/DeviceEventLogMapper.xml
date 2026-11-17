@@ -21,7 +21,7 @@
 
     <select id="selectTopByDevice" resultMap="DeviceEventLogMap">
         select <include refid="columns"/>
-        from ipe_ops.device_event_log
+        from pep_domain.device_event_log
         where device_id = #{deviceId}
         order by occurred_at desc
         limit #{limit}
@@ -29,7 +29,7 @@
 
     <select id="selectTopByDevices" resultMap="DeviceEventLogMap">
         select <include refid="columns"/>
-        from ipe_ops.device_event_log
+        from pep_domain.device_event_log
         where device_id in
         <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
             #{deviceId}
@@ -39,7 +39,7 @@
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
-        insert into ipe_ops.device_event_log
+        insert into pep_domain.device_event_log
             (device_id, channel_no, event_id, level, content, occurred_at, created_at)
         values
             (#{deviceId}, #{channelNo}, #{eventId}, #{level}, cast(#{content} as jsonb),

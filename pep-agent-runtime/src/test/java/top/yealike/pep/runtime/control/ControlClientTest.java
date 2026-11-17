@@ -19,10 +19,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.json.JsonMapper;
 import top.yealike.pep.runtime.TestFixtures;
-import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 import top.yealike.pep.runtime.contract.InternalSignature;
 import top.yealike.pep.runtime.contract.RunCompletionRequest;
 import top.yealike.pep.runtime.contract.RunTerminalStatus;
+import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 
 class ControlClientTest {
 

@@ -14,9 +14,9 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import top.yealike.pep.control.access.UserIdentity;
 import top.yealike.pep.control.config.AiProperties;
 import top.yealike.pep.control.integration.OpsClient;
-import top.yealike.pep.control.access.UserIdentity;
 import top.yealike.pep.control.support.AiExceptions;
 
 /**

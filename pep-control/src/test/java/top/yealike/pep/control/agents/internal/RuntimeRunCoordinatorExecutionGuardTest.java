@@ -16,26 +16,27 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionStatus;
+import top.yealike.pep.control.access.policy.PolicyService;
+import top.yealike.pep.control.agents.AgentService;
+import top.yealike.pep.control.agents.config.PlatformProperties;
+import top.yealike.pep.control.agents.credential.CredentialService;
+import top.yealike.pep.control.agents.model.GatewayTokenIssuer;
+import top.yealike.pep.control.agents.store.CredentialStore;
+import top.yealike.pep.control.agents.store.McpStore;
+import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.config.AiProperties;
+import top.yealike.pep.control.conversations.ConversationRepository;
+import top.yealike.pep.control.integration.OpsIdentityClient;
+import top.yealike.pep.control.runs.RunEventService;
+import top.yealike.pep.control.runs.RunRecords.Run;
+import top.yealike.pep.control.runs.RunRepository;
+import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.CredentialResolveRequest;
 import top.yealike.pep.runtime.contract.RunCompletionRequest;
 import top.yealike.pep.runtime.contract.RunEventAck;
 import top.yealike.pep.runtime.contract.RunEventBatch;
 import top.yealike.pep.runtime.contract.RunTerminalStatus;
 import top.yealike.pep.runtime.contract.ToolAuthorizeRequest;
-import top.yealike.pep.control.conversations.ConversationRepository;
-import top.yealike.pep.control.agents.AgentService;
-import top.yealike.pep.control.agents.config.PlatformProperties;
-import top.yealike.pep.control.agents.credential.CredentialService;
-import top.yealike.pep.control.integration.OpsIdentityClient;
-import top.yealike.pep.control.agents.store.CredentialStore;
-import top.yealike.pep.control.agents.store.McpStore;
-import top.yealike.pep.control.agents.store.PublicationStore;
-import top.yealike.pep.control.access.policy.PolicyService;
-import top.yealike.pep.control.runs.RunEventService;
-import top.yealike.pep.control.runs.RunRecords.Run;
-import top.yealike.pep.control.runs.RunRepository;
-import top.yealike.pep.control.support.AiExceptions;
 
 class RuntimeRunCoordinatorExecutionGuardTest {
 
@@ -45,6 +46,7 @@ class RuntimeRunCoordinatorExecutionGuardTest {
     private final McpStore mcps = mock(McpStore.class);
     private final CredentialStore credentialStore = mock(CredentialStore.class);
     private final CredentialService credentialService = mock(CredentialService.class);
+    private final GatewayTokenIssuer gatewayTokens = mock(GatewayTokenIssuer.class);
     private final PublicationStore publications = mock(PublicationStore.class);
     private final OpsIdentityClient identities = mock(OpsIdentityClient.class);
     private final PolicyService policy = mock(PolicyService.class);
@@ -110,6 +112,7 @@ class RuntimeRunCoordinatorExecutionGuardTest {
                 mcps,
                 credentialStore,
                 credentialService,
+                gatewayTokens,
                 publications,
                 identities,
                 policy,

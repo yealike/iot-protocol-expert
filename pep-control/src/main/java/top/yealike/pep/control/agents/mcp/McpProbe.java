@@ -12,13 +12,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import org.springframework.stereotype.Component;
+import top.yealike.pep.control.support.AiExceptions;
+import top.yealike.pep.control.support.JsonSupport;
 import top.yealike.pep.runtime.contract.ComponentDigests;
 import top.yealike.pep.runtime.contract.ComponentEndpoint;
 import top.yealike.pep.runtime.contract.EndpointPolicy;
 import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.runtime.contract.McpToolDescriptor;
-import top.yealike.pep.control.support.AiExceptions;
-import top.yealike.pep.control.support.JsonSupport;
 
 /** 用官方 MCP SDK 做临时握手与全分页工具发现，不执行任何业务工具。 */
 @Component

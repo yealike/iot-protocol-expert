@@ -25,6 +25,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
     "top.yealike.pep.control.devices.mapper",
     "top.yealike.pep.control.diagnostic.mapper",
     "top.yealike.pep.control.evaluations.mapper",
+    "top.yealike.pep.control.investigations.mapper",
     "top.yealike.pep.control.knowledge.mapper",
     "top.yealike.pep.control.telemetry.mapper"
 })

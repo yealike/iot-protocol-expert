@@ -16,11 +16,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import top.yealike.pep.runtime.config.RuntimeProperties;
-import top.yealike.pep.runtime.control.ControlClient;
-import top.yealike.pep.runtime.control.ControlException;
-import top.yealike.pep.runtime.mcp.McpConnectionPool;
-import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
-import top.yealike.pep.runtime.skill.SkillPathGuard;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.ComponentDigests;
 import top.yealike.pep.runtime.contract.CredentialResolveRequest;
@@ -37,6 +32,11 @@ import top.yealike.pep.runtime.contract.SkillDescriptor;
 import top.yealike.pep.runtime.contract.SkillFile;
 import top.yealike.pep.runtime.contract.SkillFileInfo;
 import top.yealike.pep.runtime.contract.ToolAliasCodec;
+import top.yealike.pep.runtime.control.ControlClient;
+import top.yealike.pep.runtime.control.ControlException;
+import top.yealike.pep.runtime.mcp.McpConnectionPool;
+import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
+import top.yealike.pep.runtime.skill.SkillPathGuard;
 
 /**
  * 发布准备：在返回 READY 之前证明 MCP 与 Skill 依赖可发现，并冻结本次运行计划。

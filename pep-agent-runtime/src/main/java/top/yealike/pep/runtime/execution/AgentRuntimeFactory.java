@@ -8,6 +8,8 @@ import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import io.micrometer.core.instrument.MeterRegistry;
 import java.util.Map;
 import org.springframework.stereotype.Component;
+import top.yealike.pep.runtime.contract.AgentManifest;
+import top.yealike.pep.runtime.contract.McpDescriptor;
 import top.yealike.pep.runtime.control.ControlClient;
 import top.yealike.pep.runtime.mcp.McpAgentTool;
 import top.yealike.pep.runtime.mcp.McpConnectionPool;
@@ -16,8 +18,6 @@ import top.yealike.pep.runtime.observability.RuntimeObservability;
 import top.yealike.pep.runtime.prepare.PreparedRelease;
 import top.yealike.pep.runtime.prepare.PreparedTool;
 import top.yealike.pep.runtime.skill.SkillToolFactory;
-import top.yealike.pep.runtime.contract.AgentManifest;
-import top.yealike.pep.runtime.contract.McpDescriptor;
 
 /** 每个 Run 独立构建 Agent 与 Toolkit，避免用户间共享可变记忆或工具状态。 */
 @Component

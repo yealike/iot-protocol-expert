@@ -16,12 +16,12 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import top.yealike.pep.control.config.AiProperties;
-import top.yealike.pep.control.observability.AiObservability;
+import top.yealike.pep.control.access.policy.PolicyService;
 import top.yealike.pep.control.agents.AgentService;
 import top.yealike.pep.control.agents.config.PlatformProperties;
 import top.yealike.pep.control.agents.dispatch.RuntimeDispatchClient;
-import top.yealike.pep.control.access.policy.PolicyService;
+import top.yealike.pep.control.config.AiProperties;
+import top.yealike.pep.control.observability.AiObservability;
 import top.yealike.pep.control.runs.RunRecords.Run;
 
 class RunSchedulerLeaseTest {

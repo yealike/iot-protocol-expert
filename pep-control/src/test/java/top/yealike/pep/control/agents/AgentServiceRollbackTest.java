@@ -16,7 +16,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import top.yealike.pep.runtime.contract.AgentManifest;
+import top.yealike.pep.control.access.policy.PolicyService;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentComponent;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
 import top.yealike.pep.control.agents.domain.PlatformRecords.Publication;
@@ -25,7 +25,7 @@ import top.yealike.pep.control.agents.store.AgentStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
-import top.yealike.pep.control.access.policy.PolicyService;
+import top.yealike.pep.runtime.contract.AgentManifest;
 
 class AgentServiceRollbackTest {
 
