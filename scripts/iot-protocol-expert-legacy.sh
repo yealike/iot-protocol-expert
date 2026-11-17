@@ -3,8 +3,8 @@ set -euo pipefail
 
 BASE="$(cd "$(dirname "$0")" && pwd)"
 JAVA="${JAVA:-java}"
-PLATFORM_JAR="$BASE/iot-protocol-expert-protocol-1.0.0-exec.jar"
-SIMULATOR_JAR="$BASE/iot-protocol-expert-simulator-1.0.0.jar"
+PLATFORM_JAR="$BASE/../pep-device-gateway/target/pep-device-gateway-1.0.0.jar"
+SIMULATOR_JAR="$BASE/../pep-simulator/target/pep-simulator-1.0.0.jar"
 LOG_DIR="$BASE/logs"
 RUN_DIR="$BASE/run"
 

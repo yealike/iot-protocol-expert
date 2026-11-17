@@ -70,9 +70,9 @@ env['IPE_OTLP_ENDPOINT'] = 'http://127.0.0.1:' + str(receiver.server_port)
 env['IPE_ENVIRONMENT'] = 'verification'
 try:
     for name, jar, extra, port in [
-        ('protocol', 'iot-protocol-expert-protocol/target/iot-protocol-expert-protocol-1.0.0-exec.jar',
+        ('protocol', 'pep-device-gateway/target/pep-device-gateway-1.0.0.jar',
          ['--ipe.protocol.tcp-port=28768', '--spring.datasource.url=jdbc:h2:file:./protocol;MODE=PostgreSQL;DB_CLOSE_ON_EXIT=FALSE'], 29080),
-        ('simulator', 'iot-protocol-expert-simulator/target/iot-protocol-expert-simulator-1.0.0.jar',
+        ('simulator', 'pep-simulator/target/pep-simulator-1.0.0.jar',
          ['--ipe.simulator.platform-port=28768', '--ipe.simulator.platform-http-port=29080', '--ipe.simulator.state-file=./simulator.properties'], 29081)
     ]:
         stream = (work / (name + '.log')).open('wb')
