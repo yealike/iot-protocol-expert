@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.simulator.mapper.SimulatorStateMapper">
+
+    <select id="selectSnapshot" resultType="string">
+        SELECT snapshot
+        FROM ipe_simulator.device_state
+        WHERE state_key = #{stateKey}
+    </select>
+
+    <insert id="upsertState">
+        INSERT INTO ipe_simulator.device_state (state_key, device_id, protocol, pile_code, snapshot)
+        VALUES (#{stateKey}, #{deviceId}, #{protocol}, #{pileCode}, #{snapshot})
+        ON CONFLICT (state_key)
+        DO UPDATE SET snapshot = EXCLUDED.snapshot, updated_at = current_timestamp
+    </insert>
+
+    <insert id="insertChargingRecords">
+        INSERT INTO ipe_simulator.charging_record
+            (state_key, transaction_no, device_id, protocol, pile_code, gun_no, start_time, end_time,
+             meter_start, meter_end, total_energy, loss_total_energy, total_amount, stop_reason, bill)
+        VALUES
+        <foreach collection="rows" item="row" separator=",">
+            (#{row.stateKey}, #{row.transactionNo}, #{row.deviceId}, #{row.protocol}, #{row.pileCode},
+             #{row.gunNo}, #{row.startTime}, #{row.endTime}, #{row.meterStart}, #{row.meterEnd},
+             #{row.totalEnergy}, #{row.lossTotalEnergy}, #{row.totalAmount}, #{row.stopReason},
+             cast(#{row.billJson} as jsonb))
+        </foreach>
+        ON CONFLICT (state_key, transaction_no) DO NOTHING
+    </insert>
+</mapper>

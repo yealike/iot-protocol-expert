@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.control.devices.mapper.ProductMapper">
+
+    <resultMap id="ProductMap" type="top.yealike.pep.control.devices.entity.Product">
+        <id property="id" column="id"/>
+        <result property="productCode" column="product_code"/>
+        <result property="name" column="name"/>
+        <result property="categoryCode" column="category_code"/>
+        <result property="deviceType" column="device_type"/>
+        <result property="protocol" column="protocol"/>
+        <result property="protocolDocumentId" column="protocol_document_id"/>
+        <result property="transport" column="transport"/>
+        <result property="vendor" column="vendor"/>
+        <result property="model" column="model"/>
+        <result property="metadata" column="metadata"/>
+        <result property="configuration" column="configuration"/>
+        <result property="sceneModel" column="scene_model"/>
+        <result property="description" column="description"/>
+        <result property="state" column="state"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="columns">
+        id, product_code, name, category_code, device_type, protocol, protocol_document_id,
+        transport, vendor, model, metadata::text as metadata, configuration::text as configuration,
+        scene_model, description, state, created_at, updated_at
+    </sql>
+
+    <sql id="searchWhere">
+        <where>
+            <if test="keyword != null and keyword != ''">
+                and (
+                    lower(product_code) like lower(concat('%', #{keyword}, '%'))
+                    or lower(name) like lower(concat('%', #{keyword}, '%'))
+                    or lower(model) like lower(concat('%', #{keyword}, '%'))
+                )
+            </if>
+            <if test="deviceType != null and deviceType != ''">
+                and device_type = #{deviceType}
+            </if>
+            <if test="categoryCode != null and categoryCode != ''">
+                and category_code = #{categoryCode}
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectById" resultMap="ProductMap">
+        select <include refid="columns"/>
+        from ipe_ops.product
+        where id = #{id}
+    </select>
+
+    <select id="selectByProductCode" resultMap="ProductMap">
+        select <include refid="columns"/>
+        from ipe_ops.product
+        where product_code = #{productCode}
+    </select>
+
+    <select id="selectAllOrderByIdAsc" resultMap="ProductMap">
+        select <include refid="columns"/>
+        from ipe_ops.product
+        order by id
+    </select>
+
+    <select id="selectByIds" resultMap="ProductMap">
+        select <include refid="columns"/>
+        from ipe_ops.product
+        where id in
+        <foreach collection="ids" item="id" open="(" separator="," close=")">
+            #{id}
+        </foreach>
+        order by id
+    </select>
+
+    <select id="selectByProtocolAndState" resultMap="ProductMap">
+        select <include refid="columns"/>
+        from ipe_ops.product
+        where protocol = #{protocol}
+          and state = #{state}
+        order by id
+    </select>
+
+    <select id="search" resultMap="ProductMap">
+        select <include refid="columns"/>
+        from ipe_ops.product
+        <include refid="searchWhere"/>
+        order by ${orderBy}
+        limit #{limit} offset #{offset}
+    </select>
+
+    <select id="countSearch" resultType="long">
+        select count(*)
+        from ipe_ops.product
+        <include refid="searchWhere"/>
+    </select>
+
+    <select id="count" resultType="long">
+        select count(*) from ipe_ops.product
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        insert into ipe_ops.product
+            (product_code, name, category_code, device_type, protocol, protocol_document_id,
+             transport, vendor, model, metadata, configuration, scene_model, description, state,
+             created_at, updated_at)
+        values
+            (#{productCode}, #{name}, #{categoryCode}, #{deviceType}, #{protocol}, #{protocolDocumentId},
+             #{transport}, #{vendor}, #{model}, cast(#{metadata} as jsonb), cast(#{configuration} as jsonb),
+             #{sceneModel}, #{description}, #{state}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <update id="update">
+        update ipe_ops.product
+        set product_code = #{productCode},
+            name = #{name},
+            category_code = #{categoryCode},
+            device_type = #{deviceType},
+            protocol = #{protocol},
+            protocol_document_id = #{protocolDocumentId},
+            transport = #{transport},
+            vendor = #{vendor},
+            model = #{model},
+            metadata = cast(#{metadata} as jsonb),
+            configuration = cast(#{configuration} as jsonb),
+            scene_model = #{sceneModel},
+            description = #{description},
+            state = #{state},
+            created_at = #{createdAt},
+            updated_at = #{updatedAt}
+        where id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        delete from ipe_ops.product where id = #{id}
+    </delete>
+</mapper>

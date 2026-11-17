@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.control.agents.mapper.PermissionPolicyMapper">
+
+    <resultMap id="RuleMap" type="top.yealike.pep.control.access.policy.PolicyService$Rule">
+        <constructor>
+            <arg column="role" javaType="java.lang.String"/>
+            <arg column="agent_keys" javaType="java.util.Set" typeHandler="top.yealike.pep.control.mybatis.JsonStringSetTypeHandler"/>
+            <arg column="tool_names" javaType="java.util.Set" typeHandler="top.yealike.pep.control.mybatis.JsonStringSetTypeHandler"/>
+            <arg column="station_scope" javaType="java.util.Set" typeHandler="top.yealike.pep.control.mybatis.JsonStringSetTypeHandler"/>
+        </constructor>
+    </resultMap>
+
+    <select id="selectEnabled" resultMap="RuleMap">
+        select role, agent_keys, tool_names, station_scope from ai_permission_policy where enabled = true and environment in ('*', #{environment})
+    </select>
+
+    <select id="selectLatestVersion" resultType="java.lang.String">
+        select policy_version from ai_permission_policy order by updated_at desc limit 1
+    </select>
+</mapper>

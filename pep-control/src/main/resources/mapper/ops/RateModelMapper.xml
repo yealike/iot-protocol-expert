@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.control.charging.mapper.RateModelMapper">
+
+    <resultMap id="RateModelMap" type="top.yealike.pep.control.charging.domain.RateModel">
+        <id property="id" column="id"/>
+        <result property="modelNo" column="model_no"/>
+        <result property="sharpEnergy" column="sharp_energy"/>
+        <result property="sharpService" column="sharp_service"/>
+        <result property="peakEnergy" column="peak_energy"/>
+        <result property="peakService" column="peak_service"/>
+        <result property="flatEnergy" column="flat_energy"/>
+        <result property="flatService" column="flat_service"/>
+        <result property="valleyEnergy" column="valley_energy"/>
+        <result property="valleyService" column="valley_service"/>
+        <result property="lossRatio" column="loss_ratio"/>
+        <result property="segments" column="segments"/>
+        <result property="active" column="active"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="columns">
+        id, model_no, sharp_energy, sharp_service, peak_energy, peak_service, flat_energy,
+        flat_service, valley_energy, valley_service, loss_ratio, segments, active, updated_at
+    </sql>
+
+    <select id="selectById" resultMap="RateModelMap">
+        select <include refid="columns"/>
+        from ipe_ops.rate_model
+        where id = #{id}
+    </select>
+
+    <select id="selectByModelNo" resultMap="RateModelMap">
+        select <include refid="columns"/>
+        from ipe_ops.rate_model
+        where model_no = #{modelNo}
+    </select>
+
+    <select id="selectTopActive" resultMap="RateModelMap">
+        select <include refid="columns"/>
+        from ipe_ops.rate_model
+        where active = true
+        order by updated_at desc
+        limit 1
+    </select>
+
+    <select id="selectAll" resultMap="RateModelMap">
+        select <include refid="columns"/>
+        from ipe_ops.rate_model
+        order by id
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        insert into ipe_ops.rate_model
+            (model_no, sharp_energy, sharp_service, peak_energy, peak_service, flat_energy,
+             flat_service, valley_energy, valley_service, loss_ratio, segments, active, updated_at)
+        values
+            (#{modelNo}, #{sharpEnergy}, #{sharpService}, #{peakEnergy}, #{peakService}, #{flatEnergy},
+             #{flatService}, #{valleyEnergy}, #{valleyService}, #{lossRatio}, #{segments}, #{active},
+             #{updatedAt})
+    </insert>
+
+    <update id="update">
+        update ipe_ops.rate_model
+        set model_no = #{modelNo},
+            sharp_energy = #{sharpEnergy},
+            sharp_service = #{sharpService},
+            peak_energy = #{peakEnergy},
+            peak_service = #{peakService},
+            flat_energy = #{flatEnergy},
+            flat_service = #{flatService},
+            valley_energy = #{valleyEnergy},
+            valley_service = #{valleyService},
+            loss_ratio = #{lossRatio},
+            segments = #{segments},
+            active = #{active},
+            updated_at = #{updatedAt}
+        where id = #{id}
+    </update>
+</mapper>

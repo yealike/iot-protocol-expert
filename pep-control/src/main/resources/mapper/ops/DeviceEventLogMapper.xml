@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.control.devices.mapper.DeviceEventLogMapper">
+
+    <resultMap id="DeviceEventLogMap" type="top.yealike.pep.control.devices.entity.DeviceEventLog">
+        <id property="id" column="id"/>
+        <result property="deviceId" column="device_id"/>
+        <result property="channelNo" column="channel_no"/>
+        <result property="eventId" column="event_id"/>
+        <result property="level" column="level"/>
+        <result property="content" column="content"/>
+        <result property="occurredAt" column="occurred_at"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="columns">
+        id, device_id, channel_no, event_id, level, content::text as content, occurred_at, created_at
+    </sql>
+
+    <select id="selectTopByDevice" resultMap="DeviceEventLogMap">
+        select <include refid="columns"/>
+        from ipe_ops.device_event_log
+        where device_id = #{deviceId}
+        order by occurred_at desc
+        limit #{limit}
+    </select>
+
+    <select id="selectTopByDevices" resultMap="DeviceEventLogMap">
+        select <include refid="columns"/>
+        from ipe_ops.device_event_log
+        where device_id in
+        <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
+            #{deviceId}
+        </foreach>
+        order by occurred_at desc
+        limit #{limit}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        insert into ipe_ops.device_event_log
+            (device_id, channel_no, event_id, level, content, occurred_at, created_at)
+        values
+            (#{deviceId}, #{channelNo}, #{eventId}, #{level}, cast(#{content} as jsonb),
+             #{occurredAt}, #{createdAt})
+    </insert>
+</mapper>

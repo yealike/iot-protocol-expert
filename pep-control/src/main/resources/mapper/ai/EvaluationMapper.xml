@@ -1,0 +1,292 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.control.evaluations.mapper.EvaluationMapper">
+
+    <resultMap id="DatasetMap" type="top.yealike.pep.control.evaluations.EvaluationRecords$Dataset">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="dataset_key" javaType="java.lang.String"/>
+            <arg column="name" javaType="java.lang.String"/>
+            <arg column="description" javaType="java.lang.String"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="revision" javaType="_long"/>
+            <arg column="owner_id" javaType="java.lang.String"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+            <arg column="updated_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="CaseMap" type="top.yealike.pep.control.evaluations.EvaluationRecords$Case">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="dataset_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="case_key" javaType="java.lang.String"/>
+            <arg column="input_json" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="expected_output_json" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="assertions_json" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="tags_json" javaType="java.util.List" typeHandler="top.yealike.pep.control.mybatis.JsonStringListTypeHandler"/>
+            <arg column="weight" javaType="java.math.BigDecimal"/>
+            <arg column="enabled" javaType="_boolean"/>
+            <arg column="revision" javaType="_long"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+            <arg column="updated_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="EvalRunMap" type="top.yealike.pep.control.evaluations.EvaluationRecords$EvalRun">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="mode" javaType="java.lang.String"/>
+            <arg column="dataset_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="dataset_revision" javaType="java.lang.Long"/>
+            <arg column="agent_key" javaType="java.lang.String"/>
+            <arg column="agent_version" javaType="java.lang.String"/>
+            <arg column="agent_release_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="manifest_digest" javaType="java.lang.String"/>
+            <arg column="evaluator_snapshot" javaType="java.util.List" typeHandler="top.yealike.pep.control.mybatis.JsonMapListTypeHandler"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="requested_by" javaType="java.lang.String"/>
+            <arg column="requested_roles" javaType="java.util.List" typeHandler="top.yealike.pep.control.mybatis.JsonStringListTypeHandler"/>
+            <arg column="requested_permissions" javaType="java.util.List" typeHandler="top.yealike.pep.control.mybatis.JsonStringListTypeHandler"/>
+            <arg column="requested_auth_version" javaType="_long"/>
+            <arg column="total_items" javaType="_int"/>
+            <arg column="completed_items" javaType="_int"/>
+            <arg column="failed_items" javaType="_int"/>
+            <arg column="config_json" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="summary_json" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="error_code" javaType="java.lang.String"/>
+            <arg column="error_message" javaType="java.lang.String"/>
+            <arg column="started_at" javaType="java.time.Instant"/>
+            <arg column="finished_at" javaType="java.time.Instant"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+            <arg column="updated_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="ResultMap" type="top.yealike.pep.control.evaluations.EvaluationRecords$Result">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="eval_run_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="case_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="case_revision" javaType="java.lang.Long"/>
+            <arg column="conversation_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="run_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="trace_id" javaType="java.lang.String"/>
+            <arg column="root_span_id" javaType="java.lang.String"/>
+            <arg column="final_status" javaType="java.lang.String"/>
+            <arg column="input_snapshot" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="expected_snapshot" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="output_snapshot" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="duration_ms" javaType="java.lang.Long"/>
+            <arg column="input_tokens" javaType="java.lang.Long"/>
+            <arg column="output_tokens" javaType="java.lang.Long"/>
+            <arg column="estimated_cost" javaType="java.math.BigDecimal"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="error_code" javaType="java.lang.String"/>
+            <arg column="error_message" javaType="java.lang.String"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+            <arg column="updated_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="ScoreMap" type="top.yealike.pep.control.evaluations.EvaluationRecords$Score">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="result_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="evaluator_key" javaType="java.lang.String"/>
+            <arg column="evaluator_version" javaType="_long"/>
+            <arg column="scope" javaType="java.lang.String"/>
+            <arg column="trace_id" javaType="java.lang.String"/>
+            <arg column="span_id" javaType="java.lang.String"/>
+            <arg column="metric_key" javaType="java.lang.String"/>
+            <arg column="score_type" javaType="java.lang.String"/>
+            <arg column="score_number" javaType="java.math.BigDecimal"/>
+            <arg column="score_boolean" javaType="java.lang.Boolean"/>
+            <arg column="score_label" javaType="java.lang.String"/>
+            <arg column="score_text" javaType="java.lang.String"/>
+            <arg column="reason" javaType="java.lang.String"/>
+            <arg column="evidence_json" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="source" javaType="java.lang.String"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="reviewer_id" javaType="java.lang.String"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <sql id="DatasetColumns">id, dataset_key, name, description, status, revision, owner_id, created_at, updated_at</sql>
+    <sql id="CaseColumns">id, dataset_id, case_key, input_json, expected_output_json, assertions_json, tags_json, weight, enabled, revision, created_at, updated_at</sql>
+    <sql id="EvalRunColumns">id, mode, dataset_id, dataset_revision, agent_key, agent_version, agent_release_id, manifest_digest, evaluator_snapshot, status, requested_by, requested_roles, requested_permissions, requested_auth_version, total_items, completed_items, failed_items, config_json, summary_json, error_code, error_message, started_at, finished_at, created_at, updated_at</sql>
+    <sql id="ResultColumns">id, eval_run_id, case_id, case_revision, conversation_id, run_id, trace_id, root_span_id, final_status, input_snapshot, expected_snapshot, output_snapshot, duration_ms, input_tokens, output_tokens, estimated_cost, status, error_code, error_message, created_at, updated_at</sql>
+    <sql id="ScoreColumns">id, result_id, evaluator_key, evaluator_version, scope, trace_id, span_id, metric_key, score_type, score_number, score_boolean, score_label, score_text, reason, evidence_json, source, status, reviewer_id, created_at</sql>
+
+    <insert id="insertDataset">
+        insert into ai_eval_dataset (id, dataset_key, name, description, owner_id, created_at, updated_at)
+        values (#{id}, #{datasetKey}, #{name}, #{description}, #{ownerId}, #{now}, #{now})
+    </insert>
+    <select id="listDatasets" resultMap="DatasetMap">
+        select <include refid="DatasetColumns"/> from ai_eval_dataset where owner_id = #{ownerId}
+        order by updated_at desc limit #{limit} offset #{offset}
+    </select>
+    <select id="findDataset" resultMap="DatasetMap">
+        select <include refid="DatasetColumns"/> from ai_eval_dataset where id = #{id}
+    </select>
+    <update id="updateDataset">
+        update ai_eval_dataset set name = #{name}, description = #{description}, status = #{status},
+            revision = revision + 1, updated_at = now()
+        where id = #{id} and owner_id = #{ownerId} and revision = #{expectedRevision} and status != 'ARCHIVED'
+    </update>
+    <update id="archiveDataset">
+        update ai_eval_dataset set status = 'ARCHIVED', revision = revision + 1, updated_at = now()
+        where id = #{id} and owner_id = #{ownerId} and status != 'ARCHIVED'
+    </update>
+
+    <insert id="insertCase">
+        insert into ai_eval_case (id, dataset_id, case_key, input_json, expected_output_json, assertions_json,
+            tags_json, weight, enabled, created_at, updated_at)
+        values (#{id}, #{datasetId}, #{caseKey}, cast(#{inputJson} as jsonb),
+            cast(#{expectedOutputJson} as jsonb), cast(#{assertionsJson} as jsonb), cast(#{tagsJson} as jsonb),
+            #{weight}, #{enabled}, #{now}, #{now})
+    </insert>
+    <select id="listCases" resultMap="CaseMap">
+        select <include refid="CaseColumns"/> from ai_eval_case where dataset_id = #{datasetId}
+        order by case_key limit #{limit} offset #{offset}
+    </select>
+    <select id="findCase" resultMap="CaseMap">
+        select <include refid="CaseColumns"/> from ai_eval_case where id = #{id}
+    </select>
+    <update id="updateCase">
+        update ai_eval_case set input_json = cast(#{inputJson} as jsonb),
+            expected_output_json = cast(#{expectedOutputJson} as jsonb),
+            assertions_json = cast(#{assertionsJson} as jsonb), tags_json = cast(#{tagsJson} as jsonb),
+            weight = #{weight}, enabled = #{enabled}, revision = revision + 1, updated_at = now()
+        where id = #{id} and dataset_id = #{datasetId} and revision = #{expectedRevision}
+    </update>
+
+    <insert id="insertEvalRun">
+        insert into ai_eval_run (id, mode, dataset_id, dataset_revision, agent_key, agent_version,
+            agent_release_id, manifest_digest, evaluator_snapshot, requested_by, requested_roles,
+            requested_permissions, requested_auth_version, total_items, config_json, created_at, updated_at)
+        values (#{id}, #{mode}, #{datasetId}, #{datasetRevision}, #{agentKey}, #{agentVersion},
+            #{agentReleaseId}, #{manifestDigest}, cast(#{evaluatorSnapshotJson} as jsonb), #{requestedBy},
+            cast(#{requestedRolesJson} as jsonb), cast(#{requestedPermissionsJson} as jsonb),
+            #{requestedAuthVersion}, #{totalItems}, cast(#{configJson} as jsonb), #{now}, #{now})
+    </insert>
+    <select id="listEvalRuns" resultMap="EvalRunMap">
+        select <include refid="EvalRunColumns"/> from ai_eval_run where requested_by = #{ownerId}
+        order by created_at desc limit #{limit} offset #{offset}
+    </select>
+    <select id="findEvalRun" resultMap="EvalRunMap">
+        select <include refid="EvalRunColumns"/> from ai_eval_run where id = #{id}
+    </select>
+    <select id="selectQueuedEvalRuns" resultType="java.util.UUID">
+        select id from ai_eval_run where mode = 'DATASET' and (status in ('QUEUED', 'CANCEL_REQUESTED') or (status = 'RUNNING' and lease_until &lt; now())) order by created_at limit #{limit}
+    </select>
+    <update id="claimEvalRun">
+        update ai_eval_run set status = case when status = 'CANCEL_REQUESTED' then status else 'RUNNING' end, lease_owner = #{owner},
+            lease_until = now() + make_interval(secs =&gt; #{leaseSeconds}),
+            started_at = coalesce(started_at, now()), updated_at = now()
+        where id = #{id} and (status in ('QUEUED', 'CANCEL_REQUESTED') or (status = 'RUNNING' and lease_until &lt; now()))
+    </update>
+    <select id="lockDataset" resultType="java.util.UUID">
+        select id from ai_eval_dataset where id = #{id} for update
+    </select>
+    <select id="countPending" resultType="long">
+        select count(*) from ai_eval_run where requested_by = #{owner} and mode = 'DATASET'
+        and status in ('QUEUED', 'RUNNING', 'CANCEL_REQUESTED')
+    </select>
+    <update id="cancel">
+        update ai_eval_run set status = 'CANCEL_REQUESTED', updated_at = now()
+        where id = #{id} and mode = 'DATASET' and status in ('QUEUED', 'RUNNING')
+    </update>
+    <select id="metricSummary" resultType="map">
+        select s.metric_key, s.source, count(*) as sample_count,
+            sum((case when s.score_type = 'BOOLEAN' then case when s.score_boolean then 1 else 0 end
+                 else s.score_number end) * coalesce((r.input_snapshot -&gt;&gt; '_weight')::numeric, 1))
+            / nullif(sum(coalesce((r.input_snapshot -&gt;&gt; '_weight')::numeric, 1)), 0) as weighted_mean
+        from ai_eval_score s join ai_eval_result r on r.id = s.result_id
+        where r.eval_run_id = #{id} and s.status = 'ACTIVE' and s.score_type in ('BOOLEAN', 'NUMERIC')
+        group by s.metric_key, s.source order by s.metric_key, s.source
+    </select>
+    <update id="release">
+        update ai_eval_run set lease_until = now(), lease_owner = null,
+            completed_items = (select count(*) from ai_eval_result where eval_run_id = #{id} and status = 'COMPLETED'),
+            failed_items = (select count(*) from ai_eval_result where eval_run_id = #{id} and status = 'FAILED')
+        where id = #{id} and lease_owner = #{owner}
+    </update>
+    <update id="heartbeatEvalRun">
+        update ai_eval_run set lease_until = now() + make_interval(secs =&gt; #{leaseSeconds}), updated_at = now()
+        where id = #{id} and status = 'RUNNING' and lease_owner = #{owner}
+    </update>
+    <update id="finishEvalRun">
+        update ai_eval_run set status = #{status}, completed_items = #{completedItems}, failed_items = #{failedItems},
+            summary_json = cast(#{summaryJson} as jsonb), error_code = #{errorCode}, error_message = #{errorMessage},
+            finished_at = now(), updated_at = now(), lease_owner = null, lease_until = null
+        where id = #{id} and lease_owner = #{owner} and status in ('RUNNING', 'CANCEL_REQUESTED')
+    </update>
+
+    <insert id="insertResult">
+        insert into ai_eval_result (id, eval_run_id, case_id, case_revision, conversation_id, run_id,
+            input_snapshot, expected_snapshot, created_at, updated_at)
+        values (#{id}, #{evalRunId}, #{caseId}, #{caseRevision}, #{conversationId}, #{runId},
+            cast(#{inputJson} as jsonb), cast(#{expectedJson} as jsonb), #{now}, #{now})
+    </insert>
+    <select id="listResults" resultMap="ResultMap">
+        select <include refid="ResultColumns"/> from ai_eval_result where eval_run_id = #{evalRunId}
+        order by created_at limit #{limit} offset #{offset}
+    </select>
+    <select id="findResult" resultMap="ResultMap">
+        select <include refid="ResultColumns"/> from ai_eval_result where id = #{id}
+    </select>
+    <update id="updateResultExecution">
+        update ai_eval_result set run_id = #{runId}, conversation_id = #{conversationId}, trace_id = #{traceId},
+            root_span_id = #{rootSpanId}, final_status = #{finalStatus}, output_snapshot = cast(#{outputJson} as jsonb),
+            duration_ms = #{durationMs}, input_tokens = #{inputTokens}, output_tokens = #{outputTokens},
+            status = #{status}, error_code = #{errorCode}, error_message = #{errorMessage}, updated_at = now()
+        where id = #{id}
+    </update>
+
+    <update id="supersedeScore">
+        update ai_eval_score set status = 'SUPERSEDED' where result_id = #{resultId}
+        and evaluator_key = 'human_review' and metric_key = #{metricKey} and coalesce(span_id, '') = coalesce(#{spanId}, '') and status = 'ACTIVE'
+    </update>
+    <select id="lockResult" resultType="java.util.UUID">
+        select id from ai_eval_result where id = #{id} for update
+    </select>
+    <insert id="insertScore">
+        insert into ai_eval_score (id, result_id, evaluator_key, evaluator_version, scope, trace_id, span_id,
+            metric_key, score_type, score_number, score_boolean, score_label, score_text, reason, evidence_json,
+            source, reviewer_id, created_at)
+        values (#{id}, #{resultId}, #{evaluatorKey}, #{evaluatorVersion}, #{scope}, #{traceId}, #{spanId},
+            #{metricKey}, #{scoreType}, #{scoreNumber}, #{scoreBoolean}, #{scoreLabel}, #{scoreText}, #{reason},
+            cast(#{evidenceJson} as jsonb), #{source}, #{reviewerId}, #{now})
+        on conflict do nothing
+    </insert>
+    <select id="listScores" resultMap="ScoreMap">
+        select <include refid="ScoreColumns"/> from ai_eval_score where result_id = #{resultId} and status = 'ACTIVE'
+        order by scope, metric_key, created_at
+    </select>
+
+    <select id="selectUnscoredRuns" resultType="java.util.UUID">
+        select r.id from ai_run r
+        where r.status in ('COMPLETED', 'FAILED', 'CANCELLED')
+          and not exists (select 1 from ai_eval_result e where e.run_id = r.id)
+          and exists (select 1 from ai_conversation c where c.id = r.conversation_id and c.source = 'USER')
+        order by r.finished_at nulls last, r.created_at
+        limit #{limit}
+    </select>
+    <select id="runData" resultType="map">
+        select r.id as run_id, r.conversation_id, r.question, r.actor, r.agent_key, r.agent_version,
+            r.agent_release_id, r.manifest_digest, r.status, r.trace_context, r.usage_json,
+            r.started_at, r.finished_at, r.created_at
+        from ai_run r where r.id = #{runId}
+    </select>
+    <select id="runTools" resultType="map">
+        select id, tool_name, status, decision, deny_reason, args_summary, result_summary,
+            duration_ms, trace_id, created_at, finished_at
+        from ai_tool_call where run_id = #{runId} order by created_at
+    </select>
+    <select id="runMessages" resultType="map">
+        select id, role, content, status, seq, created_at
+        from ai_message where run_id = #{runId} order by seq
+    </select>
+</mapper>

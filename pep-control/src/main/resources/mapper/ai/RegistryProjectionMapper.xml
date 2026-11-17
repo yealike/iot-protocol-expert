@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.control.agents.mapper.RegistryProjectionMapper">
+
+    <resultMap id="RegistryProjectionMap"
+               type="top.yealike.pep.control.agents.domain.PlatformRecords$RegistryProjection">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="resource_type" javaType="java.lang.String"/>
+            <arg column="release_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="service_name" javaType="java.lang.String"/>
+            <arg column="provider_id" javaType="java.lang.String"/>
+            <arg column="desired_state" javaType="java.lang.String"/>
+            <arg column="observed_state" javaType="java.lang.String"/>
+            <arg column="owner_node" javaType="java.lang.String"/>
+            <arg column="last_success_at" javaType="java.time.Instant"/>
+            <arg column="last_error" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <sql id="RegistryProjectionColumns">
+        id, resource_type, release_id, service_name, provider_id, desired_state, observed_state, owner_node,
+        last_success_at, last_error
+    </sql>
+
+    <insert id="upsert">
+        insert into ai_registry_projection (
+            id, resource_type, release_id, service_name, provider_id, desired_state, observed_state,
+            owner_node, last_success_at, last_error)
+        values (#{id}, #{resourceType}, #{releaseId}, #{serviceName}, #{providerId}, #{desiredState},
+            #{observedState}, null,
+            case when #{observedState} = 'READY' then now() else null end,
+            #{error,jdbcType=VARCHAR})
+        on conflict (resource_type, release_id, provider_id) do update
+           set service_name = excluded.service_name,
+               desired_state = excluded.desired_state,
+               observed_state = excluded.observed_state,
+               last_success_at = case
+                   when excluded.observed_state = 'READY' then now()
+                   else ai_registry_projection.last_success_at
+               end,
+               last_error = excluded.last_error
+    </insert>
+
+    <select id="list" resultMap="RegistryProjectionMap">
+        select <include refid="RegistryProjectionColumns"/>
+          from ai_registry_projection
+         order by resource_type, service_name
+    </select>
+
+    <select id="find" resultMap="RegistryProjectionMap">
+        select <include refid="RegistryProjectionColumns"/>
+          from ai_registry_projection
+         where resource_type = #{resourceType} and release_id = #{releaseId}
+         order by last_success_at desc nulls last
+         limit 1
+    </select>
+
+    <update id="markObserved">
+        update ai_registry_projection
+           set observed_state = #{observedState},
+               last_success_at = case when #{observedState} = 'READY' then now() else last_success_at end,
+               last_error = #{error,jdbcType=VARCHAR}
+         where resource_type = #{resourceType} and release_id = #{releaseId}
+    </update>
+</mapper>

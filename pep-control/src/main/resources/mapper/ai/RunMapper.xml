@@ -1,0 +1,470 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.control.agents.mapper.RunMapper">
+
+    <resultMap id="RunMap" type="top.yealike.pep.control.runs.RunRecords$Run">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="conversation_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="user_message_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="actor" javaType="java.lang.String"/>
+            <arg column="actor_roles" javaType="java.util.List" typeHandler="top.yealike.pep.control.mybatis.JsonStringListTypeHandler"/>
+            <arg column="actor_auth_version" javaType="java.lang.Long"/>
+            <arg column="question" javaType="java.lang.String"/>
+            <arg column="agent_key" javaType="java.lang.String"/>
+            <arg column="agent_version" javaType="java.lang.String"/>
+            <arg column="model_key" javaType="java.lang.String"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="priority" javaType="_int"/>
+            <arg column="queue_seq" javaType="_long"/>
+            <arg column="idempotency_key" javaType="java.lang.String"/>
+            <arg column="policy_version" javaType="java.lang.String"/>
+            <arg column="trace_context" javaType="java.lang.String"/>
+            <arg column="lease_owner" javaType="java.lang.String"/>
+            <arg column="lease_until" javaType="java.time.Instant"/>
+            <arg column="budget_json" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="usage_json" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="error_code" javaType="java.lang.String"/>
+            <arg column="error_message" javaType="java.lang.String"/>
+            <arg column="started_at" javaType="java.time.Instant"/>
+            <arg column="finished_at" javaType="java.time.Instant"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+            <arg column="updated_at" javaType="java.time.Instant"/>
+            <arg column="agent_release_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="manifest_digest" javaType="java.lang.String"/>
+            <arg column="runtime_instance_id" javaType="java.lang.String"/>
+            <arg column="execution_token" javaType="_long"/>
+            <arg column="last_heartbeat_at" javaType="java.time.Instant"/>
+            <arg column="dispatch_attempts" javaType="_int"/>
+            <arg column="deadline_at" javaType="java.time.Instant"/>
+            <arg column="dispatch_next_attempt_at" javaType="java.time.Instant"/>
+            <arg column="cancel_requested_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <sql id="RunColumns">
+        id, conversation_id, user_message_id, actor, actor_roles, actor_auth_version, question, agent_key,
+        agent_version, model_key, status, priority, queue_seq, idempotency_key, policy_version, trace_context,
+        lease_owner, lease_until, budget_json, usage_json, error_code, error_message, started_at, finished_at,
+        created_at, updated_at, agent_release_id, manifest_digest, runtime_instance_id, execution_token,
+        last_heartbeat_at, dispatch_attempts, deadline_at, dispatch_next_attempt_at, cancel_requested_at
+    </sql>
+
+    <sql id="RuntimeInstanceMatch">
+        <choose>
+            <when test="instanceId != null">and runtime_instance_id = #{instanceId}</when>
+            <otherwise>and runtime_instance_id is null</otherwise>
+        </choose>
+    </sql>
+
+    <resultMap id="RunEventMap" type="top.yealike.pep.control.runs.RunRecords$RunEvent">
+        <constructor>
+            <arg column="cursor" javaType="_long"/>
+            <arg column="conversation_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="run_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="type" javaType="java.lang.String"/>
+            <arg column="payload" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="ToolCallMap" type="top.yealike.pep.control.runs.RunRecords$ToolCall">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="run_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="conversation_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="tool_name" javaType="java.lang.String"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="decision" javaType="java.lang.String"/>
+            <arg column="deny_reason" javaType="java.lang.String"/>
+            <arg column="args_summary" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="result_summary" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="duration_ms" javaType="java.lang.Integer"/>
+            <arg column="trace_id" javaType="java.lang.String"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+            <arg column="finished_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <insert id="insertRun">
+        insert into ai_run (id, conversation_id, user_message_id, actor, actor_roles, actor_auth_version, question,
+            agent_key,
+                            agent_version, agent_release_id, manifest_digest, model_key, status, priority,
+                            idempotency_key, policy_version,
+                            trace_context,
+                            created_at, updated_at)
+        values (#{id}, #{conversationId}, #{userMessageId}, #{actor}, cast(#{actorRolesJson} as jsonb),
+            #{actorAuthVersion}, #{question}, #{agentKey}, #{agentVersion}, #{agentReleaseId}, #{manifestDigest},
+            #{modelKey}, 'QUEUED', #{priority}, #{idempotencyKey}, #{policyVersion}, #{traceContext}, #{createdAt},
+            #{createdAt})
+    </insert>
+
+    <select id="find" resultMap="RunMap">
+        select <include refid="RunColumns"/> from ai_run where id = #{id}
+    </select>
+
+    <select id="lockRun" resultMap="RunMap">
+        select <include refid="RunColumns"/> from ai_run where id = #{id} for update
+    </select>
+
+    <select id="findByIdempotency" resultMap="RunMap">
+        select <include refid="RunColumns"/> from ai_run where conversation_id = #{conversationId} and idempotency_key = #{idempotencyKey}
+    </select>
+
+    <select id="latest" resultMap="RunMap">
+        select <include refid="RunColumns"/> from ai_run where conversation_id = #{conversationId} order by created_at desc limit 1
+    </select>
+
+    <select id="current" resultMap="RunMap">
+        select <include refid="RunColumns"/> from ai_run where conversation_id = #{conversationId} and status in ('QUEUED', 'DISPATCHING', 'RUNNING',
+            'CANCEL_REQUESTED') order by case when status in ('DISPATCHING', 'RUNNING',
+            'CANCEL_REQUESTED') then 0 else 1 end, priority desc, queue_seq asc limit 1
+    </select>
+
+    <select id="listByConversation" resultMap="RunMap">
+        select <include refid="RunColumns"/> from ai_run where conversation_id = #{conversationId} order by created_at desc limit #{limit}
+    </select>
+
+    <select id="selectNextQueued" resultType="java.util.UUID">
+        select c.id from ai_run c
+        where c.status = 'QUEUED'
+          and (c.dispatch_next_attempt_at is null or c.dispatch_next_attempt_at &lt;= now())
+          and not exists (
+              select 1 from ai_run x
+              where x.conversation_id = c.conversation_id
+                and x.status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED'))
+          and (
+            select count(*)
+              from ai_run a
+             where a.actor = c.actor
+               and a.status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+          ) &lt; #{perUserActiveLimit}
+        order by c.priority desc, c.queue_seq asc
+        limit 1
+    </select>
+
+    <update id="claimForDispatch">
+        update ai_run
+        set status = 'DISPATCHING', lease_owner = #{dispatchOwner}, lease_until = now() + make_interval(secs =>
+            #{leaseSeconds}), execution_token = execution_token + 1, runtime_instance_id = null,
+            dispatch_attempts = dispatch_attempts + 1, dispatch_next_attempt_at = null, deadline_at = #{deadlineAt},
+            started_at = coalesce(started_at, now()), updated_at = now()
+        where id = #{id} and status = 'QUEUED'
+    </update>
+
+    <update id="markRunning">
+        update ai_run
+        set status = 'RUNNING', runtime_instance_id = #{instanceId}, lease_owner = #{instanceId},
+            lease_until = now() + make_interval(secs => #{leaseSeconds}), last_heartbeat_at = now(),
+            updated_at = now()
+        where id = #{id} and execution_token = #{executionToken}
+          and status in ('DISPATCHING', 'RUNNING')
+    </update>
+
+    <update id="bindDispatchTarget">
+        update ai_run
+        set runtime_instance_id = #{instanceId}, lease_owner = #{instanceId},
+            lease_until = now() + make_interval(secs => #{leaseSeconds}), updated_at = now()
+        where id = #{id} and execution_token = #{executionToken} and status = 'DISPATCHING'
+    </update>
+
+    <update id="deferDispatch">
+        update ai_run
+        set dispatch_next_attempt_at = #{nextAttemptAt},
+            lease_until = now() + make_interval(secs => #{leaseSeconds}), updated_at = now()
+        where id = #{id} and execution_token = #{executionToken} and status = 'DISPATCHING'
+    </update>
+
+    <update id="releaseDispatch">
+        update ai_run
+        set status = 'QUEUED', lease_owner = null, lease_until = null, deadline_at = null,
+            dispatch_next_attempt_at = #{nextAttemptAt}, updated_at = now()
+        where id = #{id} and execution_token = #{executionToken} and status = 'DISPATCHING'
+    </update>
+
+    <update id="heartbeat">
+        update ai_run
+        set status = case when status = 'DISPATCHING' then 'RUNNING' else status end,
+            runtime_instance_id = case
+                when runtime_instance_id is null or runtime_instance_id = 'direct' then #{instanceId}
+                else runtime_instance_id
+            end,
+            lease_owner = case
+                when lease_owner is null or lease_owner = 'direct' then #{instanceId}
+                else lease_owner
+            end,
+            lease_until = now() + make_interval(secs => #{leaseSeconds}), last_heartbeat_at = now(),
+            updated_at = now()
+        where id = #{id} and execution_token = #{executionToken}
+          and (runtime_instance_id = #{instanceId}
+               or ((runtime_instance_id is null or runtime_instance_id = 'direct') and status = 'DISPATCHING'))
+          and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+          and (lease_until is null or lease_until &gt; now())
+          and (deadline_at is null or deadline_at &gt; now())
+    </update>
+
+    <update id="renewLease">
+        update ai_run set lease_until = now() + make_interval(secs => #{leaseSeconds}), updated_at = now() where id =
+            #{id} and lease_owner = #{leaseOwner} and status in ('RUNNING')
+    </update>
+
+    <update id="transition">
+        update ai_run set status = #{next}, updated_at = now() where id = #{id} and status = #{expected}
+    </update>
+
+    <update id="markCompleted">
+        update ai_run set status = 'COMPLETED', usage_json = cast(#{usageJson} as jsonb), finished_at = now(),
+            updated_at = now(), lease_owner = null, lease_until = null where id = #{id} and status in ('RUNNING',
+            'QUEUED')
+    </update>
+
+    <update id="markFailed">
+        update ai_run set status = 'FAILED', error_code = #{code}, error_message = #{message}, usage_json =
+            cast(#{usageJson} as jsonb), finished_at = now(), updated_at = now(), lease_owner = null, lease_until = null
+            where id = #{id} and status in ('RUNNING')
+    </update>
+
+    <update id="markCancelled">
+        update ai_run set status = 'CANCELLED', usage_json = cast(#{usageJson} as jsonb), finished_at = now(),
+            updated_at = now(), lease_owner = null, lease_until = null where id = #{id} and status not in ('COMPLETED',
+            'FAILED')
+    </update>
+
+    <update id="markCompletedWithToken">
+        update ai_run
+        set status = 'COMPLETED', usage_json = cast(#{usageJson} as jsonb), finished_at = now(), updated_at = now(),
+            lease_owner = null, lease_until = null
+        where id = #{id} and execution_token = #{executionToken}
+          <include refid="RuntimeInstanceMatch"/>
+          and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+          and (lease_until is null or lease_until &gt; now())
+          and (deadline_at is null or deadline_at &gt; now())
+    </update>
+
+    <update id="markFailedWithToken">
+        update ai_run
+        set status = 'FAILED', error_code = #{code}, error_message = #{message},
+            usage_json = cast(#{usageJson} as jsonb), finished_at = now(), updated_at = now(),
+            lease_owner = null, lease_until = null
+        where id = #{id} and execution_token = #{executionToken}
+          <include refid="RuntimeInstanceMatch"/>
+          and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+          and (lease_until is null or lease_until &gt; now())
+          and (deadline_at is null or deadline_at &gt; now())
+    </update>
+
+    <!-- Control 权威终结失联 Run：必须仍处于过期条件，续租成功后 CAS 失败，避免误杀。 -->
+    <select id="terminateExpired" resultType="java.lang.String" affectData="true" flushCache="true" useCache="false">
+        update ai_run
+           set status = case when status = 'CANCEL_REQUESTED' then 'CANCELLED' else 'FAILED' end,
+               error_code = case when status = 'CANCEL_REQUESTED' then null else #{code} end,
+               error_message = case when status = 'CANCEL_REQUESTED'
+                                    then 'Runtime 取消确认超时，由 Control 终结'
+                                    else #{message} end,
+               finished_at = now(), updated_at = now(), lease_owner = null, lease_until = null
+         where id = #{id} and execution_token = #{executionToken}
+           <include refid="RuntimeInstanceMatch"/>
+           and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+           and (
+                (lease_until is not null and lease_until &lt; now())
+                or (deadline_at is not null and deadline_at &lt; now())
+           )
+        returning status
+    </select>
+
+    <update id="markCancelledWithToken">
+        update ai_run
+        set status = 'CANCELLED', usage_json = cast(#{usageJson} as jsonb), finished_at = now(), updated_at = now(),
+            lease_owner = null, lease_until = null
+        where id = #{id} and execution_token = #{executionToken}
+          <include refid="RuntimeInstanceMatch"/>
+          and status not in ('COMPLETED', 'FAILED', 'CANCELLED')
+    </update>
+
+    <update id="requestCancel">
+        update ai_run set status = case when status in ('DISPATCHING', 'RUNNING')
+            then 'CANCEL_REQUESTED' else 'CANCELLED' end,
+            finished_at = case when status = 'QUEUED' then now() else finished_at end,
+            cancel_requested_at = case when status in ('DISPATCHING', 'RUNNING') then now() else cancel_requested_at end,
+            updated_at = now()
+        where id = #{id} and status in ('QUEUED', 'DISPATCHING', 'RUNNING')
+    </update>
+
+    <update id="cancelQueued">
+        update ai_run set status = 'CANCELLED', finished_at = now(), updated_at = now() where id = #{id} and status =
+            'QUEUED'
+    </update>
+
+    <select id="countRunning" resultType="java.lang.Integer">
+        select count(*) from ai_run where status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+    </select>
+
+    <select id="countQueued" resultType="java.lang.Integer">
+        select count(*) from ai_run where status = 'QUEUED'
+    </select>
+
+    <select id="countUserQueued" resultType="java.lang.Integer">
+        select count(*) from ai_run
+        where actor = #{actor} and status = 'QUEUED'
+        <if test="excludeConversationId != null">
+          and conversation_id != #{excludeConversationId}
+        </if>
+    </select>
+
+    <select id="countUserActive" resultType="java.lang.Integer">
+        select count(*) from ai_run
+        where actor = #{actor}
+          and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+        <if test="excludeConversationId != null">
+          and conversation_id != #{excludeConversationId}
+        </if>
+    </select>
+
+    <select id="lockQuota" resultType="java.lang.Integer">
+        select 1
+          from (select pg_advisory_xact_lock(hashtextextended(#{scope}, 0))) lock_guard
+    </select>
+
+    <select id="selectExpiredLeases" resultMap="RunMap">
+        select <include refid="RunColumns"/> from ai_run
+         where status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+           and (
+                (lease_until is not null and lease_until &lt; now())
+                or (deadline_at is not null and deadline_at &lt; now())
+           )
+           and not (
+                status = 'DISPATCHING'
+                and dispatch_next_attempt_at is not null
+                and (deadline_at is null or deadline_at &gt; now())
+           )
+         order by least(deadline_at, lease_until)
+         limit #{limit}
+    </select>
+
+    <select id="selectDispatchRetries" resultMap="RunMap">
+        select <include refid="RunColumns"/> from ai_run
+         where status = 'DISPATCHING'
+           and dispatch_next_attempt_at is not null and dispatch_next_attempt_at &lt;= now()
+         order by dispatch_next_attempt_at
+         limit #{limit}
+    </select>
+
+    <select id="selectCancelPending" resultMap="RunMap">
+        select <include refid="RunColumns"/> from ai_run
+         where status = 'CANCEL_REQUESTED' and cancel_requested_at is not null
+           and cancel_requested_at &lt; now() - make_interval(secs => #{seconds})
+         order by cancel_requested_at
+         limit #{limit}
+    </select>
+
+    <select id="selectStatus" resultType="java.lang.String">
+        select status from ai_run where id = #{id}
+    </select>
+
+    <select id="lockRuntimeEventRun" resultType="java.lang.Integer">
+        select 1
+          from ai_run
+         where id = #{id}
+           and execution_token = #{executionToken}
+           and runtime_instance_id = #{instanceId}
+           and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+           and lease_until is not null
+           and lease_until &gt; now()
+           and (deadline_at is null or deadline_at &gt; now())
+           for update
+    </select>
+
+    <resultMap id="RuntimeEventFingerprintMap" type="top.yealike.pep.control.runs.RunRecords$RuntimeEventFingerprint">
+        <constructor>
+            <arg column="source_seq" javaType="_long"/>
+            <arg column="type" javaType="java.lang.String"/>
+            <arg column="payload" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+        </constructor>
+    </resultMap>
+
+    <select id="runtimeEventFingerprints" resultMap="RuntimeEventFingerprintMap">
+        select source_seq, type, payload
+          from ai_run_event
+         where run_id = #{runId}
+           and source_seq in
+           <foreach collection="sourceSeqs" item="sourceSeq" open="(" separator="," close=")">
+               #{sourceSeq}
+           </foreach>
+    </select>
+
+
+    <select id="nextEventCursor" resultType="java.lang.Long" affectData="true" flushCache="true" useCache="false">
+        update ai_conversation set event_cursor = event_cursor + 1 where id = #{conversationId} returning event_cursor
+    </select>
+
+    <select id="reserveEventCursors" resultType="java.lang.Long" affectData="true" flushCache="true" useCache="false">
+        update ai_conversation set event_cursor = event_cursor + #{count} where id = #{conversationId} returning event_cursor
+    </select>
+
+    <insert id="insertEvent">
+        insert into ai_run_event (conversation_id, run_id, cursor, type, payload, created_at) values (#{conversationId},
+            #{runId}, #{cursor}, #{type}, cast(#{payloadJson} as jsonb), #{createdAt})
+    </insert>
+
+    <select id="insertRuntimeEvents" resultType="java.lang.Long" affectData="true" flushCache="true" useCache="false">
+        insert into ai_run_event
+            (conversation_id, run_id, cursor, type, payload, created_at, execution_token, source_seq, event_id)
+        values
+        <foreach collection="events" item="event" separator=",">
+            (#{event.conversationId}, #{event.runId}, #{event.cursor}, #{event.type},
+             cast(#{event.payloadJson} as jsonb), #{event.createdAt}, #{event.executionToken},
+             #{event.sourceSeq}, #{event.eventId})
+        </foreach>
+        on conflict do nothing
+        returning source_seq
+    </select>
+
+    <select id="eventsAfter" resultMap="RunEventMap">
+        select cursor, conversation_id, run_id, type, payload, created_at from ai_run_event where conversation_id = #{conversationId} and cursor > #{cursor} order by cursor asc
+            limit #{limit}
+    </select>
+
+    <select id="latestCursor" resultType="java.lang.Long">
+        select coalesce(max(cursor), 0) from ai_run_event where conversation_id = #{conversationId}
+    </select>
+
+    <insert id="insertToolCall">
+        insert into ai_tool_call (id, run_id, conversation_id, tool_name, status, decision, deny_reason,
+                                  args_summary, created_at)
+        values (#{id}, #{runId}, #{conversationId}, #{toolName}, #{status}, #{decision}, #{denyReason},
+            cast(#{argsSummaryJson} as jsonb), #{createdAt})
+    </insert>
+
+    <update id="finishToolCall">
+        update ai_tool_call set status = #{status}, result_summary = cast(#{resultSummaryJson} as jsonb), duration_ms =
+            #{durationMs}, finished_at = now() where id = #{id}
+    </update>
+
+    <insert id="insertRuntimeToolCall">
+        insert into ai_tool_call
+            (id, run_id, conversation_id, tool_name, status, decision, args_summary, created_at,
+             component_key, component_version, original_tool_name, tool_alias, idempotency_key, execution_token)
+        values
+            (#{id}, #{runId}, #{conversationId}, #{toolName}, 'SENT', 'ALLOW', '{}'::jsonb, #{createdAt},
+             #{componentKey}, #{componentVersion}, #{originalToolName}, #{toolAlias}, #{idempotencyKey},
+             #{executionToken})
+        on conflict (id) do nothing
+    </insert>
+
+    <update id="finishRuntimeToolCall">
+        update ai_tool_call
+           set status = #{status},
+               result_summary = cast(#{resultSummaryJson} as jsonb),
+               duration_ms = #{durationMs},
+               finished_at = #{finishedAt}
+         where id = #{id} and run_id = #{runId}
+    </update>
+
+    <select id="listToolCalls" resultMap="ToolCallMap">
+        select id, run_id, conversation_id, tool_name, status, decision, deny_reason, args_summary, result_summary, duration_ms, trace_id, created_at, finished_at from ai_tool_call where run_id = #{runId} order by created_at asc
+    </select>
+
+    <select id="eventByCursor" resultMap="RunEventMap">
+        select cursor, conversation_id, run_id, type, payload, created_at from ai_run_event where conversation_id = #{conversationId} and cursor = #{cursor}
+    </select>
+</mapper>

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.control.telemetry.mapper.OrderTelemetryMapper">
+
+    <resultMap id="SampleMap" type="top.yealike.pep.control.telemetry.TdengineTelemetryStore$Sample">
+        <constructor>
+            <arg column="id" javaType="_long"/>
+            <arg column="order_no" javaType="java.lang.String"/>
+            <arg column="sample_time" javaType="java.sql.Timestamp"/>
+            <arg column="time_source" javaType="java.lang.String"/>
+            <arg column="voltage" javaType="java.math.BigDecimal"/>
+            <arg column="current_amp" javaType="java.math.BigDecimal"/>
+            <arg column="power_kw" javaType="java.math.BigDecimal"/>
+            <arg column="gun_temp" javaType="java.math.BigDecimal"/>
+            <arg column="battery_temp" javaType="java.math.BigDecimal"/>
+            <arg column="soc" javaType="java.math.BigDecimal"/>
+        </constructor>
+    </resultMap>
+
+    <insert id="insertSample">
+        insert into ipe_ops.order_telemetry_outbox
+            (order_no, sample_time, time_source, voltage, current_amp, power_kw, gun_temp, battery_temp, soc)
+        values
+            (#{orderNo}, #{sampleTime}, #{timeSource}, #{voltage}, #{current}, #{power}, #{gunTemperature},
+             #{batteryTemperature}, #{soc})
+    </insert>
+
+    <select id="existsPending" resultType="boolean">
+        select exists (select 1 from ipe_ops.order_telemetry_outbox where order_no = #{orderNo})
+    </select>
+
+    <select id="tryAdvisoryLock" resultType="boolean">
+        select pg_try_advisory_xact_lock(481923644)
+    </select>
+
+    <select id="selectPendingSamples" resultMap="SampleMap">
+        select id, order_no, sample_time, time_source, voltage, current_amp, power_kw, gun_temp,
+               battery_temp, soc
+        from ipe_ops.order_telemetry_outbox
+        order by id
+        limit #{limit}
+        for update
+    </select>
+
+    <delete id="deleteOutboxById">
+        delete from ipe_ops.order_telemetry_outbox where id = #{id}
+    </delete>
+</mapper>

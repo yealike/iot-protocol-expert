@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.control.devices.mapper.DeviceChannelMapper">
+
+    <resultMap id="DeviceChannelMap" type="top.yealike.pep.control.devices.entity.DeviceChannel">
+        <id property="id" column="id"/>
+        <result property="deviceId" column="device_id"/>
+        <result property="channelNo" column="channel_no"/>
+        <result property="channelType" column="channel_type"/>
+        <result property="name" column="name"/>
+        <result property="enabled" column="enabled"/>
+        <result property="metadata" column="metadata"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="columns">
+        id, device_id, channel_no, channel_type, name, enabled, metadata::text as metadata,
+        created_at, updated_at
+    </sql>
+
+    <select id="selectByDeviceIdAndChannelNo" resultMap="DeviceChannelMap">
+        select <include refid="columns"/>
+        from ipe_ops.device_channel
+        where device_id = #{deviceId}
+          and channel_no = #{channelNo}
+    </select>
+
+    <select id="selectByDeviceIdOrderByChannelNoAsc" resultMap="DeviceChannelMap">
+        select <include refid="columns"/>
+        from ipe_ops.device_channel
+        where device_id = #{deviceId}
+        order by channel_no
+    </select>
+
+    <select id="selectByDeviceIds" resultMap="DeviceChannelMap">
+        select <include refid="columns"/>
+        from ipe_ops.device_channel
+        where device_id in
+        <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
+            #{deviceId}
+        </foreach>
+        order by device_id, channel_no
+    </select>
+
+    <select id="countByDeviceId" resultType="long">
+        select count(*) from ipe_ops.device_channel where device_id = #{deviceId}
+    </select>
+
+    <select id="countByDeviceIdAndChannelType" resultType="long">
+        select count(*)
+        from ipe_ops.device_channel
+        where device_id = #{deviceId}
+          and channel_type = #{channelType}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        insert into ipe_ops.device_channel
+            (device_id, channel_no, channel_type, name, enabled, metadata, created_at, updated_at)
+        values
+            (#{deviceId}, #{channelNo}, #{channelType}, #{name}, #{enabled},
+             cast(#{metadata} as jsonb), #{createdAt}, #{updatedAt})
+    </insert>
+
+    <update id="update">
+        update ipe_ops.device_channel
+        set device_id = #{deviceId},
+            channel_no = #{channelNo},
+            channel_type = #{channelType},
+            name = #{name},
+            enabled = #{enabled},
+            metadata = cast(#{metadata} as jsonb),
+            created_at = #{createdAt},
+            updated_at = #{updatedAt}
+        where id = #{id}
+    </update>
+
+    <delete id="deleteById">
+        delete from ipe_ops.device_channel where id = #{id}
+    </delete>
+
+    <delete id="deleteByDeviceId">
+        delete from ipe_ops.device_channel where device_id = #{deviceId}
+    </delete>
+</mapper>
