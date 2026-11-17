@@ -6,8 +6,8 @@
 
 | 服务 | 端口 | 持久化 | 说明 |
 |---|---|---|---|
-| `iot-protocol-expert-codec` | — | 无 | 纯编解码库，协议通道与运维平台共用 |
-| `iot-protocol-expert-protocol` | 19080 / TCP 8768 / ws 8769 | **无** | 连接、校验、编解码、会话、应答关联、下行发送 |
+| `shared/iot-protocol-expert-device-codec` | — | 无 | 纯编解码库，协议通道与运维平台共用 |
+| `iot-protocol-expert-protocol-gateway` | 19080 / TCP 8768 / ws 8769 | **无** | 连接、校验、编解码、会话、应答关联、下行发送 |
 | `iot-protocol-expert-ops` | 19082 | PostgreSQL | 电站、设备、订单、账单、报文、命令、排障、用户、审计 |
 | `iot-protocol-expert-simulator` | 19081 | 模拟端状态文件 | 从平台选桩，按档案协议接入，模拟充电与补传 |
 

@@ -7,7 +7,7 @@
 | 设计项 | 实施结果 |
 | --- | --- |
 | `pep` 模块与包统一 | Control 合并原 OPS 与 AI Control；Java 包统一到 `top.yealike.pep` |
-| 进程边界 | `pep-control` 19082、`pep-model-gateway` 19085、`pep-agent-runtime` 19084、`pep-device-gateway` 19080、`pep-simulator` 19081 |
+| 进程边界 | `iot-protocol-expert-ops` 19082、`iot-protocol-expert-agent-control` 19083、`iot-protocol-expert-model-gateway` 19085、`iot-protocol-expert-agent-runtime` 19084、`iot-protocol-expert-protocol-gateway` 19080、`iot-protocol-expert-simulator` 19081 |
 | 数据库所有权 | `pep_platform`（身份/租户/项目）、`pep_domain`（设备/订单/审计）、`pep_agent`（Agent 与调查）、`pep_metering`（模型计量） |
 | 身份与权限 | 8 个内置角色、作用域角色绑定、项目成员、服务账号、访问密钥、资源共享、统一 `AccessService` |
 | 调查任务 | 任务/事件/证据/假设/实验/结论/审批，任务行锁串行分配事件序号，证据 SHA-256 去重，结论版本追加 |
@@ -15,7 +15,7 @@
 | 配额 | TOTAL 与 `ON_FIRST_USE_WINDOW`；首次调用懒启动固定窗口；冻结与结算原子化；幂等授予与重放 |
 | Runtime | 不访问数据库，通过 HMAC 签名的 `/internal/ai/v1/**` 拉取发布、Run 上下文并回写事件 |
 | 本地运行 | `start-local.ps1` 五进程编排、`stop-local.ps1`、`seed-ai.ps1`、`reset-ai.ps1` |
-| 前端 | 新增「调查任务」「模型额度」页面；AI 与 OPS 统一由 19082 提供，去掉 19083 代理 |
+| 前端 | 新增「调查任务」「模型额度」页面；AI/Control API 经同源代理转发至 19083，OPS 与登录转发至 19082 |
 
 ## 2. 关键接口
 
@@ -116,5 +116,5 @@ $env:PEP_TEST_DB_USER=$env:PEP_CONTROL_DB_USER
 $env:PEP_TEST_DB_PASSWORD=$env:PEP_CONTROL_DB_PASSWORD
 $env:PEP_TEST_RESET_SCHEMAS='true'
 $env:PEP_INVESTIGATION_TEST='true'
-mvn -o -pl pep-control -am test -Dtest=ControlMigrationPostgresTest,InvestigationPostgresTest -Dsurefire.failIfNoSpecifiedTests=false
+mvn -o -pl iot-protocol-expert-ops,iot-protocol-expert-agent-control -am test -Dtest=ControlMigrationPostgresTest,InvestigationPostgresTest -Dsurefire.failIfNoSpecifiedTests=false
 ```

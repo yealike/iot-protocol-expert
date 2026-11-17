@@ -1,4 +1,4 @@
 {
-  "pep-control/src/main/resources/db/migration/V1__pep_control_baseline.sql": "5a10bd57e28c2f86ea56877f7a17aa5929a1bc99f05a71c260db1b5e72cf578b",
-  "pep-simulator/src/main/resources/db/simulator-migration/V1__simulator_storage.sql": "20d77426df4b692b4a1e1c1eb4d3efb414ae11319d25861ea16ac5e70369c387"
+  "iot-protocol-expert-ops/src/main/resources/db/migration/V1__pep_control_baseline.sql": "5a10bd57e28c2f86ea56877f7a17aa5929a1bc99f05a71c260db1b5e72cf578b",
+  "iot-protocol-expert-simulator/src/main/resources/db/simulator-migration/V1__simulator_storage.sql": "20d77426df4b692b4a1e1c1eb4d3efb414ae11319d25861ea16ac5e70369c387"
 }

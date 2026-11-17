@@ -57,10 +57,11 @@ foreach ($service in Get-PepServiceDefinitions) {
 
 Write-Host ""
 Write-Host "服务已全部就绪："
-Write-Host "  control         http://127.0.0.1:$($env:PEP_CONTROL_PORT)  (登录 admin/admin123)"
+Write-Host "  ops             http://127.0.0.1:$($env:IPE_OPS_PORT)"
+Write-Host "  control         http://127.0.0.1:$($env:PEP_CONTROL_PORT)"
 Write-Host "  model-gateway   http://127.0.0.1:$($env:PEP_MODEL_GATEWAY_PORT)"
 Write-Host "  agent-runtime   http://127.0.0.1:$($env:IPE_RUNTIME_PORT)"
 Write-Host "  device-gateway  tcp 8768 / ocpp 8769 / http 19080"
 Write-Host "  simulator       http://127.0.0.1:19081"
-Write-Host "前端：cd pep-console; npm run dev  (http://localhost:5173)"
+Write-Host "前端：cd iot-protocol-expert-web; npm run dev  (http://localhost:5173)"
 Write-Host "停止：scripts/stop-local.ps1"

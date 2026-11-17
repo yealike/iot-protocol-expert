@@ -1,0 +1,193 @@
+{
+  "server": {
+    "name": "ipe-ops-rest",
+    "type": "rest",
+    "version": "1.0.0"
+  },
+  "tools": [
+    {
+      "name": "get_order_detail",
+      "description": "查询订单详情",
+      "args": [
+        {
+          "name": "order_no",
+          "description": "order_no",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "_ipe_context",
+          "description": "内部授权上下文，由 Control/Runtime 注入",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "requestTemplate": {
+        "url": "/internal/ai/rest/get_order_detail",
+        "method": "POST",
+        "argsToJsonBody": true
+      }
+    },
+    {
+      "name": "get_order_bills",
+      "description": "查询订单账单",
+      "args": [
+        {
+          "name": "order_no",
+          "description": "order_no",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "_ipe_context",
+          "description": "内部授权上下文，由 Control/Runtime 注入",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "requestTemplate": {
+        "url": "/internal/ai/rest/get_order_bills",
+        "method": "POST",
+        "argsToJsonBody": true
+      }
+    },
+    {
+      "name": "get_device_detail",
+      "description": "查询设备详情",
+      "args": [
+        {
+          "name": "device_id",
+          "description": "device_id",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "_ipe_context",
+          "description": "内部授权上下文，由 Control/Runtime 注入",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "requestTemplate": {
+        "url": "/internal/ai/rest/get_device_detail",
+        "method": "POST",
+        "argsToJsonBody": true
+      }
+    },
+    {
+      "name": "get_order_telemetry_summary",
+      "description": "查询订单遥测摘要",
+      "args": [
+        {
+          "name": "window_hours",
+          "description": "window_hours",
+          "type": "integer",
+          "required": false
+        },
+        {
+          "name": "order_no",
+          "description": "order_no",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "_ipe_context",
+          "description": "内部授权上下文，由 Control/Runtime 注入",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "requestTemplate": {
+        "url": "/internal/ai/rest/get_order_telemetry_summary",
+        "method": "POST",
+        "argsToJsonBody": true
+      }
+    },
+    {
+      "name": "resolve_session",
+      "description": "校验浏览器会话",
+      "args": [
+        {
+          "name": "_ipe_context",
+          "description": "内部授权上下文，由 Control/Runtime 注入",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "requestTemplate": {
+        "url": "/internal/ai/rest/resolve_session",
+        "method": "POST",
+        "argsToJsonBody": true
+      }
+    },
+    {
+      "name": "resolve_actor",
+      "description": "读取当前用户权限",
+      "args": [
+        {
+          "name": "id",
+          "description": "id",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "_ipe_context",
+          "description": "内部授权上下文，由 Control/Runtime 注入",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "requestTemplate": {
+        "url": "/internal/ai/rest/resolve_actor",
+        "method": "POST",
+        "argsToJsonBody": true
+      }
+    },
+    {
+      "name": "list_documents",
+      "description": "列出协议文档",
+      "args": [
+        {
+          "name": "_ipe_context",
+          "description": "内部授权上下文，由 Control/Runtime 注入",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "requestTemplate": {
+        "url": "/internal/ai/rest/list_documents",
+        "method": "POST",
+        "argsToJsonBody": true
+      }
+    },
+    {
+      "name": "read_document",
+      "description": "分块读取协议文档",
+      "args": [
+        {
+          "name": "offset",
+          "description": "offset",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "id",
+          "description": "id",
+          "type": "integer",
+          "required": true
+        },
+        {
+          "name": "_ipe_context",
+          "description": "内部授权上下文，由 Control/Runtime 注入",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "requestTemplate": {
+        "url": "/internal/ai/rest/read_document",
+        "method": "POST",
+        "argsToJsonBody": true
+      }
+    }
+  ]
+}

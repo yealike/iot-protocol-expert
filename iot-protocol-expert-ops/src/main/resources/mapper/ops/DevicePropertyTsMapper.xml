@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.ops.devices.mapper.DevicePropertyTsMapper">
+
+    <resultMap id="DevicePropertyTsMap" type="top.yealike.pep.ops.devices.entity.DevicePropertyTs">
+        <id property="id" column="id"/>
+        <result property="deviceId" column="device_id"/>
+        <result property="channelNo" column="channel_no"/>
+        <result property="propertyId" column="property_id"/>
+        <result property="valueNum" column="value_num"/>
+        <result property="valueText" column="value_text"/>
+        <result property="valueJson" column="value_json"/>
+        <result property="collectedAt" column="collected_at"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="selectSeries" resultMap="DevicePropertyTsMap">
+        select id, device_id, channel_no, property_id, value_num, value_text,
+               value_json::text as value_json, collected_at, created_at
+        from pep_domain.device_property_ts
+        where device_id = #{deviceId}
+          and property_id = #{propertyId}
+          and collected_at &gt;= #{from}
+          and collected_at &lt;= #{to}
+        order by collected_at
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        insert into pep_domain.device_property_ts
+            (device_id, channel_no, property_id, value_num, value_text, value_json,
+             collected_at, created_at)
+        values
+            (#{deviceId}, #{channelNo}, #{propertyId}, #{valueNum}, #{valueText},
+             cast(#{valueJson} as jsonb), #{collectedAt}, #{createdAt})
+    </insert>
+
+    <delete id="deleteOlderThan">
+        delete from pep_domain.device_property_ts where collected_at &lt; #{before}
+    </delete>
+
+    <delete id="deleteByDevice">
+        delete from pep_domain.device_property_ts where device_id = #{deviceId}
+    </delete>
+</mapper>

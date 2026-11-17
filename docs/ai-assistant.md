@@ -1,9 +1,9 @@
 # AI 助手与在线 Agent 平台
 
-> 代码模块：`iot-protocol-expert-ai`（Control，HTTP 19083）、`iot-protocol-expert-agent-runtime`（Runtime，HTTP 19084）
+> 代码模块：`iot-protocol-expert-agent-control`（Control，HTTP 19083）、`iot-protocol-expert-agent-runtime`（Runtime，HTTP 19084）
 > 设计基线：`设计文档/Agent在线配置、发布与运行方案.md`
 > 实施记录与 T01–T20 状态：`docs/online-agent/implementation-log.md`
-> 当前状态：在线配置、发布、MCP/Skill/Agent Nacos 注册、Runtime 执行与 SSE 重放主链路已实现；最新 Run `a567cbf1-77d8-4195-b79f-e288ac114c95` 为 COMPLETED。事件入库最终一致性仍在优化，未完成 T01–T20 全量验收，不具备生产上线结论。
+> 当前状态：模块已恢复命名并拆分 OPS/Control，MCP/Skill 版本与发布由平台管理，Higress 承担 REST-to-MCP；本轮未做外部环境全链路验收。详见 [模块与组件治理](module-architecture.md)。
 
 ## 1. 进程与职责
 
@@ -14,7 +14,7 @@
 
 Control
   ├─ PostgreSQL ipe_ai
-  ├─ Nacos：Control、Runtime 基础服务、Agent/MCP/Skill 精确版本
+  ├─ Nacos：Control、Runtime 基础服务、已装配 Agent 版本的健康实例
   │    ai_registry_projection 仅保存期望/观测投影
   └─ 内部签名 HTTP ────────> Runtime :19084
 
@@ -29,7 +29,7 @@ Runtime
 - Runtime 不访问数据库，不扫描 `ai_run`；只接收 Control 派发，使用内存执行并通过内部 HTTP 回写。
 - 管理端不在 OPS 后端实现，OPS 只提供身份内部接口和业务数据工具。
 - 两进程都不直接读取运营业务表；工具数据经 Higress MCP 访问 OPS。
-- OPS 必须启用 Nacos Discovery 并注册 `iot-protocol-expert-ops`；否则 Higress 对 MCP `tools/call` 返回 503。
+- Higress 后端可以使用静态服务或 Nacos Naming；只有选择 Naming 来源时，OPS 才需注册 `iot-protocol-expert-ops`。
 
 ## 2. 前端入口
 
@@ -48,7 +48,7 @@ Runtime
 
 ## 3. 数据与版本
 
-`ipe_ai` 由 Flyway 管理，迁移目录为 `iot-protocol-expert-ai/src/main/resources/db/migration/`。
+`ipe_ai` 由 Flyway 管理，迁移目录为 `iot-protocol-expert-agent-control/src/main/resources/db/migration/`。
 
 | 范围 | 主要表 |
 |---|---|
@@ -77,7 +77,7 @@ Runtime
 
 ### 4.2 MCP
 
-1. 新建 MCP 草稿，来源支持现有 Nacos MCP 原生目录映射或远程 Streamable HTTP Provider。
+1. 新建 MCP 草稿，来源使用远程 Streamable HTTP，填写 Higress 或其他远程 MCP endpoint；历史 Nacos 草稿需补充 endpoint。
 2. `POST /api/ai/v1/mcps/{id}/test` 执行握手和 `tools/list`，保存测试报告；测试不会调用真实业务工具。
 3. 发布时冻结工具目录、输入/输出 Schema、catalog digest 和 endpoint；后续工具变化必须通过新版本发布。
 4. Agent 只能绑定已发布 MCP 的明确工具。Runtime prepare 会再次校验 catalog、工具 Schema digest 和连接。
@@ -113,7 +113,7 @@ VALIDATING -> PREPARING -> REGISTERING -> PUBLISHED
 
 Agent 发布时，Control 选择一个健康 Runtime 调用 `releases:prepare`。Runtime 在内存中完成 manifest、Skill bundle、MCP 目录和摘要校验并注册精确版本；Control 验证健康实例后才切 ACTIVE。发布超时为 60 秒，失败按指数退避重试，最多 5 次。
 
-MCP 与 Skill 发布冻结目录/bundle 并写入 `ai_registry_projection`，随后由 Control 调用 `NacosRegistryService.registerComponent` 注册 `ipe-mcp--...` / `ipe-skill--...`；Control 启动后每 30 秒对账并补注册缺失的 ACTIVE 版本。
+MCP 与 Skill 发布冻结目录/bundle 和入口，写入平台发布事务与 `ai_registry_projection`；不再注册 Nacos MCP/Skill Naming 实例，也不依赖这些实例的健康状态。
 
 ## 5. Runtime 执行
 
@@ -122,7 +122,7 @@ MCP 与 Skill 发布冻结目录/bundle 并写入 `ai_registry_projection`，随
 Runtime 启动日志应包含：
 
 - `Started AgentRuntimeApplication`
-- Nacos 启用时：`runtime base service registered: service=ipe-agent-runtime`
+- Nacos 启用时：`runtime base service registered: service=iot-protocol-expert-agent-runtime`
 - 完成 prepare 后：`release prepared: release=... agent=... version=... digest=...`
 - 精确版本注册：`runtime agent release registered: service=ipe-agent--...`
 
@@ -202,14 +202,14 @@ Control 必须拒绝过期 token、错误 instanceId、非 ACTIVE release、错�
 
 | 变量 | 说明 |
 |---|---|
-| `IPE_AI_DB_URL/USER/PASSWORD` | `ipe_ai` 数据库；缺省复用 `IPE_OPS_DB_*`，schema 固定 `ipe_ai` |
+| `PEP_CONTROL_DB_URL/USER/PASSWORD` | 与 OPS 共用现有数据库；历史迁移由 OPS 执行，schema 使用 `pep_platform` / `pep_agent` |
 | `IPE_AI_REGISTRY_ENABLED` | 在线 Agent 平台的 Nacos Naming 注册开关；本地无 Nacos 时为 `false` |
 | `IPE_NACOS_SERVER_ADDR/USERNAME/PASSWORD` | Nacos 服务与认证 |
 | `IPE_NACOS_NAMESPACE` / `IPE_AI_COMPONENT_GROUP` | Nacos namespace/group，默认 `public` / `IPE_AI_COMPONENTS` |
 | `IPE_AI_ADVERTISE_IP` / `IPE_CONTROL_SERVICE_NAME` | 可被 Runtime 访问的 Control 地址/服务名 |
-| `IPE_AI_MCP_GATEWAY_BASE` | Nacos MCP 目录未返回 endpoint 时，用于拼 Higress MCP 入口 |
-| `IPE_AI_MCP_REGISTRY_ENABLED` | 是否从 Nacos MCP Registry 订阅 `ipe-ops-rest` |
-| `IPE_AI_MCP_URL` / `IPE_AI_MCP_TOKEN` | MCP 兜底入口和共享令牌；生产必须显式配置 |
+| `IPE_AI_MCP_GATEWAY_BASE` | 显式拼接既有 Higress `/ipe-mcp/{serverName}` 入口 |
+| `IPE_AI_MCP_REGISTRY_ENABLED` | 旧兼容变量，不再触发 MCP 目录订阅 |
+| `IPE_AI_MCP_URL` / `IPE_AI_MCP_TOKEN` | Higress MCP 固定入口和共享令牌；生产必须显式配置 |
 | `IPE_CREDENTIAL_MASTER_KEY` / `_FILE` | 凭据加密主密钥；生产必须稳定配置 |
 | `IPE_INTERNAL_SERVICE_KEY` / `_FILE` | Control/Runtime 共享 HMAC 密钥，两端必须一致；Control 当前只读取环境变量，Runtime 还支持 `_FILE` |
 | `IPE_INTERNAL_SERVICE_NAME` / `IPE_RUNTIME_SERVICE_NAME` | 内部调用身份名，本地脚本默认 `control` / `runtime` |
@@ -225,10 +225,10 @@ Control 必须拒绝过期 token、错误 instanceId、非 ACTIVE release、错�
 注意：
 
 - `IPE_NACOS_DISCOVERY_ENABLED` 控制 Spring Cloud 服务注册；`IPE_AI_REGISTRY_ENABLED` 控制在线 Agent 平台的 Naming 契约，两者不能混为一谈。
-- `IPE_AI_MCP_REGISTRY_ENABLED` 只控制 Nacos MCP 目录订阅，不能替代 `IPE_AI_REGISTRY_ENABLED`。
-- 启动脚本没有显式配置时会把 `IPE_AI_REGISTRY_ENABLED` 和 `IPE_AI_MCP_REGISTRY_ENABLED` 设为 `false`；`seed-ai.ps1` 在检测到 Nacos 地址与 MCP 入口时会默认启用平台注册，也可在 `.env.local` 显式覆盖。
-- MCP/Skill 发布现在会实际注册 Nacos；`ai_registry_projection` 只记录期望/观测状态，排查时应以 Nacos 实例列表为准。
-- `IPE_CONTROL_SERVICE_NAME` 同时影响 Control 的平台 Nacos 服务名和 Runtime 的发现目标，默认统一为 `ipe-ai-control`；如需覆盖，Control 与 Runtime 必须使用同一值。
+- `IPE_AI_MCP_REGISTRY_ENABLED` 为旧兼容变量；系统工具入口不再订阅 Nacos AI 目录。
+- 本地脚本默认关闭 Nacos，可通过 `IPE_AI_REGISTRY_ENABLED=true` 启用服务/Runtime 实例发现；无 Nacos 时显式允许 Runtime 静态直连。
+- MCP/Skill 的平台发布状态为权威；Nacos 仅用于服务和 Runtime 已装配 Agent 版本的实例发现。
+- `IPE_CONTROL_SERVICE_NAME` 同时影响 Control 的平台 Nacos 服务名和 Runtime 的发现目标，默认统一为 `iot-protocol-expert-agent-control`；如需覆盖，Control 与 Runtime 必须使用同一值。
 
 ### 7.2 Runtime
 
@@ -236,10 +236,10 @@ Control 必须拒绝过期 token、错误 instanceId、非 ACTIVE release、错�
 |---|---|
 | `IPE_RUNTIME_PORT` | Runtime HTTP 端口，默认 19084 |
 | `IPE_CONTROL_BASE_URL` | Control 内部地址，默认 `http://127.0.0.1:19083` |
-| `IPE_CONTROL_SERVICE_NAME` / `IPE_RUNTIME_SERVICE_NAME` | Control 发现名 / Runtime HMAC 身份，默认 `ipe-ai-control` / `runtime` |
+| `IPE_CONTROL_SERVICE_NAME` / `IPE_RUNTIME_SERVICE_NAME` | Control 发现名 / Runtime HMAC 身份，默认 `iot-protocol-expert-agent-control` / `runtime` |
 | `IPE_RUNTIME_KEY_ID` | 服务密钥标识，默认 `runtime` |
 | `IPE_INTERNAL_SERVICE_KEY` / `_FILE` | 必须与 Control 相同 |
-| `IPE_AI_REGISTRY_ENABLED` | 是否注册 `ipe-agent-runtime` 和精确 Agent 版本 |
+| `IPE_AI_REGISTRY_ENABLED` | 是否注册 `iot-protocol-expert-agent-runtime` 和精确 Agent 版本 |
 | `IPE_NACOS_*` / `IPE_AI_COMPONENT_GROUP` | Nacos 地址、认证、namespace、group |
 | `IPE_RUNTIME_ADVERTISE_IP` | Runtime 的可达广播 IP；远程调用时不能注册 loopback |
 | `IPE_RUNTIME_MAX_ACTIVE` / `IPE_RUNTIME_QUEUE_CAPACITY` | 同时执行 4、等待 8（默认） |
@@ -250,13 +250,13 @@ Runtime 的资金/上下文预算硬上限为 12 轮、32 次工具调用、300 
 
 | 变量 | 说明 |
 |---|---|
-| `IPE_NACOS_DISCOVERY_ENABLED` | OPS 必须为 `true`，以 `iot-protocol-expert-ops` 注册到 Nacos |
+| `IPE_NACOS_DISCOVERY_ENABLED` | Higress 使用 Nacos Naming 来源时为 `true`，注册名为 `iot-protocol-expert-ops` |
 | `IPE_OPS_ADVERTISE_IP` | OPS 的 Nacos 广播地址，必须能被 Higress 访问 |
 | `IPE_NACOS_SERVER_ADDR` / `IPE_NACOS_NAMESPACE` / `IPE_NACOS_GROUP` | Nacos 地址、namespace、group；OPS 默认 `DEFAULT_GROUP` |
 | `IPE_OPS_BASE_URL` | Control 调用 OPS 身份接口的地址，必须是 `http://127.0.0.1:19082`（或实际 OPS 地址） |
 | `IPE_OPS_SERVICE_TOKEN` | Control→OPS 内部接口令牌，需与 OPS 配置一致 |
 
-OPS 未注册时，Higress 的 MCP `tools/call` 返回 503；这不是 Control 的内部 HMAC 或模型凭据错误。
+Higress 使用 Nacos Naming 来源时，OPS 未注册会使调用返回 503；使用静态后端则不依赖注册。
 
 ### 7.4 模型与知识库
 
@@ -275,8 +275,8 @@ OPS 未注册时，Higress 的 MCP `tools/call` 返回 503；这不是 Control �
 
 - JDK 21、Maven、PostgreSQL、Nacos、Higress 按实际环境可用。
 - `.env.local` 从 `.env.example` 复制并填写真实值；不要提交 `.env.local`。
-- 需要 Nacos 组件注册时显式设置 `IPE_AI_REGISTRY_ENABLED=true` 和 `IPE_AI_MCP_REGISTRY_ENABLED=true`。
-- OPS 必须已启动并启用 `IPE_NACOS_DISCOVERY_ENABLED=true`，注册为 `iot-protocol-expert-ops`，且 `IPE_OPS_ADVERTISE_IP` 是 Higress 可访问的地址；否则 MCP `tools/call` 会返回 503。
+- 需要服务发现时显式设置 `IPE_AI_REGISTRY_ENABLED=true`，MCP 使用实际的 Higress endpoint。
+- OPS 必须先启动，Higress 后端须可达；采用 Naming 来源时再启用 `IPE_NACOS_DISCOVERY_ENABLED=true` 并正确配置广播 IP。
 - `start-local.ps1` 会启动 OPS、AI、协议服务和模拟器，但不启动 Runtime；它启动的 AI 使用 `run/ai.pid`。`seed-ai.ps1` 默认检测到该进程会拒绝重复启动；使用 `seed-ai.ps1 -Restart` 可校验 PID 与 jar 后停止并接管，或改用单独启动 OPS 的方式。
 - 本机默认使用 `IPE_OPS_BASE_URL=http://127.0.0.1:19082`；OPS 地址不同时必须在 `.env.local` 或进程环境中显式覆盖。
 
@@ -350,7 +350,7 @@ OPS 未注册时，Higress 的 MCP `tools/call` 返回 503；这不是 Control �
 | publication FAILED 后重试 | 先修复依赖，再调用 `POST /api/ai/v1/publications/{id}/retry`；不要重复发布同版本 |
 | Runtime readiness DOWN | `IPE_INTERNAL_SERVICE_KEY`、Control 地址、Nacos 地址/namespace/group/广播 IP |
 | MCP `tools/call` 503 | OPS 是否以 `iot-protocol-expert-ops` 注册 Nacos；`IPE_NACOS_DISCOVERY_ENABLED` 与 `IPE_OPS_ADVERTISE_IP` 是否正确；Higress 能否访问该地址 |
-| 新 Run 一直排队或 503 `NO_HEALTHY_RUNTIME` | Nacos 是否发现对应 Agent 精确版本；`ipe-agent-runtime` 实例是否健康；确认未误开 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED` |
+| 新 Run 一直排队或 503 `NO_HEALTHY_RUNTIME` | Nacos 是否发现对应 Agent 精确版本；`iot-protocol-expert-agent-runtime` 实例是否健康；确认未误开 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED` |
 | 429 `RUN_BUSY` | Runtime 并发/等待队列已满；降低并发或扩容；不要读取内部 inflight 配额 |
 | Run `EXECUTION_LOST` | Runtime 停止、网络分区或心跳中断；Control 不会自动重演，需重新提问生成新 Run |
 | 凭据解密失败 | `IPE_CREDENTIAL_MASTER_KEY` 是否被更换或丢失；旧密文无法用新主密钥恢复 |

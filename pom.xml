@@ -12,22 +12,23 @@
     </parent>
 
     <groupId>top.yealike.pep</groupId>
-    <artifactId>pep-platform</artifactId>
+    <artifactId>iot-protocol-expert</artifactId>
     <version>1.0.0</version>
     <packaging>pom</packaging>
-    <name>pep-platform</name>
+    <name>iot-protocol-expert</name>
     <description>AI Native 协议调查、复现与验证工作台</description>
 
     <modules>
-        <module>pep-device-codec</module>
-        <module>pep-observability</module>
-        <module>pep-runtime-contract</module>
-        <module>pep-model-contract</module>
-        <module>pep-control</module>
-        <module>pep-device-gateway</module>
-        <module>pep-simulator</module>
-        <module>pep-model-gateway</module>
-        <module>pep-agent-runtime</module>
+        <module>shared/iot-protocol-expert-device-codec</module>
+        <module>shared/iot-protocol-expert-observability</module>
+        <module>shared/iot-protocol-expert-runtime-contract</module>
+        <module>shared/iot-protocol-expert-model-contract</module>
+        <module>iot-protocol-expert-ops</module>
+        <module>iot-protocol-expert-agent-control</module>
+        <module>iot-protocol-expert-protocol-gateway</module>
+        <module>iot-protocol-expert-simulator</module>
+        <module>iot-protocol-expert-model-gateway</module>
+        <module>iot-protocol-expert-agent-runtime</module>
     </modules>
 
     <properties>

@@ -1,0 +1,27 @@
+# 放入 nginx http 上下文；修改静态目录与监听端口后使用。
+upstream ipe_ops { server 127.0.0.1:19082; }
+upstream ipe_control { server 127.0.0.1:19083; }
+
+server {
+    listen 8080;
+    root /srv/iot-protocol-expert-web/dist;
+
+    location /api/ai/ {
+        proxy_pass http://ipe_control;
+        proxy_set_header Host $host;
+        proxy_set_header Cookie $http_cookie;
+        proxy_buffering off;
+        proxy_read_timeout 35m;
+    }
+    location /api/control/ {
+        proxy_pass http://ipe_control;
+        proxy_set_header Host $host;
+        proxy_set_header Cookie $http_cookie;
+    }
+    location ~ ^/(api/|login$|logout$|actuator/) {
+        proxy_pass http://ipe_ops;
+        proxy_set_header Host $host;
+        proxy_set_header Cookie $http_cookie;
+    }
+    location / { try_files $uri $uri/ /index.html; }
+}

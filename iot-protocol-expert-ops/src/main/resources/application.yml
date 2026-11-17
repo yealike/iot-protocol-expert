@@ -1,0 +1,142 @@
+server:
+  port: ${IPE_OPS_PORT:19082}
+  shutdown: graceful
+
+spring:
+  config:
+    import: classpath:observability-defaults.yml
+  main:
+    banner-mode: "off"
+  application:
+    name: iot-protocol-expert-ops
+  cloud:
+    nacos:
+      server-addr: ${IPE_NACOS_SERVER_ADDR:127.0.0.1:8848}
+      username: ${IPE_NACOS_USERNAME:}
+      password: ${IPE_NACOS_PASSWORD:}
+      discovery:
+        enabled: ${IPE_NACOS_DISCOVERY_ENABLED:false}
+        namespace: ${IPE_NACOS_NAMESPACE:public}
+        group: ${IPE_NACOS_GROUP:DEFAULT_GROUP}
+        ip: ${IPE_OPS_ADVERTISE_IP:}
+        fail-fast: ${IPE_NACOS_FAIL_FAST:true}
+        graceful-shutdown-wait-time: ${IPE_NACOS_DEREGISTER_WAIT_MS:3000}
+        metadata:
+          ipe-role: ops
+          ipe-environment: ${IPE_ENVIRONMENT:local}
+          ipe-version: 1.0.0
+          ipe-protocols: cuokc16,ocpp16j
+  datasource:
+    url: ${PEP_CONTROL_DB_URL:${IPE_OPS_DB_URL:jdbc:postgresql://127.0.0.1:55432/ipe_ops}}
+    username: ${PEP_CONTROL_DB_USER:${IPE_OPS_DB_USER:ipe}}
+    password: ${PEP_CONTROL_DB_PASSWORD:${IPE_OPS_DB_PASSWORD:}}
+    hikari:
+      maximum-pool-size: 8
+      minimum-idle: 1
+      connection-timeout: 5000
+      connection-init-sql: SET search_path TO pep_platform,pep_domain,pep_agent
+  flyway:
+    enabled: true
+    baseline-on-migrate: false
+    default-schema: pep_platform
+    schemas: pep_platform,pep_domain,pep_agent
+    create-schemas: true
+    locations: classpath:db/migration
+    # 迁移脚本里的物模型 JSON 含 ${...} 形态的字符，关掉占位符替换，避免 Flyway 误解析
+    placeholder-replacement: false
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
+  mvc:
+    problemdetails:
+      enabled: true
+    async:
+      request-timeout: 600000
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+  paths-to-match: /api/**
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    jdbc-type-for-null: "NULL"
+    call-setters-on-nulls: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,telemetry
+
+ipe:
+  environment: ${IPE_ENVIRONMENT:local}
+  tempo:
+    query-base-url: ${IPE_TEMPO_QUERY_BASE_URL:}
+  codec:
+    crypto-key-hex: ${IPE_CRYPTO_KEY_HEX:0123456789ABCDEFFEDCBA9876543210}
+  ops:
+    ai-mcp-token: ${IPE_AI_MCP_TOKEN:}
+    tdengine:
+      url: ${IPE_TDENGINE_URL:jdbc:TAOS-WS://127.0.0.1:6041}
+      username: ${IPE_TDENGINE_USER:root}
+      password: ${IPE_TDENGINE_PASSWORD:}
+      flush-delay-ms: ${IPE_TDENGINE_FLUSH_DELAY_MS:1000}
+    environment: ${IPE_ENVIRONMENT:local}
+    protocol-document-dir: ${IPE_PROTOCOL_DOCUMENT_DIR:./data/protocol-documents}
+    service-token: ${IPE_OPS_SERVICE_TOKEN:}
+    simulator-token: ${IPE_OPS_SIMULATOR_TOKEN:}
+    simulator-base-url: ${IPE_SIMULATOR_BASE_URL:http://127.0.0.1:19081}
+    protocol-base-url: ${IPE_PROTOCOL_BASE_URL:http://127.0.0.1:19080}
+    protocol-timeout-ms: ${IPE_PROTOCOL_TIMEOUT_MS:5000}
+    model:
+      enabled: ${IPE_MODEL_ENABLED:false}
+      base-url: ${IPE_MODEL_BASE_URL:}
+      api-key: ${IPE_MODEL_API_KEY:}
+      name: ${IPE_MODEL_NAME:deepseek-flash}
+      timeout-ms: ${IPE_MODEL_TIMEOUT_MS:15000}
+    default-station-code: ${IPE_DEFAULT_STATION_CODE:ST-DEMO}
+    default-station-name: ${IPE_DEFAULT_STATION_NAME:演示充电站}
+    loki-url: ${IPE_LOKI_URL:}
+    auto-register: ${IPE_AUTO_REGISTER:true}
+logging:
+  structured:
+    format:
+      console: logstash
+    json:
+      add:
+        service.name: ${spring.application.name}
+        service.version: 1.0.0
+        deployment.environment.name: ${ipe.observability.environment}
+      rename:
+        traceId: trace_id
+        spanId: span_id
+      stacktrace:
+        max-length: 8192
+  level:
+    root: INFO
+    top.yealike.pep.ops: INFO
+    org.springframework: WARN
+    org.springframework.boot: WARN
+    org.springframework.boot.autoconfigure: WARN
+    org.springframework.web: WARN
+    org.springframework.http: WARN
+    org.springframework.security: WARN
+    org.mybatis: WARN
+    com.zaxxer.hikari: WARN
+    org.flywaydb: INFO

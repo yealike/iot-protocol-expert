@@ -1,0 +1,191 @@
+server:
+  port: ${PEP_CONTROL_PORT:19083}
+  shutdown: graceful
+
+spring:
+  config:
+    import: classpath:observability-defaults.yml
+  main:
+    banner-mode: "off"
+  application:
+    name: iot-protocol-expert-agent-control
+  datasource:
+    url: ${PEP_CONTROL_DB_URL:${IPE_OPS_DB_URL:jdbc:postgresql://127.0.0.1:55432/ipe_ops}}
+    username: ${PEP_CONTROL_DB_USER:${IPE_OPS_DB_USER:ipe}}
+    password: ${PEP_CONTROL_DB_PASSWORD:${IPE_OPS_DB_PASSWORD:}}
+    hikari:
+      maximum-pool-size: 8
+      minimum-idle: 1
+      connection-timeout: 5000
+      connection-init-sql: SET search_path TO pep_platform,pep_domain,pep_agent
+  flyway:
+    # OPS owns the unchanged historical migrations; start OPS before Control.
+    enabled: false
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 21MB
+  mvc:
+    problemdetails:
+      enabled: true
+    async:
+      request-timeout: 600000
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+  paths-to-match: /api/**
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    jdbc-type-for-null: "NULL"
+    call-setters-on-nulls: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus,telemetry
+
+ipe:
+  environment: ${IPE_ENVIRONMENT:local}
+  tempo:
+    query-base-url: ${IPE_TEMPO_QUERY_BASE_URL:}
+  ai:
+    environment: ${IPE_ENVIRONMENT:local}
+    request-timeout-ms: ${IPE_AI_REQUEST_TIMEOUT_MS:8000}
+    platform:
+      registry:
+        enabled: ${IPE_AI_REGISTRY_ENABLED:false}
+        server-addr: ${IPE_NACOS_SERVER_ADDR:127.0.0.1:8848}
+        username: ${IPE_NACOS_USERNAME:}
+        password: ${IPE_NACOS_PASSWORD:}
+        namespace: ${IPE_NACOS_NAMESPACE:public}
+        group: ${IPE_AI_COMPONENT_GROUP:IPE_AI_COMPONENTS}
+        advertise-ip: ${IPE_AI_ADVERTISE_IP:}
+        control-service-name: ${IPE_CONTROL_SERVICE_NAME:iot-protocol-expert-agent-control}
+        mcp-gateway-base: ${IPE_AI_MCP_GATEWAY_BASE:}
+        cache-seconds: ${IPE_AI_REGISTRY_CACHE_SECONDS:5}
+      security:
+        master-key: ${IPE_CREDENTIAL_MASTER_KEY:}
+        master-key-file: ${IPE_CREDENTIAL_MASTER_KEY_FILE:}
+        internal-service-name: ${IPE_INTERNAL_SERVICE_NAME:iot-protocol-expert-agent-control}
+        runtime-service-name: ${IPE_RUNTIME_SERVICE_NAME:iot-protocol-expert-agent-runtime}
+        internal-service-key: ${IPE_INTERNAL_SERVICE_KEY:}
+        internal-key-id: ${IPE_INTERNAL_KEY_ID:control}
+        clock-skew-seconds: ${IPE_INTERNAL_CLOCK_SKEW_SECONDS:30}
+      runtime:
+        max-dispatch-attempts: ${IPE_RUNTIME_MAX_DISPATCH_ATTEMPTS:3}
+        lease-seconds: ${IPE_RUNTIME_LEASE_SECONDS:30}
+        queue-limit: ${IPE_RUNTIME_QUEUE_LIMIT:100}
+        per-user-queued: ${IPE_RUNTIME_PER_USER_QUEUED:2}
+        per-user-in-flight: ${IPE_RUNTIME_PER_USER_IN_FLIGHT:1}
+        direct-fallback-enabled: ${IPE_RUNTIME_DIRECT_FALLBACK_ENABLED:false}
+        base-url: ${IPE_AGENT_RUNTIME_BASE_URL:http://127.0.0.1:19084}
+      identity:
+        service-name: ${IPE_OPS_SERVICE_NAME:iot-protocol-expert-ops}
+        namespace: ${IPE_NACOS_NAMESPACE:public}
+        group: ${IPE_OPS_SERVICE_GROUP:DEFAULT_GROUP}
+        base-url: ${IPE_OPS_BASE_URL:http://127.0.0.1:19082}
+        service-token: ${IPE_OPS_SERVICE_TOKEN:}
+      bootstrap:
+        enabled: ${IPE_AI_BOOTSTRAP_ENABLED:false}
+        model-credential-key: ${IPE_MODEL_CREDENTIAL_KEY:model-default}
+        model-api-key: ${IPE_MODEL_API_KEY:}
+        model-base-url: ${IPE_MODEL_BASE_URL:}
+        model-name: ${IPE_MODEL_NAME:deepseek-flash}
+        skill-version: ${IPE_BOOTSTRAP_SKILL_VERSION:1.0.0}
+        reviewed-read-only-tools: ${IPE_AI_BOOTSTRAP_REVIEWED_READ_ONLY_TOOLS:}
+    mcp:
+      token: ${IPE_AI_MCP_TOKEN:}
+      url: ${IPE_AI_MCP_URL:}
+      gateway-base-url: ${IPE_AI_MCP_GATEWAY_BASE:}
+      registry:
+        enabled: ${IPE_AI_MCP_REGISTRY_ENABLED:false}
+        server-name: ${IPE_AI_MCP_SERVER_NAME:ipe-ops-rest}
+        version: ${IPE_AI_MCP_SERVER_VERSION:}
+        namespace: ${IPE_NACOS_NAMESPACE:public}
+    model:
+      enabled: ${IPE_MODEL_ENABLED:false}
+      base-url: ${IPE_MODEL_BASE_URL:}
+      api-key: ${IPE_MODEL_API_KEY:}
+      name: ${IPE_MODEL_NAME:deepseek-flash}
+      timeout-ms: ${IPE_MODEL_TIMEOUT_MS:60000}
+      max-tokens: ${IPE_MODEL_MAX_TOKENS:2048}
+      temperature: ${IPE_MODEL_TEMPERATURE:0.1}
+    embedding:
+      enabled: ${IPE_EMBEDDING_ENABLED:false}
+      base-url: ${IPE_EMBEDDING_BASE_URL:}
+      api-key: ${IPE_EMBEDDING_API_KEY:}
+      name: ${IPE_EMBEDDING_NAME:text-embedding-3-small}
+      dimensions: ${IPE_EMBEDDING_DIMENSIONS:1024}
+      timeout-ms: ${IPE_EMBEDDING_TIMEOUT_MS:20000}
+    run:
+      max-concurrent: ${IPE_AI_RUN_MAX_CONCURRENT:4}
+      max-iters: ${IPE_AI_RUN_MAX_ITERS:6}
+      max-tool-calls: ${IPE_AI_RUN_MAX_TOOL_CALLS:12}
+      timeout-ms: ${IPE_AI_RUN_TIMEOUT_MS:120000}
+      max-context-messages: ${IPE_AI_RUN_MAX_CONTEXT_MESSAGES:20}
+    knowledge:
+      chunk-size: ${IPE_AI_CHUNK_SIZE:800}
+      chunk-overlap: ${IPE_AI_CHUNK_OVERLAP:100}
+      top-k: ${IPE_AI_TOP_K:6}
+      min-score: ${IPE_AI_MIN_SCORE:1}
+      max-document-bytes: ${IPE_AI_MAX_DOCUMENT_BYTES:20971520}
+    observability:
+      otel:
+        enabled: ${IPE_AI_OTEL_ENABLED:${IPE_OTLP_ENABLED:true}}
+        content-enabled: ${IPE_AI_OTEL_CONTENT_ENABLED:false}
+        max-content-chars: ${IPE_AI_OTEL_MAX_CONTENT_CHARS:0}
+
+pep:
+  control:
+    model-gateway:
+      base-url: ${PEP_MODEL_GATEWAY_BASE_URL:http://127.0.0.1:19085}
+      service-token: ${PEP_MODEL_GATEWAY_SERVICE_TOKEN:}
+      run-token-secret: ${IPE_INTERNAL_SERVICE_KEY:}
+      run-token-ttl-seconds: ${PEP_RUN_TOKEN_TTL_SECONDS:900}
+      default-tenant-id: ${PEP_DEFAULT_TENANT_ID:00000000-0000-0000-0000-000000000001}
+      default-project-id: ${PEP_DEFAULT_PROJECT_ID:00000000-0000-0000-0000-000000000002}
+      evaluator-subject: ${PEP_EVALUATOR_SUBJECT:ipe-evaluator}
+
+logging:
+  structured:
+    format:
+      console: logstash
+    json:
+      add:
+        service.name: ${spring.application.name}
+        service.version: 1.0.0
+        deployment.environment.name: ${ipe.observability.environment}
+      rename:
+        traceId: trace_id
+        spanId: span_id
+      stacktrace:
+        max-length: 8192
+  level:
+    root: INFO
+    top.yealike.pep.control: INFO
+    org.springframework: WARN
+    org.springframework.boot: WARN
+    org.springframework.boot.autoconfigure: WARN
+    org.springframework.web: WARN
+    org.springframework.http: WARN
+    org.springframework.security: WARN
+    org.mybatis: WARN
+    com.zaxxer.hikari: WARN
+    org.flywaydb: INFO

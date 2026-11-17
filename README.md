@@ -4,18 +4,21 @@
 
 | 模块 | 职责 | 默认端口 |
 | --- | --- | --- |
-| `pep-control` | 身份权限、租户项目、设备与充电交易、调查任务、Agent 目录、知识、评测和审计的模块化单体 | HTTP 19082 |
-| `pep-model-gateway` | 唯一模型出口：供应商密钥、逻辑模型、预占结算、首次使用窗口和用量审计 | HTTP 19085 |
-| `pep-agent-runtime` | 执行已发布 Agent、受控工具、心跳、事件回写和检查点，不访问业务数据库 | HTTP 19084 |
-| `pep-device-gateway` | 设备连接、协议编解码和上下行转发，不持久化业务数据 | HTTP 19080；云快充 TCP 8768；OCPP WS 8769 |
-| `pep-simulator` | 可重复场景、虚拟时钟、设备状态机和故障注入 | HTTP 19081 |
-| `pep-console` | 调查工作台、设备/订单页面和管理控制台 | 开发端口 5173 |
-| `pep-device-codec` | 设备网关与模拟器共用的纯编解码库 | 无 |
-| `pep-runtime-contract` / `pep-model-contract` | Runtime 与模型网关的稳定契约，不依赖服务实现 | 无 |
+| `iot-protocol-expert-ops` | 用户身份、设备、充电交易、告警、遥测及业务内部接口 | HTTP 19082 |
+| `iot-protocol-expert-agent-control` | 租户项目、调查任务、Agent/MCP/Skill 版本发布、会话、知识、评测和 AI 审计 | HTTP 19083 |
+| `iot-protocol-expert-model-gateway` | 唯一模型出口：供应商密钥、逻辑模型、预占结算、首次使用窗口和用量审计 | HTTP 19085 |
+| `iot-protocol-expert-agent-runtime` | 执行已发布 Agent、受控工具、心跳、事件回写和检查点，不访问业务数据库 | HTTP 19084 |
+| `iot-protocol-expert-protocol-gateway` | 设备连接、协议编解码和上下行转发，不持久化业务数据 | HTTP 19080；云快充 TCP 8768；OCPP WS 8769 |
+| `iot-protocol-expert-simulator` | 可重复场景、虚拟时钟、设备状态机和故障注入 | HTTP 19081 |
+| `iot-protocol-expert-web` | 调查工作台、设备/订单页面和管理控制台 | 开发端口 5173 |
+| `shared/iot-protocol-expert-device-codec` | 设备网关与模拟器共用的纯编解码库 | 无 |
+| `shared/iot-protocol-expert-runtime-contract` / `shared/iot-protocol-expert-model-contract` | Runtime 与模型网关的稳定契约，不依赖服务实现 | 无 |
 
-设备网关通过 `ProtocolServer` SPI 管理云快充 1.6 和 OCPP 1.6J；业务事实由 `pep-control` 保存。模型调用只允许经过 `pep-model-gateway`，Control 与 Runtime 都不持有上游供应商密钥。
+共享观测库位于 `shared/iot-protocol-expert-observability`。模拟器直接依赖编解码库与观测库，不依赖网关服务。完整边界与升级步骤见 [模块与组件治理](docs/module-architecture.md)。
 
-数据库按所有权拆分为 `pep_platform`、`pep_domain`、`pep_agent`（Control）和 `pep_metering`（模型网关）。调查任务、证据、假设、实验和结论位于 `pep_agent`；配额账本以 PostgreSQL 为权威。Control 通过签名内部接口调度 Runtime；Nacos 为可选集成，不可用时回退静态地址，不阻塞启动。
+设备网关通过 `ProtocolServer` SPI 管理云快充 1.6 和 OCPP 1.6J；设备与交易事实由 `iot-protocol-expert-ops` 保存。模型调用只允许经过 `iot-protocol-expert-model-gateway`，Control 与 Runtime 都不持有上游供应商密钥。
+
+数据库保留 `pep_platform`（身份及项目授权）、`pep_domain`（OPS 业务）、`pep_agent`（Agent Control）和 `pep_metering`（模型网关）。本轮保持现有数据库和历史迁移内容，由 OPS 统一执行旧迁移，Control 关闭重复 Flyway；两者须连接同一个现有数据库并先启动 OPS。调查任务、证据、假设、实验和结论位于 `pep_agent`；配额账本以 PostgreSQL 为权威。Control 通过签名内部接口调度 Runtime；Nacos 可选，仅用于服务与 Runtime 部署实例发现；本地通过 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true` 显式允许静态直连。MCP/Skill 版本与发布由 Control 管理，Higress 承担 REST-to-MCP 和路由。
 
 ## 本地运行
 
@@ -28,7 +31,7 @@ $env:PATH="$env:JAVA_HOME\bin;$env:PATH"
 .\scripts\start-local.ps1 -DeviceId 1
 ```
 
-`start-local.ps1` 按 `control → model-gateway → agent-runtime → device-gateway → simulator` 顺序启动并等待健康检查；PID 与日志分别在 `run/` 和 `logs/`。前端在 `pep-console` 下执行 `npm ci`、`npm run dev`；生产构建使用 `npm run build`。停止全部服务使用 `.\scripts\stop-local.ps1`。
+`start-local.ps1` 按 `ops → control → model-gateway → agent-runtime → protocol-gateway → simulator` 顺序启动并等待健康检查；PID 与日志分别在 `run/` 和 `logs/`。前端在 `iot-protocol-expert-web` 下执行 `npm ci`、`npm run dev`；生产构建使用 `npm run build`。停止全部服务使用 `.\scripts\stop-local.ps1`。
 
 模型供应商只通过模型网关管理 API 登记，密钥加密后只写不读：
 
@@ -44,17 +47,19 @@ Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:19085/api/model-gateway/v1
 
 浏览器端额度查询走 Control 的 `/api/control/v1/me/quota` 与 `/me/usage`，不直接接触网关令牌。首次使用协议问答前，以管理员身份调用 `POST /api/ai/v1/knowledge/index` 建立索引。
 
+如果额度页提示未配置模型网关服务令牌或服务身份校验失败，检查 `.env.local` 中的 `PEP_MODEL_GATEWAY_SERVICE_TOKEN` 是否非空，并确保 Control 与模型网关加载相同值。IDE 启动不会使用本地脚本补充的默认值；从旧配置迁移时需参照 `.env.example` 补齐变量，再重启这两个服务。健康检查正常只说明服务存活，不代表服务间鉴权通过。
+
 ### 在线 Agent 与 Runtime
 
-需要 Nacos/Higress 时在 `.env.local` 显式设置 `IPE_AI_REGISTRY_ENABLED=true`、`IPE_AI_MCP_REGISTRY_ENABLED=true`，并保证 Control 与 Runtime 使用同一个 `IPE_INTERNAL_SERVICE_KEY`，Control 与 Gateway 使用同一个 `PEP_MODEL_GATEWAY_SERVICE_TOKEN`；供应商密钥主密钥只配置在 Gateway。OPS/Control 注册名默认为 `pep-control`，Runtime 为 `pep-agent-runtime`。Control 通过 Nacos 发现 Runtime，默认禁止直连回退（仅 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true` 时用于本地调试）；`ai_registry_projection` 只保存数据库投影。首次启动或重建后执行：
+需要 Nacos/Higress 时在 `.env.local` 显式设置 `IPE_AI_REGISTRY_ENABLED=true`；MCP 入口设置 `IPE_AI_MCP_URL`，例如 Higress 中已部署的版本化路由，并保证 Control 与 Runtime 使用同一个 `IPE_INTERNAL_SERVICE_KEY`，Control 与 Gateway 使用同一个 `PEP_MODEL_GATEWAY_SERVICE_TOKEN`；供应商密钥主密钥只配置在 Gateway。OPS 注册名默认为 `iot-protocol-expert-ops`，Control 为 `iot-protocol-expert-agent-control`，Runtime 为 `iot-protocol-expert-agent-runtime`。Control 通过 Nacos 发现 Runtime，默认禁止直连回退（仅 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true` 时用于本地调试）；`ai_registry_projection` 只保存数据库投影。首次启动或重建后执行：
 
 ```powershell
 .\scripts\seed-ai.ps1
 ```
 
-脚本确保 Gateway/Runtime/Control 已启动，并以 `IPE_AI_BOOTSTRAP_ENABLED=true` 触发一次 Control 的模型/MCP/Skill/Agent 引导。清理 `pep_agent` 在线 Agent 数据时执行 `.\scripts\reset-ai.ps1 -Confirm -StopServices`（或先自行停止服务后使用 `-Confirm`）；调查任务、Flyway、权限、知识库和审计会保留。
+脚本确保 OPS/Gateway/Runtime/Control 已启动，并以 `IPE_AI_BOOTSTRAP_ENABLED=true` 触发一次 Control 的模型/MCP/Skill/Agent 引导。清理 `pep_agent` 在线 Agent 数据时执行 `.\scripts\reset-ai.ps1 -Confirm -StopServices`（或先自行停止服务后使用 `-Confirm`）；调查任务、Flyway、权限、知识库和审计会保留。
 
-健康检查：Control `GET http://127.0.0.1:19082/actuator/health`，Gateway `19085`，Runtime `GET http://127.0.0.1:19084/actuator/health/readiness`。配置、发布、内部接口和故障排查见 [AI 助手与在线 Agent 平台](docs/ai-assistant.md) 与 [重构实施记录](docs/refactor-implementation.md)。
+健康检查：OPS `GET http://127.0.0.1:19082/actuator/health`，Control `GET http://127.0.0.1:19083/actuator/health`，Gateway `19085`，Runtime `GET http://127.0.0.1:19084/actuator/health/readiness`。配置、发布、内部接口和故障排查见 [AI 助手与在线 Agent 平台](docs/ai-assistant.md) 与 [重构实施记录](docs/refactor-implementation.md)。
 
 首次运行由 Flyway 创建 `pep_platform`、`pep_domain`、`pep_agent` 和 `pep_metering` 并写入演示租户、项目、角色与设备数据；不会清理已有 `public` 数据。旧库表仅用于一次性迁移来源，运行期不再双写。订单回放仅包含新接入的采样，显示的接收时间与设备时间分别标识。
 

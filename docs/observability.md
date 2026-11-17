@@ -45,7 +45,7 @@ IPE_OTLP_ENDPOINT=http://127.0.0.1:4318
 IPE_ENVIRONMENT=local
 ```
 
-服务名由 `spring.application.name` 自动区分（`iot-protocol-expert-protocol` / `iot-protocol-expert-simulator`），不需要 Agent 参数或单独的服务名变量。`.env-local` 已被 `.gitignore` 忽略。
+服务名由 `spring.application.name` 自动区分（`iot-protocol-expert-protocol-gateway` / `iot-protocol-expert-simulator`），不需要 Agent 参数或单独的服务名变量。`.env-local` 已被 `.gitignore` 忽略。
 
 ## Grafana
 

@@ -9,20 +9,20 @@ ROOT = Path(__file__).resolve().parents[1]
 BASELINE = json.loads((ROOT / "scripts/coding-guidelines-baseline.json").read_text(encoding="utf-8"))
 # Identifiers cannot be bound with #{...}. These uses require service-side allowlists.
 INTERPOLATION = {
-    "pep-control/src/main/resources/mapper/ops/DeviceInstanceMapper.xml": {"orderBy"},
-    "pep-control/src/main/resources/mapper/ops/ProductMapper.xml": {"orderBy"},
-    "pep-control/src/main/resources/mapper/ops/AlarmRecordMapper.xml": {"orderBy"},
-    "pep-control/src/main/resources/mapper/tdengine/TdengineMapper.xml": {"database", "table"},
+    "iot-protocol-expert-ops/src/main/resources/mapper/ops/DeviceInstanceMapper.xml": {"orderBy"},
+    "iot-protocol-expert-ops/src/main/resources/mapper/ops/ProductMapper.xml": {"orderBy"},
+    "iot-protocol-expert-ops/src/main/resources/mapper/ops/AlarmRecordMapper.xml": {"orderBy"},
+    "iot-protocol-expert-ops/src/main/resources/mapper/tdengine/TdengineMapper.xml": {"database", "table"},
 }
 # The metering ledger needs single-statement CTE/row-lock SQL with explicit
 # transaction control; reviewed exception, not a general JDBC escape hatch.
 JDBC_REVIEWED = {
-    "pep-model-gateway/src/main/java/top/yealike/pep/modelgateway/catalog/CatalogRepository.java",
-    "pep-model-gateway/src/main/java/top/yealike/pep/modelgateway/quota/QuotaRepository.java",
+    "iot-protocol-expert-model-gateway/src/main/java/top/yealike/pep/modelgateway/catalog/CatalogRepository.java",
+    "iot-protocol-expert-model-gateway/src/main/java/top/yealike/pep/modelgateway/quota/QuotaRepository.java",
 }
 errors = []
 checked = 0
-for module in sorted(ROOT.glob("pep-*")):
+for module in sorted([*ROOT.glob("iot-protocol-expert-*"), *ROOT.glob("shared/iot-protocol-expert-*")]):
     for path in sorted((module / "src/main").rglob("*")):
         if not path.is_file() or path.suffix not in {".java", ".xml", ".sql"}:
             continue

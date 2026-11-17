@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.ops.alarms.mapper.AlarmRecordMapper">
+
+    <resultMap id="AlarmRecordMap" type="top.yealike.pep.ops.alarms.entity.AlarmRecord">
+        <id property="id" column="id"/>
+        <result property="ruleId" column="rule_id"/>
+        <result property="deviceId" column="device_id"/>
+        <result property="channelNo" column="channel_no"/>
+        <result property="level" column="level"/>
+        <result property="title" column="title"/>
+        <result property="detail" column="detail"/>
+        <result property="state" column="state"/>
+        <result property="firstAt" column="first_at"/>
+        <result property="lastAt" column="last_at"/>
+        <result property="handledBy" column="handled_by"/>
+        <result property="handledAt" column="handled_at"/>
+        <result property="handlingNote" column="handling_note"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <sql id="columns">
+        id, rule_id, device_id, channel_no, level, title, detail::text as detail, state, first_at,
+        last_at, handled_by, handled_at, handling_note, created_at
+    </sql>
+
+    <sql id="searchWhere">
+        <where>
+            <if test="state != null and state != ''">
+                and r.state = #{state}
+            </if>
+            <if test="level != null and level != ''">
+                and r.level = #{level}
+            </if>
+            <if test="deviceId != null">
+                and r.device_id = #{deviceId}
+            </if>
+            <if test="keyword != null and keyword != ''">
+                and lower(r.title) like lower(concat('%', #{keyword}, '%'))
+            </if>
+            <if test="(deviceType != null and deviceType != '') or stationId != null">
+                and exists (
+                    select 1
+                    from pep_domain.device_instance d
+                    where d.id = r.device_id
+                    <if test="deviceType != null and deviceType != ''">
+                        and d.device_type = #{deviceType}
+                    </if>
+                    <if test="stationId != null">
+                        and d.station_id = #{stationId}
+                    </if>
+                )
+            </if>
+        </where>
+    </sql>
+
+    <select id="selectById" resultMap="AlarmRecordMap">
+        select <include refid="columns"/>
+        from pep_domain.alarm_record
+        where id = #{id}
+    </select>
+
+    <select id="selectTopOpen" resultMap="AlarmRecordMap">
+        select <include refid="columns"/>
+        from pep_domain.alarm_record
+        where rule_id = #{ruleId}
+          and device_id = #{deviceId}
+          and channel_no = #{channelNo}
+          and state = #{state}
+        order by last_at desc
+        limit 1
+    </select>
+
+    <select id="selectByDeviceIdAndState" resultMap="AlarmRecordMap">
+        select <include refid="columns"/>
+        from pep_domain.alarm_record
+        where device_id = #{deviceId}
+          and state = #{state}
+        order by last_at desc
+    </select>
+
+    <select id="selectTopByState" resultMap="AlarmRecordMap">
+        select <include refid="columns"/>
+        from pep_domain.alarm_record
+        where state = #{state}
+        order by last_at desc
+        limit #{limit}
+    </select>
+
+    <select id="search" resultMap="AlarmRecordMap">
+        select <include refid="columns"/>
+        from pep_domain.alarm_record r
+        <include refid="searchWhere"/>
+        order by ${orderBy}
+        limit #{limit} offset #{offset}
+    </select>
+
+    <select id="countSearch" resultType="long">
+        select count(*)
+        from pep_domain.alarm_record r
+        <include refid="searchWhere"/>
+    </select>
+
+    <select id="countByState" resultType="long">
+        select count(*) from pep_domain.alarm_record where state = #{state}
+    </select>
+
+    <select id="countByStateAndLevel" resultType="long">
+        select count(*)
+        from pep_domain.alarm_record
+        where state = #{state}
+          and level = #{level}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        insert into pep_domain.alarm_record
+            (rule_id, device_id, channel_no, level, title, detail, state, first_at, last_at,
+             handled_by, handled_at, handling_note, created_at)
+        values
+            (#{ruleId}, #{deviceId}, #{channelNo}, #{level}, #{title}, cast(#{detail} as jsonb),
+             #{state}, #{firstAt}, #{lastAt}, #{handledBy}, #{handledAt}, #{handlingNote}, #{createdAt})
+    </insert>
+
+    <update id="update">
+        update pep_domain.alarm_record
+        set rule_id = #{ruleId},
+            device_id = #{deviceId},
+            channel_no = #{channelNo},
+            level = #{level},
+            title = #{title},
+            detail = cast(#{detail} as jsonb),
+            state = #{state},
+            first_at = #{firstAt},
+            last_at = #{lastAt},
+            handled_by = #{handledBy},
+            handled_at = #{handledAt},
+            handling_note = #{handlingNote},
+            created_at = #{createdAt}
+        where id = #{id}
+    </update>
+</mapper>

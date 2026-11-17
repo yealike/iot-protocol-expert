@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.ops.access.mapper.IdentityMapper">
+
+    <resultMap id="IdentityRowMap" type="top.yealike.pep.ops.access.mapper.IdentityMapper$IdentityRow">
+        <constructor>
+            <arg column="id" javaType="_long"/>
+            <arg column="username" javaType="java.lang.String"/>
+            <arg column="enabled" javaType="_boolean"/>
+            <arg column="all_stations" javaType="_boolean"/>
+            <arg column="auth_version" javaType="_long"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="RoleInfoMap" type="top.yealike.pep.ops.access.mapper.IdentityMapper$RoleInfo">
+        <constructor>
+            <arg column="code" javaType="java.lang.String"/>
+            <arg column="name" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <select id="selectAllUserIds" resultType="long">
+        select id from pep_platform.app_user order by id
+    </select>
+
+    <select id="selectIdentityById" resultMap="IdentityRowMap">
+        select id, username, (state = 'ACTIVE') as enabled, all_stations, auth_version
+        from pep_platform.app_user
+        where id = #{id}
+    </select>
+
+    <select id="selectIdentityByUsername" resultMap="IdentityRowMap">
+        select id, username, (state = 'ACTIVE') as enabled, all_stations, auth_version
+        from pep_platform.app_user
+        where username = #{username}
+    </select>
+
+    <select id="selectRoleCodes" resultType="string">
+        select distinct r.code
+        from pep_platform.role_binding b
+        join pep_platform.role r on r.id = b.role_id
+        where b.principal_type = 'USER' and b.principal_id = #{userId}::text
+        order by r.code
+    </select>
+
+    <select id="selectPermissions" resultType="string">
+        select distinct p.permission_code
+        from pep_platform.role_binding b
+        join pep_platform.role_permission p on p.role_id = b.role_id
+        where b.principal_type = 'USER' and b.principal_id = #{userId}::text
+        order by p.permission_code
+    </select>
+
+    <select id="selectStationIds" resultType="long">
+        select station_id
+        from pep_platform.user_station_scope
+        where user_id = #{userId}
+        order by station_id
+    </select>
+
+    <select id="selectRoles" resultMap="RoleInfoMap">
+        select code, name from pep_platform.role order by code
+    </select>
+
+    <select id="selectRolePermissions" resultType="string">
+        select p.permission_code
+        from pep_platform.role_permission p
+        join pep_platform.role r on r.id = p.role_id
+        where r.code = #{roleCode}
+        order by p.permission_code
+    </select>
+
+    <delete id="deleteRolePermissions">
+        delete from pep_platform.role_permission
+        where role_id = (select id from pep_platform.role where code = #{roleCode})
+    </delete>
+
+    <insert id="insertRolePermission">
+        insert into pep_platform.role_permission (role_id, permission_code)
+        select id, #{permission} from pep_platform.role where code = #{roleCode}
+        on conflict do nothing
+    </insert>
+
+    <update id="incrementAuthVersionByRole">
+        update pep_platform.app_user
+        set auth_version = auth_version + 1
+        where id in (
+            select b.principal_id::bigint
+              from pep_platform.role_binding b
+              join pep_platform.role r on r.id = b.role_id
+             where b.principal_type = 'USER' and r.code = #{roleCode})
+    </update>
+
+    <select id="countUsername" resultType="long">
+        select count(*) from pep_platform.app_user where username = #{username}
+    </select>
+
+    <insert id="insertUser" useGeneratedKeys="true" keyProperty="user.id" keyColumn="id">
+        insert into pep_platform.app_user
+            (username, password_hash, enabled, all_stations, created_at, issuer, subject,
+             display_name, state, tenant_id, updated_at)
+        values (#{user.username}, #{user.passwordHash}, #{user.enabled}, #{allStations}, #{user.createdAt},
+                'local', #{user.username}, #{user.username},
+                case when #{user.enabled} then 'ACTIVE' else 'DISABLED' end,
+                '00000000-0000-0000-0000-000000000001', now())
+    </insert>
+
+    <insert id="insertMemberships">
+        with tenant_row as (
+            insert into pep_platform.tenant_member (tenant_id, user_id)
+            values ('00000000-0000-0000-0000-000000000001', #{userId})
+            on conflict do nothing
+        ), project_row as (
+            insert into pep_platform.project_member (project_id, user_id)
+            values ('00000000-0000-0000-0000-000000000002', #{userId})
+            on conflict do nothing
+        )
+        select 1
+    </insert>
+
+    <update id="updateUserAccess">
+        update pep_platform.app_user
+        set enabled = #{enabled},
+            state = case when #{enabled} then 'ACTIVE' else 'DISABLED' end,
+            all_stations = #{allStations},
+            auth_version = auth_version + 1,
+            updated_at = now()
+        where id = #{id}
+    </update>
+
+    <update id="updatePassword">
+        update pep_platform.app_user
+        set password_hash = #{passwordHash}, auth_version = auth_version + 1, updated_at = now()
+        where id = #{id}
+    </update>
+
+    <delete id="deleteUserRoles">
+        delete from pep_platform.role_binding
+        where principal_type = 'USER' and principal_id = #{userId}::text
+    </delete>
+
+    <delete id="deleteUserStations">
+        delete from pep_platform.user_station_scope where user_id = #{userId}
+    </delete>
+
+    <insert id="insertUserRole">
+        insert into pep_platform.role_binding
+            (id, principal_type, principal_id, role_id, scope_type, scope_id)
+        select gen_random_uuid(), 'USER', #{userId}::text, r.id, r.scope_type,
+               case r.scope_type
+                   when 'PLATFORM' then '*'
+                   when 'TENANT' then '00000000-0000-0000-0000-000000000001'
+                   else '00000000-0000-0000-0000-000000000002'
+               end
+          from pep_platform.role r
+         where r.code = #{roleCode}
+        on conflict do nothing
+    </insert>
+
+    <insert id="insertUserStation">
+        insert into pep_platform.user_station_scope (user_id, station_id)
+        values (#{userId}, #{stationId})
+        on conflict do nothing
+    </insert>
+
+    <select id="stationExists" resultType="boolean">
+        select exists (select 1 from pep_domain.station where id = #{stationId})
+    </select>
+</mapper>

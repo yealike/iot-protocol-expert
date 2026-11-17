@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.ops.devices.mapper.ProtocolDocumentMapper">
+
+    <resultMap id="FileInfoMap" type="top.yealike.pep.ops.devices.mapper.ProtocolDocumentMapper$FileInfo">
+        <constructor>
+            <arg column="storage_key" javaType="java.lang.String"/>
+            <arg column="original_filename" javaType="java.lang.String"/>
+            <arg column="content_type" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="PolicyMap" type="top.yealike.pep.ops.devices.mapper.ProtocolDocumentMapper$Policy">
+        <constructor>
+            <arg column="protocol_name_en" javaType="java.lang.String"/>
+            <arg column="document_version" javaType="java.lang.String"/>
+            <arg column="status" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="RefMap" type="top.yealike.pep.ops.devices.mapper.ProtocolDocumentMapper$Ref">
+        <constructor>
+            <arg column="id" javaType="java.lang.Long"/>
+            <arg column="protocol_code" javaType="java.lang.String"/>
+            <arg column="protocol_name_en" javaType="java.lang.String"/>
+            <arg column="document_version" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <select id="selectActive" resultType="map">
+        select id,
+               protocol_code as "protocolCode",
+               protocol_name_en as "protocolNameEn",
+               document_version as "documentVersion",
+               title,
+               original_filename as "originalFilename",
+               file_size as "fileSize",
+               status,
+               uploaded_by as "uploadedBy",
+               created_at as "createdAt"
+        from pep_domain.protocol_document
+        where status = 'ACTIVE'
+          and (#{protocol} = '' or protocol_code = #{protocol})
+        order by id desc
+    </select>
+
+    <select id="insertDocument" resultType="java.lang.Long">
+        insert into pep_domain.protocol_document
+            (protocol_code, protocol_name_en, document_version, title, original_filename, storage_key,
+             content_type, file_size, sha256, uploaded_by)
+        values
+            (#{protocolCode}, #{protocolNameEn}, #{documentVersion}, #{title}, #{originalFilename},
+             #{storageKey}, #{contentType}, #{fileSize}, #{sha256}, #{uploadedBy})
+        returning id
+    </select>
+
+    <select id="selectFileInfo" resultMap="FileInfoMap">
+        select storage_key, original_filename, content_type
+        from pep_domain.protocol_document
+        where id = #{id}
+          and status = 'ACTIVE'
+    </select>
+
+    <select id="selectActiveIdForUpdate" resultType="java.lang.Long">
+        select id
+        from pep_domain.protocol_document
+        where id = #{id}
+          and status = 'ACTIVE'
+        for update
+    </select>
+
+    <select id="countProductReferences" resultType="long">
+        select count(*) from pep_domain.product where protocol_document_id = #{id}
+    </select>
+
+    <update id="archive">
+        update pep_domain.protocol_document
+        set status = 'ARCHIVED',
+            updated_at = now()
+        where id = #{id}
+          and status = 'ACTIVE'
+    </update>
+
+    <select id="selectActiveForAi" resultType="map">
+        select id::text as "id",
+               protocol_code as "protocolCode",
+               protocol_name_en as "protocolNameEn",
+               document_version as "protocolVersion",
+               title,
+               original_filename as "originalFilename",
+               content_type as "contentType",
+               file_size as "fileSize",
+               sha256,
+               created_at as "createdAt"
+        from pep_domain.protocol_document
+        where status = 'ACTIVE'
+        order by created_at desc
+    </select>
+
+    <select id="selectActiveStorageKey" resultType="string">
+        select storage_key
+        from pep_domain.protocol_document
+        where id = #{id}
+          and status = 'ACTIVE'
+    </select>
+
+    <select id="selectProductRefs" resultMap="RefMap">
+        select p.id, d.protocol_code, d.protocol_name_en, d.document_version
+        from pep_domain.product p
+        join pep_domain.protocol_document d on d.id = p.protocol_document_id
+        where p.id in
+        <foreach collection="productIds" item="productId" open="(" separator="," close=")">
+            #{productId}
+        </foreach>
+    </select>
+
+    <select id="selectPolicyForUpdate" resultMap="PolicyMap">
+        select protocol_name_en, document_version, status
+        from pep_domain.protocol_document
+        where id = #{id}
+        for update
+    </select>
+
+    <select id="selectRef" resultMap="RefMap">
+        select id, protocol_code, protocol_name_en, document_version
+        from pep_domain.protocol_document
+        where id = #{id}
+    </select>
+</mapper>

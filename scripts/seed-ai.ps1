@@ -34,7 +34,7 @@ if (-not $env:IPE_OPS_DB_URL -and $env:PEP_CONTROL_DB_URL) {
 
 if (-not $SkipBuild) {
     Write-Host "[seed-ai] 构建 control / model-gateway / agent-runtime"
-    & $mvn -B -pl pep-control,pep-model-gateway,pep-agent-runtime -am package -DskipTests
+    & $mvn -B -pl iot-protocol-expert-ops,iot-protocol-expert-agent-control,iot-protocol-expert-model-gateway,iot-protocol-expert-agent-runtime -am package -DskipTests
     if ($LASTEXITCODE -ne 0) {
         throw "Maven 构建失败，退出码 $LASTEXITCODE"
     }
@@ -42,16 +42,19 @@ if (-not $SkipBuild) {
 
 $runDir = Join-Path $root "run"
 New-Item -ItemType Directory -Force -Path $runDir | Out-Null
-$gatewayJar = Get-PepServiceJar -Root $root -Module "pep-model-gateway" -Jar "pep-model-gateway-1.0.0.jar"
-$runtimeJar = Get-PepServiceJar -Root $root -Module "pep-agent-runtime" -Jar "pep-agent-runtime-1.0.0.jar"
-$controlJar = Get-PepServiceJar -Root $root -Module "pep-control" -Jar "pep-control-1.0.0.jar"
+$opsJar = Get-PepServiceJar -Root $root -Module "iot-protocol-expert-ops" -Jar "iot-protocol-expert-ops-1.0.0.jar"
+$ops = Get-IpeOwnedProcess -PidFile (Join-Path $runDir "ops.pid") -JarName "iot-protocol-expert-ops-1.0.0.jar"
+if (-not $ops) { Start-PepJar -Root $root -Name "ops" -Jar $opsJar -Port ([int]$env:IPE_OPS_PORT) | Out-Null }
+$gatewayJar = Get-PepServiceJar -Root $root -Module "iot-protocol-expert-model-gateway" -Jar "iot-protocol-expert-model-gateway-1.0.0.jar"
+$runtimeJar = Get-PepServiceJar -Root $root -Module "iot-protocol-expert-agent-runtime" -Jar "iot-protocol-expert-agent-runtime-1.0.0.jar"
+$controlJar = Get-PepServiceJar -Root $root -Module "iot-protocol-expert-agent-control" -Jar "iot-protocol-expert-agent-control-1.0.0.jar"
 
 if ($Restart) {
-    Stop-PepJar -Root $root -Name "control" -JarName "pep-control-1.0.0.jar"
-    Stop-PepJar -Root $root -Name "runtime" -JarName "pep-agent-runtime-1.0.0.jar"
+    Stop-PepJar -Root $root -Name "control" -JarName "iot-protocol-expert-agent-control-1.0.0.jar"
+    Stop-PepJar -Root $root -Name "runtime" -JarName "iot-protocol-expert-agent-runtime-1.0.0.jar"
 }
 
-$gateway = Get-IpeOwnedProcess -PidFile (Join-Path $runDir "gateway.pid") -JarName "pep-model-gateway-1.0.0.jar"
+$gateway = Get-IpeOwnedProcess -PidFile (Join-Path $runDir "gateway.pid") -JarName "iot-protocol-expert-model-gateway-1.0.0.jar"
 if (-not $gateway) {
     Start-PepJar -Root $root -Name "gateway" -Jar $gatewayJar -Port ([int]$env:PEP_MODEL_GATEWAY_PORT) | Out-Null
 } else {
@@ -60,12 +63,12 @@ if (-not $gateway) {
 
 # Control 先以 bootstrap=false 启动，runtime readiness 通过后再重启触发引导。
 $env:IPE_AI_BOOTSTRAP_ENABLED = "false"
-$control = Get-IpeOwnedProcess -PidFile (Join-Path $runDir "control.pid") -JarName "pep-control-1.0.0.jar"
+$control = Get-IpeOwnedProcess -PidFile (Join-Path $runDir "control.pid") -JarName "iot-protocol-expert-agent-control-1.0.0.jar"
 if (-not $control) {
     Start-PepJar -Root $root -Name "control" -Jar $controlJar -Port ([int]$env:PEP_CONTROL_PORT) | Out-Null
 }
 
-$runtime = Get-IpeOwnedProcess -PidFile (Join-Path $runDir "runtime.pid") -JarName "pep-agent-runtime-1.0.0.jar"
+$runtime = Get-IpeOwnedProcess -PidFile (Join-Path $runDir "runtime.pid") -JarName "iot-protocol-expert-agent-runtime-1.0.0.jar"
 if (-not $runtime) {
     Start-PepJar `
         -Root $root `
@@ -75,7 +78,7 @@ if (-not $runtime) {
         -HealthPath "/actuator/health/readiness" | Out-Null
 }
 
-Stop-PepJar -Root $root -Name "control" -JarName "pep-control-1.0.0.jar"
+Stop-PepJar -Root $root -Name "control" -JarName "iot-protocol-expert-agent-control-1.0.0.jar"
 $env:IPE_AI_BOOTSTRAP_ENABLED = "true"
 Start-PepJar `
     -Root $root `

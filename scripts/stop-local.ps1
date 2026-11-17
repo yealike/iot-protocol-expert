@@ -7,7 +7,7 @@ foreach ($service in Get-PepServiceDefinitions) {
 }
 
 # 清理旧版 PID 文件，避免重命名后的脚本误判。
-foreach ($legacy in @("ops", "ai", "protocol")) {
+foreach ($legacy in @("ai", "protocol")) {
     $pidFile = Join-Path (Join-Path $root "run") "$legacy.pid"
     if (Test-Path -LiteralPath $pidFile) {
         Remove-Item -LiteralPath $pidFile -Force

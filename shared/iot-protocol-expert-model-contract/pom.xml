@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>top.yealike.pep</groupId>
+        <artifactId>iot-protocol-expert</artifactId>
+        <version>1.0.0</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>iot-protocol-expert-model-contract</artifactId>
+    <name>iot-protocol-expert-model-contract</name>
+    <description>模型调用的纯 Java 契约：逻辑模型引用、规范化 usage 与计量质量；不包含供应商密钥或 ORM</description>
+</project>

@@ -59,7 +59,7 @@
 |---|---|---|
 | Java 与构建 | Java 21，Maven；根 POM 指定 Spring Boot 4.0.9、MyBatis Spring Boot 4.0.1 | 不升级版本，不引入不兼容的 Langfuse/Opik 依赖 |
 | Agent 执行 | 独立 iot-protocol-expert-agent-runtime，AgentScope Java 2.0.4 | 在线和离线 Case 均经现有 Runtime 执行 |
-| Control | iot-protocol-expert-ai 管理配置、会话、Run、事件和发布 | 在 AI 模块增加 evaluation 领域包及管理 API |
+| Control | iot-protocol-expert-agent-control 管理配置、会话、Run、事件和发布 | 在 AI 模块增加 evaluation 领域包及管理 API |
 | 数据库 | PostgreSQL；MyBatis Mapper；现有 SQL 位于 resources/mapper/ai/*.xml | 新增 Mapper 接口和 XML；新建表由 Flyway 新迁移维护 |
 | Trace | Spring Boot Micrometer/OTel 与 AgentScope TelemetryTracer 共用 OTel Provider；OTLP HTTP 经 Collector 至 Tempo | 复用 Trace ID 和 Tempo；补齐评估所需 Span 属性及查询 API |
 | Trace 安全过滤 | ContentFilteringTracer 可截断/清洗内容；Collector 当前有属性删除/脱敏规则 | 按本次要求取消 AI Trace 的内容清洗、脱敏和长度截断 |
@@ -502,7 +502,7 @@ Assistant 页面的“新建”逻辑：
 
 ### 12.1 Java 结构建议
 
-在 iot-protocol-expert-ai 下增加：
+在 iot-protocol-expert-agent-control 下增加：
 
 ~~~text
 evaluation/

@@ -33,12 +33,12 @@ function Get-IpeJavaHome {
     if ($env:IPE_JAVA_HOME -and (Test-Path -LiteralPath (Join-Path $env:IPE_JAVA_HOME "bin\java.exe"))) {
         return $env:IPE_JAVA_HOME
     }
-    if ($env:JAVA_HOME -and (Test-Path -LiteralPath (Join-Path $env:JAVA_HOME "bin\java.exe"))) {
-        return $env:JAVA_HOME
-    }
     $fallback = "D:\develop\jdk\jdk-21"
     if (Test-Path -LiteralPath (Join-Path $fallback "bin\java.exe")) {
         return $fallback
+    }
+    if ($env:JAVA_HOME -and (Test-Path -LiteralPath (Join-Path $env:JAVA_HOME "bin\java.exe"))) {
+        return $env:JAVA_HOME
     }
     throw "未找到 JDK 21。请设置 IPE_JAVA_HOME 或 JAVA_HOME。"
 }

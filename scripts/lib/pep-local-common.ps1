@@ -19,24 +19,26 @@ function Initialize-PepLocalEnvironment {
     $env:PATH = (Join-Path $env:JAVA_HOME "bin") + ";" + $env:PATH
 
     $defaults = [ordered]@{
-        PEP_CONTROL_PORT                    = "19082"
+        PEP_CONTROL_PORT                    = "19083"
+        IPE_OPS_PORT                        = "19082"
         PEP_MODEL_GATEWAY_PORT              = "19085"
         IPE_RUNTIME_PORT                    = "19084"
         IPE_OPS_BASE_URL                    = "http://127.0.0.1:19082"
-        IPE_CONTROL_BASE_URL                = "http://127.0.0.1:19082"
+        IPE_CONTROL_BASE_URL                = "http://127.0.0.1:19083"
         IPE_AGENT_RUNTIME_BASE_URL          = "http://127.0.0.1:19084"
         PEP_MODEL_GATEWAY_BASE_URL          = "http://127.0.0.1:19085"
-        IPE_INTERNAL_SERVICE_NAME           = "pep-control"
-        IPE_RUNTIME_SERVICE_NAME            = "pep-agent-runtime"
-        IPE_CONTROL_SERVICE_NAME            = "pep-control"
+        IPE_INTERNAL_SERVICE_NAME           = "iot-protocol-expert-agent-control"
+        IPE_RUNTIME_SERVICE_NAME            = "iot-protocol-expert-agent-runtime"
+        IPE_CONTROL_SERVICE_NAME            = "iot-protocol-expert-agent-control"
         IPE_INTERNAL_SERVICE_KEY            = "local-pep-hmac-secret"
         PEP_MODEL_GATEWAY_SERVICE_TOKEN     = "local-pep-service-token"
         IPE_OPS_SERVICE_TOKEN               = "local-pep-service-token"
-        IPE_OPS_SIMULATOR_TOKEN             = "local-pep-simulator-token"
+        IPE_OPS_SIMULATOR_TOKEN             = "local-iot-protocol-expert-simulator-token"
         PEP_CREDENTIAL_MASTER_KEY           = "local-pep-master-key"
         IPE_AI_REGISTRY_ENABLED             = "false"
         IPE_NACOS_DISCOVERY_ENABLED         = "false"
         IPE_AI_MCP_REGISTRY_ENABLED         = "false"
+        IPE_RUNTIME_DIRECT_FALLBACK_ENABLED = "true"
         IPE_AI_BOOTSTRAP_ENABLED            = "false"
         IPE_AI_OTEL_ENABLED                 = "false"
         IPE_RUNTIME_OTEL_ENABLED            = "false"
@@ -48,13 +50,23 @@ function Initialize-PepLocalEnvironment {
         }
     }
 
-    if ($env:IPE_CONTROL_BASE_URL -match '19083') {
-        $env:IPE_CONTROL_BASE_URL = "http://127.0.0.1:19082"
-        if (-not $Quiet) { Write-Warning "IPE_CONTROL_BASE_URL 仍指向 19083，已改为 19082" }
+    # 仅迁移上一版内置的本机默认值，不修改外部自定义地址或秘密文件。
+    if ($env:PEP_CONTROL_PORT -eq "19082" -and $env:IPE_OPS_PORT -eq "19082") {
+        $env:PEP_CONTROL_PORT = "19083"
+        if (-not $Quiet) { Write-Warning "OPS 与 Control 已拆分：Control 本机端口改为 19083" }
     }
-    if ($env:IPE_OPS_BASE_URL -match '19083') {
-        $env:IPE_OPS_BASE_URL = "http://127.0.0.1:19082"
+    if ($env:IPE_CONTROL_BASE_URL -in @("http://127.0.0.1:19082", "http://localhost:19082")) {
+        $env:IPE_CONTROL_BASE_URL = "http://127.0.0.1:$($env:PEP_CONTROL_PORT)"
     }
+    foreach ($name in @("IPE_INTERNAL_SERVICE_NAME", "IPE_CONTROL_SERVICE_NAME")) {
+        if ([Environment]::GetEnvironmentVariable($name, "Process") -eq "pep-control") {
+            [Environment]::SetEnvironmentVariable($name, "iot-protocol-expert-agent-control", "Process")
+        }
+    }
+    if ($env:IPE_RUNTIME_SERVICE_NAME -eq "pep-agent-runtime") {
+        $env:IPE_RUNTIME_SERVICE_NAME = "iot-protocol-expert-agent-runtime"
+    }
+    if ($env:IPE_OPS_SERVICE_NAME -eq "pep-control") { $env:IPE_OPS_SERVICE_NAME = "iot-protocol-expert-ops" }
 
     return $root
 }
@@ -143,37 +155,44 @@ function Stop-PepJar {
 function Get-PepServiceDefinitions {
     return @(
         [pscustomobject]@{
+            Name = "ops"
+            Module = "iot-protocol-expert-ops"
+            Jar = "iot-protocol-expert-ops-1.0.0.jar"
+            Port = [int]$env:IPE_OPS_PORT
+            HealthPath = "/actuator/health"
+        },
+        [pscustomobject]@{
             Name = "control"
-            Module = "pep-control"
-            Jar = "pep-control-1.0.0.jar"
+            Module = "iot-protocol-expert-agent-control"
+            Jar = "iot-protocol-expert-agent-control-1.0.0.jar"
             Port = [int]$env:PEP_CONTROL_PORT
             HealthPath = "/actuator/health"
         },
         [pscustomobject]@{
             Name = "gateway"
-            Module = "pep-model-gateway"
-            Jar = "pep-model-gateway-1.0.0.jar"
+            Module = "iot-protocol-expert-model-gateway"
+            Jar = "iot-protocol-expert-model-gateway-1.0.0.jar"
             Port = [int]$env:PEP_MODEL_GATEWAY_PORT
             HealthPath = "/actuator/health"
         },
         [pscustomobject]@{
             Name = "runtime"
-            Module = "pep-agent-runtime"
-            Jar = "pep-agent-runtime-1.0.0.jar"
+            Module = "iot-protocol-expert-agent-runtime"
+            Jar = "iot-protocol-expert-agent-runtime-1.0.0.jar"
             Port = [int]$env:IPE_RUNTIME_PORT
             HealthPath = "/actuator/health/readiness"
         },
         [pscustomobject]@{
             Name = "device-gateway"
-            Module = "pep-device-gateway"
-            Jar = "pep-device-gateway-1.0.0-exec.jar"
+            Module = "iot-protocol-expert-protocol-gateway"
+            Jar = "iot-protocol-expert-protocol-gateway-1.0.0.jar"
             Port = 19080
             HealthPath = "/actuator/health"
         },
         [pscustomobject]@{
             Name = "simulator"
-            Module = "pep-simulator"
-            Jar = "pep-simulator-1.0.0.jar"
+            Module = "iot-protocol-expert-simulator"
+            Jar = "iot-protocol-expert-simulator-1.0.0.jar"
             Port = 19081
             HealthPath = "/actuator/health"
         }

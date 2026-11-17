@@ -1,0 +1,98 @@
+server:
+  port: ${IPE_RUNTIME_PORT:19084}
+  shutdown: graceful
+
+spring:
+  config:
+    import: classpath:observability-defaults.yml
+  main:
+    banner-mode: "off"
+  application:
+    name: iot-protocol-expert-agent-runtime
+  jackson:
+    time-zone: Asia/Shanghai
+    date-format: yyyy-MM-dd HH:mm:ss
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+  paths-to-match: /internal/**
+
+knife4j:
+  enable: true
+  setting:
+    language: zh_cn
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: always
+      group:
+        readiness:
+          include: runtimeReadiness
+
+ipe:
+  runtime:
+    port: ${IPE_RUNTIME_PORT:19084}
+    control-base-url: ${IPE_CONTROL_BASE_URL:http://127.0.0.1:19083}
+    service-name: ${IPE_RUNTIME_SERVICE_NAME:iot-protocol-expert-agent-runtime}
+    service-key-id: ${IPE_RUNTIME_KEY_ID:runtime}
+    service-key: ${IPE_INTERNAL_SERVICE_KEY:}
+    service-key-file: ${IPE_INTERNAL_SERVICE_KEY_FILE:}
+    # 与 Control 的注册名默认保持一致；若显式设置，Control 与 Runtime 必须使用同一值
+    control-service-name: ${IPE_CONTROL_SERVICE_NAME:iot-protocol-expert-agent-control}
+    advertise-ip: ${IPE_RUNTIME_ADVERTISE_IP:}
+    nacos:
+      enabled: ${IPE_AI_REGISTRY_ENABLED:false}
+      server-addr: ${IPE_NACOS_SERVER_ADDR:127.0.0.1:8848}
+      username: ${IPE_NACOS_USERNAME:}
+      password: ${IPE_NACOS_PASSWORD:}
+      namespace: ${IPE_NACOS_NAMESPACE:public}
+      group: ${IPE_AI_COMPONENT_GROUP:IPE_AI_COMPONENTS}
+    run:
+      max-active: ${IPE_RUNTIME_MAX_ACTIVE:4}
+      queue-capacity: ${IPE_RUNTIME_QUEUE_CAPACITY:8}
+      max-iterations-hard-limit: 12
+      max-tool-calls-hard-limit: 32
+      max-run-timeout-ms: 300000
+      heartbeat-interval-ms: 5000
+      ownership-loss-timeout-ms: 10000
+    mcp:
+      connect-timeout-ms: 3000
+      init-timeout-ms: 10000
+      call-timeout-ms: 20000
+      max-connections: 32
+      idle-seconds: 300
+      threads: 4
+      queue-capacity: 32
+      max-result-chars: 65536
+    skills:
+      max-read-chars: 12000
+    observability:
+      otel:
+        enabled: ${IPE_RUNTIME_OTEL_ENABLED:${IPE_OTLP_ENABLED:true}}
+        content-enabled: ${IPE_RUNTIME_OTEL_CONTENT_ENABLED:false}
+        max-content-chars: ${IPE_RUNTIME_OTEL_MAX_CONTENT_CHARS:0}
+
+logging:
+  structured:
+    format:
+      console: logstash
+    json:
+      add:
+        service.name: ${spring.application.name}
+        service.version: 1.0.0
+        deployment.environment.name: ${ipe.observability.environment}
+      rename:
+        traceId: trace_id
+        spanId: span_id
+      stacktrace:
+        max-length: 8192
