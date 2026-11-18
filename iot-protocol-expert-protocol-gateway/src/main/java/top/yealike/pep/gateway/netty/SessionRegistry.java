@@ -42,11 +42,17 @@ public class SessionRegistry implements OnlineDeviceDirectory {
     private final OpsClient ops;
     private final ProtocolProperties properties;
     private final byte[] cryptoKey;
+    private final io.micrometer.tracing.Tracer tracer;
 
-    public SessionRegistry(OpsClient ops, ProtocolProperties properties, ProtocolTelemetry telemetry) {
+    public SessionRegistry(
+            OpsClient ops,
+            ProtocolProperties properties,
+            ProtocolTelemetry telemetry,
+            io.micrometer.tracing.Tracer tracer) {
         this.telemetry = telemetry;
         this.ops = ops;
         this.properties = properties;
+        this.tracer = tracer;
         this.cryptoKey = TripleDes.keyFromHex(properties.getCryptoKeyHex());
     }
 
@@ -246,8 +252,13 @@ public class SessionRegistry implements OnlineDeviceDirectory {
                 wireHex,
                 top.yealike.pep.gateway.netty.FrameSummary.of(type, frame.body()),
                 error,
-                null,
+                traceId(),
                 java.time.LocalDateTime.now()));
+    }
+
+    private String traceId() {
+        var span = tracer.currentSpan();
+        return span == null ? null : span.context().traceId();
     }
 
     public static byte[] keyOf(ProtocolProperties properties) {

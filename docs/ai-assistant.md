@@ -8,12 +8,12 @@
 ## 1. 进程与职责
 
 ```text
-浏览器/OPS Web
+浏览器 / Web
   ├─ /api/ai/v1 ─────────────> Control :19083
   └─ /api/ai/v1/.../events ──> Control SSE
 
 Control
-  ├─ PostgreSQL ipe_ai
+  ├─ PostgreSQL pep_platform / pep_domain / pep_agent
   ├─ Nacos：Control、Runtime 基础服务、已装配 Agent 版本的健康实例
   │    ai_registry_projection 仅保存期望/观测投影
   └─ 内部签名 HTTP ────────> Runtime :19084
@@ -48,7 +48,8 @@ Runtime
 
 ## 3. 数据与版本
 
-`ipe_ai` 由 Flyway 管理，迁移目录为 `iot-protocol-expert-agent-control/src/main/resources/db/migration/`。
+Agent 在线数据位于 `pep_agent`，由 OPS 的 Flyway 管理；迁移目录为
+`iot-protocol-expert-ops/src/main/resources/db/migration/`。Control 关闭重复 Flyway。
 
 | 范围 | 主要表 |
 |---|---|
@@ -60,7 +61,7 @@ Runtime
 
 关键约定：
 
-- V7 建立在线 Agent 配置与发布模型，V8 为 publication 增加多 Control 协调租约。
+- 原 V7/V8 的在线 Agent 配置、发布与 publication 多 Control 协调租约已合入 OPS V1 基线。
 - 不新增物理外键/级联；引用检查和删除保护在应用事务内完成。
 - Agent 草稿更新使用 `revision` 乐观锁；发布产物不可覆盖。
 - 会话固定 `agentReleaseId + manifestDigest`，不会因新版本发布而静默切换。
@@ -309,9 +310,9 @@ Higress 使用 Nacos Naming 来源时，OPS 未注册会使调用返回 503；�
 5. `/assistant` 新建会话，发送问题，确认 `run.started → assistant.delta → run.completed`。
 6. 用同一 `afterCursor` 重放，确认事件完整且客户端不重复请求模型；浏览器真实断线重连仍待专项验证。
 
-最新完整链路验证（2026-11-16，Control 重启并重新构建后）：Run `a567cbf1-77d8-4195-b79f-e288ac114c95` 为 `COMPLETED`，耗时约 40.8 秒；包含 6 个 `tool.completed`、3 个 `skill.loaded`、1178 个 `assistant.delta`，`warnings=[]`，事件 cursor 范围 2195–3391；工具 `get_device_detail`、`list_documents`、`load_skill`×2、`read_document`、`read_skill_resource` 全部成功。SSE 以 `afterCursor=2194` 重放可返回同一批事件，末尾 `run.completed` 为 `SUCCEEDED`，`stream.ready` cursor=3391。
+2026-11-18 最新完整链路验证：实验 `<current-experiment-id>`；基础 Run `<baseline-run-id>`；工具 Run `<tool-run-id>`；工具结果 `<tool-result-id>`；Trace `<current-trace-id>`，共 146 个 Span。完整步骤和未完成项见 [Agent 全流程验收报告](agent-full-flow-report-2026-11-17.md)。
 
-早前 Run `0ab842a5-ff3b-45ac-9472-4fc010091349` 也已 `COMPLETED`；其故障根因是 OPS 未注册 `iot-protocol-expert-ops`，Higress 返回 503，修复后恢复。上述证据不替代 T01–T20 的全量验收。
+早前 Run `0ab842a5-ff3b-45ac-9472-4fc010091349` 保留为历史记录；其故障根因是 OPS 未注册 `iot-protocol-expert-ops`，Higress 返回 503，修复后恢复。当前证据以上述 2026-11-18 全流程为准；T01–T20 的逐项状态仍以实施记录为准。
 
 ### 8.4 重置
 
@@ -322,10 +323,10 @@ Higress 使用 Nacos Naming 来源时，OPS 未注册会使调用返回 503；�
 .\scripts\reset-ai.ps1 -Confirm -WhatIf
 ```
 
-该脚本必须先停止 Control/Runtime，仅删除 `ipe_ai` 中在线 Agent 的运行、发布和配置数据：
+该脚本必须先停止 Control/Runtime，仅删除 `pep_agent` 中在线 Agent 的运行、发布和配置数据：
 
 - 删除：`ai_run_event`、`ai_tool_call`、`ai_checkpoint`、`ai_context_summary`、`ai_run`、`ai_message`、`ai_conversation`、`ai_outbox`、`ai_registry_projection`、`ai_publication`、`ai_agent_skill_binding`、`ai_agent_mcp_binding`、`ai_agent_release`、`ai_agent_component`、`ai_skill_draft_file`、`ai_skill_release`、`ai_skill_component`、`ai_mcp_test_report`、`ai_mcp_release`、`ai_mcp_component`、`ai_model_profile`、`ai_credential_secret`、`ai_credential`、`ai_internal_nonce`。
-- 保留：Flyway 历史、`ai_permission_policy`、`ai_document`、`ai_chunk`、`ai_index_version`、`ai_audit_log`、旧版 `ai_agent_definition`/`ai_agent_binding` 及其他 schema。
+- 保留：`pep_agent` 中的调查任务表、知识库、`ai_permission_policy`、`ai_audit_log` 和 Flyway 历史。
 - 环境变量或数据库 URL 含 `prod/production` 时拒绝执行。
 
 ## 9. 既有知识库与助手
@@ -346,7 +347,7 @@ Higress 使用 Nacos Naming 来源时，OPS 未注册会使调用返回 503；�
 | 503 `INTERNAL_SIGNATURE_INVALID` | Control/Runtime 的 `IPE_INTERNAL_SERVICE_KEY` 是否一致；机器时钟是否偏差超过 30 秒；服务名/audience 是否匹配 |
 | 409 `REVISION_CONFLICT` | 草稿已被其他请求修改；刷新页面后重试，不要覆盖 |
 | 422 `AGENT_COMPILE_FAILED` | 模型/凭据/依赖版本/alias/预算/Prompt 校验失败；查看 errors |
-| publication 停在 PREPARING | Runtime 是否健康；MCP/Skill 是否已在 `IPE_AI_COMPONENTS` 注册且 healthy；`/ai-admin/publications/{id}` 的 errorCode；Runtime `release prepared` 日志 |
+| publication 停在 PREPARING | Runtime 是否健康；所选 MCP/Skill 发布版本和固定 endpoint 是否可用；`/ai-admin/publications/{id}` 的 errorCode；Runtime `release prepared` 日志 |
 | publication FAILED 后重试 | 先修复依赖，再调用 `POST /api/ai/v1/publications/{id}/retry`；不要重复发布同版本 |
 | Runtime readiness DOWN | `IPE_INTERNAL_SERVICE_KEY`、Control 地址、Nacos 地址/namespace/group/广播 IP |
 | MCP `tools/call` 503 | OPS 是否以 `iot-protocol-expert-ops` 注册 Nacos；`IPE_NACOS_DISCOVERY_ENABLED` 与 `IPE_OPS_ADVERTISE_IP` 是否正确；Higress 能否访问该地址 |
@@ -365,11 +366,11 @@ Higress 使用 Nacos Naming 来源时，OPS 未注册会使调用返回 503；�
 - 工具正文、Skill 正文和用户输入均按不可信数据处理，不能改变授权规则。
 - `authorize` 会校验 manifest alias、Agent/MCP release 的 `REVOKED`、Run 创建时保存的 `authVersion`、角色策略和站点范围；每次工具调用都会重新向 OPS 解析用户身份与最新 `authVersion`，变化时返回 `AUTH_VERSION_CHANGED`。组件 disable/revoke API 与权限变更故障注入仍待补齐。
 - T06 已默认禁止直连回退：Nacos 无健康 Runtime 时不再使用 `IPE_AGENT_RUNTIME_BASE_URL`；仅显式设置 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true` 才允许本地调试回退。
-- MCP、Skill、Agent 精确版本均已实际注册 Nacos；`ai_registry_projection` 只是数据库投影，不能替代 Nacos 实例列表。
+- MCP/Skill 版本由 Control 管理，Runtime 使用发布快照中的固定 endpoint；Nacos 仅用于可选的进程/Agent 实例发现，`ai_registry_projection` 不能替代实际实例列表。
 - `ai_tool_call` 已由新 Runtime 事件入库路径写入，6 行 E2E 记录含组件版本、原始工具名和 alias；两个 MCP 同名工具、参数摘要和失败分支仍需专项核验。`ai_run.compiled_plan` 未填充，平台管理操作也尚未接入 `ai_audit_log`。
 - 凭据轮换会生成新 `secretRevision`，但 Agent manifest 冻结旧 revision；新 Run 不会自动使用新密钥，必须重新发布 Agent。
 - `OpsIdentityClient` 的 Spring 配置默认值已修正为 `http://127.0.0.1:19082`；部署到其他主机或使用其他端口时必须显式设置 `IPE_OPS_BASE_URL`。
-- 发布失败或回滚没有完整撤销已注册的 Nacos Agent/MCP/Skill 实例，可能留下过期实例。
+- 发布失败或回滚没有完整撤销已注册的 Nacos Agent Runtime 实例，可能留下过期实例；MCP/Skill 不再作为 Nacos AI Registry 实例管理。
 - Runtime 的 `dependency:tree` 与断网 E2E 尚未形成 T20 证据；当前只确认 POM 无 JDBC/MyBatis/Flyway 依赖。
 - 草稿预览、组件 disable/revoke、发布列表分页、完整 OpenAPI/JSON Schema 尚未实现。
 - 事件入库最终一致性、Nacos 长断、MCP 协议矩阵、Control/Runtime 崩溃窗口和模型密钥轮换仍需故障注入验证。

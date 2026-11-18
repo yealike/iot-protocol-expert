@@ -11,6 +11,7 @@ import org.junit.jupiter.api.*;
 import org.junit.jupiter.api.io.TempDir;
 import top.yealike.pep.codec.*;
 import top.yealike.pep.codec.frames.*;
+import top.yealike.pep.codec.ocpp16.OcppMessageCodec;
 import top.yealike.pep.simulator.config.SimulatorProperties;
 
 class SimulatorRuntimeTest {
@@ -376,17 +377,51 @@ class SimulatorRuntimeTest {
         ocpp.init(false);
         try {
             ocpp.selectDevice(5L, false);
-            ocpp.onOcppTransactionStarted("01", 123, 1);
+            ocpp.onOcppTransactionStarted("01", 123, 1, new BigDecimal("1000"));
             ocpp.configureClock(null, null, 64);
             ocpp.stopLocal("01");
             assertTrue(store.load(new SimulatorStateStore.DeviceKey(5L, "ocpp16j", "OCPP-CHARGER-A"))
                     .isPresent());
             assertTrue(store.bills.values().stream().anyMatch(t -> t.pileCode().equals("OCPP-CHARGER-A")));
+            assertEquals(1, ((List<?>) ocpp.state().get("pendingOcppStops")).size());
+            var durable = store.load(new SimulatorStateStore.DeviceKey(5L, "ocpp16j", "OCPP-CHARGER-A"))
+                    .orElseThrow();
+            assertEquals("01", durable.getProperty("ocpp.stop.123.gunNo"));
             ocpp.selectDevice(5L, false);
             assertEquals(1, ((List<?>) ocpp.state().get("history")).size());
+            assertEquals(1, ((List<?>) ocpp.state().get("pendingOcppStops")).size());
+            ocpp.onOcppStopFailed(123, "Blocked");
+            assertEquals(1, ((List<?>) ocpp.state().get("pendingOcppStops")).size());
+            ocpp.onOcppStopAcknowledged(123);
+            assertEquals(0, ((List<?>) ocpp.state().get("pendingOcppStops")).size());
+            var acknowledged = store.load(new SimulatorStateStore.DeviceKey(5L, "ocpp16j", "OCPP-CHARGER-A"))
+                    .orElseThrow();
+            assertNull(acknowledged.getProperty("ocpp.stop.123.gunNo"));
         } finally {
             ocpp.shutdown();
         }
+    }
+
+    @Test
+    void ocppStopReplyIsAcknowledgedOnlyAfterAcceptedIdTagInfo() {
+        assertTrue(SimulatorRuntime.ocppStopReplyFailure(null).contains("未返回"));
+        assertNull(SimulatorRuntime.ocppStopReplyFailure(OcppMessageCodec.object()));
+
+        var accepted = OcppMessageCodec.object();
+        accepted.putObject("idTagInfo").put("status", "Accepted");
+        assertNull(SimulatorRuntime.ocppStopReplyFailure(accepted));
+
+        var rejected = OcppMessageCodec.object();
+        rejected.putObject("idTagInfo").put("status", "Blocked");
+        assertTrue(SimulatorRuntime.ocppStopReplyFailure(rejected).contains("Blocked"));
+
+        var malformed = OcppMessageCodec.object();
+        malformed.putObject("idTagInfo");
+        assertTrue(SimulatorRuntime.ocppStopReplyFailure(malformed).contains("缺少 status"));
+
+        var callError = OcppMessageCodec.object();
+        callError.put("errorCode", "InternalError");
+        assertTrue(SimulatorRuntime.ocppStopReplyFailure(callError).contains("InternalError"));
     }
 
     @Test

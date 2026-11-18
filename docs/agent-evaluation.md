@@ -16,18 +16,18 @@
 3. 支持人工复核与评分修订。
 4. 从真实失败 Run 建立评测集。
 5. 使用固定的 Agent Release 对评测集执行离线回归。
-6. 在 OPS Web 中查看评测任务、结果、Span 链路、评分及失败证据。
+6. 在 Web 中查看评测任务、结果、Span 链路、评分及失败证据。
 7. 可通过评估结果发现问题并迭代 Prompt、Skill、MCP、模型和 Agent Release。
 
-核心决策：复用项目已经有的 OTel、Run、事件、PostgreSQL、MyBatis XML、Agent Runtime、OPS Web 和 Nacos 发布版本模型。项目内实现评估领域逻辑和执行器；不重写通用 Trace 后端，不引入 Langfuse/Opik SDK，不把配置管理迁移到 Langfuse。
+核心决策：复用项目已经有的 OTel、Run、事件、PostgreSQL、MyBatis XML、Agent Runtime、Web 和 Nacos 发布版本模型。项目内实现评估领域逻辑和执行器；不重写通用 Trace 后端，不引入 Langfuse/Opik SDK，不把配置管理迁移到 Langfuse。
 
 架构边界：
 
 - OTel 负责记录一次执行中发生的操作、输入输出、调用关系和耗时。
 - Evaluate 负责组织评测数据、执行评分规则、关联评分与 Trace、比较不同 Release。
 - Tempo 继续作为 Trace 存储与检索后端；评估记录与评分存入项目 PostgreSQL。
-- Nacos 继续承担服务注册、发现和组件目录投影，Skill/MCP/Agent 配置主数据仍由现有 Control 持久化。
-- OPS Web 继续提供登录、权限、API 请求封装和页面布局，在 AI 管理区域增加评估页面。
+- Nacos 只承担可选的进程和 Agent Runtime 实例发现；Skill/MCP 的登记、审批、版本、发布和运行时快照由 Control 管理。
+- Web 继续提供登录、权限、API 请求封装和页面布局，在 AI 管理区域增加评估页面。
 
 ## 2. 范围
 
@@ -38,9 +38,9 @@
 - 线上评估：Run 终态后针对任务完成度、回答质量、工具执行、轨迹效率、成本等执行评估。
 - 离线评测集：创建/维护评测集和用例，指定已发布 Agent Release 执行回归实验。
 - 评分：支持确定性规则评分、Judge 模型评分和人工评分；评分可关联 Run、Trace、Span 或 Case。
-- Trace 详情：通过项目 AI API 读取 Tempo 中的 Trace，并在 OPS Web 中展现 Span 树、耗时、Token、评分及已采集的输入输出；工具参数/结果审计证据可从评估结果与 Judge 输入侧复核。
+- Trace 详情：通过 Control API 读取 Tempo 中的 Trace，并在 Web 中展现 Span 树、耗时、Token、评分及已采集的输入输出；工具参数/结果审计证据可从评估结果与 Judge 输入侧复核。
 - 评估结果查询：汇总、分页、筛选、详情、评估规则版本、实验对比。
-- 复用现有 OPS Web 页面工程，新增 AI 管理下的“能力评估”导航和页面。
+- 复用现有 Web 页面工程，新增 AI 管理下的“能力评估”导航和页面。
 
 ### 2.2 不在本次范围
 
@@ -48,7 +48,7 @@
 - 不改变 AgentScope 执行循环，不引入第二套 Agent Runtime。
 - 不使用 Python 作为必需运行时。
 - 不把 Langfuse/Opik 作为生产中的 SaaS、内嵌服务或依赖项。
-- 不将 MCP Provider 托管迁移至 Langfuse；现有 MCP Provider 与 Nacos 注册/发现架构保持不变。
+- 不将 MCP Provider 托管迁移至 Langfuse；MCP 继续使用 Higress 暴露的固定 endpoint，组件版本由 Control 管理，Nacos 不承担 MCP/Skill 版本目录。
 - 不修改现有已发布 Flyway 迁移；所有结构调整通过新迁移完成。
 
 ## 3. 当前项目基线
@@ -59,12 +59,12 @@
 |---|---|---|
 | Java 与构建 | Java 21，Maven；根 POM 指定 Spring Boot 4.0.9、MyBatis Spring Boot 4.0.1 | 不升级版本，不引入不兼容的 Langfuse/Opik 依赖 |
 | Agent 执行 | 独立 iot-protocol-expert-agent-runtime，AgentScope Java 2.0.4 | 在线和离线 Case 均经现有 Runtime 执行 |
-| Control | iot-protocol-expert-agent-control 管理配置、会话、Run、事件和发布 | 在 AI 模块增加 evaluation 领域包及管理 API |
+| Control | iot-protocol-expert-agent-control 管理配置、会话、Run、事件和发布 | 在 iot-protocol-expert-agent-control 中增加 evaluation 领域包及管理 API |
 | 数据库 | PostgreSQL；MyBatis Mapper；现有 SQL 位于 resources/mapper/ai/*.xml | 新增 Mapper 接口和 XML；新建表由 Flyway 新迁移维护 |
 | Trace | Spring Boot Micrometer/OTel 与 AgentScope TelemetryTracer 共用 OTel Provider；OTLP HTTP 经 Collector 至 Tempo | 复用 Trace ID 和 Tempo；补齐评估所需 Span 属性及查询 API |
 | Trace 安全过滤 | `ContentFilteringTracer` 默认丢弃正文，仅保留元数据与 Token；显式开启正文后复用 `SensitiveDataSanitizer` | Trace 正文与评估工具审计证据采用两条独立策略，分别配置、分别存储 |
 | Run | PostgreSQL 持久化 Run、事件、消息、工具调用、traceparent | 作为线上评估源及离线实验的执行载体 |
-| 配置发布 | Agent Release 固定模型、Prompt、Skill、MCP 及 manifest digest；Control 为主事实源，Nacos 为注册/发现投影 | 每个评分及实验绑定 agentReleaseId、manifestDigest |
+| 配置发布 | Agent Release 固定模型、Prompt、Skill、MCP 及 manifest digest；Control 是组件和版本主事实源；Nacos 仅用于可选实例发现 | 每个评分及实验绑定 agentReleaseId、manifestDigest |
 | Web | React 19、TypeScript、Vite、Ant Design、React Query；OPS 与 AI 管理共用同一个 Web 工程 | 沿用 AI 管理 Shell、API client、权限和组件 |
 | 新建会话 | Assistant 当前点击“新建”会立即调用 POST /api/ai/v1/conversations | 增加当前会话是否已发起请求的判断，未发起时不创建第二个会话 |
 
@@ -93,7 +93,7 @@
 - 线上评估规则从生产 Trace 触发；离线 Experiment 固定数据集和评估器，横向比较版本。
 - 人工标注、代码评估、LLM Judge、最终分数使用统一评分对象呈现。
 - SDK/REST 写入评分，平台负责追踪、展示、聚合和实验分析。
-- Skill Management 是其新增 beta 能力，管理 SKILL.md 文件版本；本项目已有自己的 Skill Release/Nacos 投影，不迁移。
+- Skill Management 是其新增 beta 能力，管理 SKILL.md 文件版本；本项目已有 Control 管理的 Skill 草稿、不可变 Release 和运行时快照，不迁移。
 
 边界辨析：Langfuse 仓库中的 MCP 接口是供 Agent 访问 Langfuse 自身资源和工具的 MCP Server，不等同于本项目对任意 MCP Provider 的托管/注册中心。
 
@@ -127,7 +127,7 @@
 
 ~~~mermaid
 flowchart LR
-  UI[OPS Web<br/>AI 能力评估] -->|HTTP JSON| CTRL[AI Control<br/>Evaluation API / Service]
+  UI[Web<br/>Agent 能力评估] -->|HTTP JSON| CTRL[Agent Control<br/>Evaluation API / Service]
   CTRL --> PG[(PostgreSQL<br/>Dataset / Case / Evaluator<br/>Eval Run / Result / Score)]
   CTRL -->|提交标准 Run| RUN[现有 Run Scheduler]
   RUN --> RUNTIME[Agent Runtime<br/>AgentScope]
@@ -137,21 +137,21 @@ flowchart LR
   CTRL -->|Run 完成事件| EVAL[Evaluation Worker]
   EVAL -->|规则评分 / Judge| SCORE[Score Service]
   SCORE --> PG
-  OPS[OPS Web] -->|查询结果与 Span 树| CTRL
-  N[Nacos] -. Agent Release / Skill / MCP 版本发现 .-> RUNTIME
+  OPS[Web] -->|查询结果与 Span 树| CTRL
+  N[Nacos] -. 可选 Agent Runtime 实例发现 .-> RUNTIME
 ~~~
 
 ### 5.1 服务职责
 
 | 组件 | 职责 |
 |---|---|
-| OPS Web | 数据集、用例、评估器和实验管理；运行状态、Trace、分数和对比展示；人工复核 |
-| AI Control | 权限、API、评估领域对象、持久化、调度、Run/Trace/Score 聚合；查询 Tempo |
+| Web | 数据集、用例、评估器和实验管理；运行状态、Trace、分数和对比展示；人工复核 |
+| Agent Control | 权限、API、评估领域对象、持久化、调度、Run/Trace/Score 聚合；查询 Tempo |
 | Existing Run Scheduler | 继续处理 Run 队列、幂等、取消、状态迁移，不新增另一套 Agent 执行链 |
 | Agent Runtime | 依不可变 Agent Release 装载 Agent 并执行；产生 AgentScope Trace 和完整 Agent 事件 |
 | OTel Collector + Tempo | 收集、传输、保存和检索原始 Trace |
 | PostgreSQL | 保存 Dataset、Case、Evaluator 配置、Eval Run/Result/Score、人工判定 |
-| Nacos | 继续按现有职责注册/发现服务及已发布组件；不存储评测数据 |
+| Nacos | 仅用于可选的进程和 Agent Runtime 实例发现；不保存 MCP/Skill 版本或评测数据 |
 
 ### 5.2 评估流程
 
@@ -162,7 +162,7 @@ flowchart LR
 3. Worker 读取 Run、消息、工具调用、固定 Release 信息及 OTel traceId。
 4. 执行确定性规则；需要语义判断时调用已配置 Judge Model。
 5. 每个 Evaluator 生成独立 Score；Score 记录 source、scope、definition version、reason/evidence。
-6. OPS Web 可查看 Run 轨迹及评分；人工复核结果可生成 HUMAN 来源 Score。
+6. Web 可查看 Run 轨迹及评分；人工复核结果可生成 HUMAN 来源 Score。
 7. 经人工确认或满足条件的线上失败样本可复制/转化为 Dataset Case。
 
 离线：
@@ -177,7 +177,7 @@ flowchart LR
 
 ## 6. 核心数据模型
 
-所有时间使用 timestamptz；ID 使用 UUID；结构化输入配置和证据使用 JSONB；枚举使用受控 VARCHAR。SQL 统一写入 ai 模块对应 MyBatis XML，不在 Mapper 注解、Service 或 Controller 中拼 SQL。
+所有时间使用 timestamptz；ID 使用 UUID；结构化输入配置和证据使用 JSONB；枚举使用受控 VARCHAR。SQL 统一写入 Agent Control 的 `resources/mapper/ai/*.xml`，不在 Mapper 注解、Service 或 Controller 中拼 SQL。
 
 ### 6.1 ai_eval_dataset
 
@@ -357,7 +357,7 @@ Runtime 从 AgentScope 的工具调用增量事件收集参数和结果，分别
 
 ### 7.4 Trace 展示与查询
 
-- AI Control 新增 Tempo Query Client，使用配置项 IPE_TEMPO_QUERY_BASE_URL 查询指定 trace_id。
+- Agent Control 新增 Tempo Query Client，使用配置项 IPE_TEMPO_QUERY_BASE_URL 查询指定 trace_id。
 - 后端通过项目 API 鉴权后代理 Trace，浏览器不直接访问内部 Tempo 服务。
 - Tempo Trace 查询失败或已过保留期时，评分和 Run 摘要仍可查看；Trace 面板显示明确不可用状态。
 - 展示 Span 树、父子关系、时间线、状态、模型及 Token；正文、工具参数和结果仅在 Trace 内容采集开启且已写入 Tempo 时显示。
@@ -399,7 +399,7 @@ Runtime 从 AgentScope 的工具调用增量事件收集参数和结果，分别
 - groundedness：回答事实须有 Run 的最终答案、检索结果或持久化工具审计证据支持。
 - trajectory_efficiency：重复调用、无效调用、明显偏离任务步骤分别评分。
 - token_usage、duration_ms、estimated_cost：确定性聚合指标。
-- human_quality：OPS Web 人工复核量表。
+- human_quality：Web 人工复核量表。
 
 内置规则必须显式声明输入字段要求；数据不足时返回 NOT_EVALUATED/缺失原因，不伪造 0 分。
 
@@ -407,7 +407,7 @@ Runtime 从 AgentScope 的工具调用增量事件收集参数和结果，分别
 
 ### 9.1 Worker
 
-在 AI Control 中增加 EvaluationScheduler/Worker，复用项目生命周期管理和线程池规范：
+在 Agent Control 中增加 EvaluationScheduler/Worker，复用项目生命周期管理和线程池规范：
 
 - 队列事实保存在 ai_eval_run/ai_eval_result。
 - Worker 按数据库状态领取任务；通过原子 UPDATE/RETURNING 或行级锁实现并发 Claim。
@@ -471,9 +471,9 @@ QUEUED -> EXECUTING -> EVALUATING -> COMPLETED
 - API 返回 Trace ID 和 Grafana 链接（配置后），但完整 Trace 通过鉴权 API 加载。
 - 所有 Controller 参数和返回对象使用 Swagger/OpenAPI 注解，描述状态、作用域和限制。
 
-## 11. OPS Web 页面设计
+## 11. Web 页面设计
 
-新增 AI 管理子路由 /ai-admin/evaluations，沿用 AiAdmin 页面布局、Ant Design 组件、React Query、统一 API client 和权限检查。
+新增 AI 管理页面 `/ai-evaluation`，沿用 AI 管理页面的 Ant Design 组件、React Query、统一 API client 和权限检查。
 
 页面结构：
 
@@ -501,7 +501,7 @@ Assistant 页面的“新建”逻辑：
 2. 没有当前会话时，首次点击“新建”仍可创建一个会话。
 3. 当前会话存在任一聊天请求/Run（包括失败、取消、排队和完成）时，点击“新建”按现有流程创建新会话。
 4. 判定以服务端持久化记录为准，不以当前页面 messages 数组或浏览器本地状态为唯一依据。
-5. AI Control 提供 hasRequests/hasRuns 字段，或在详情返回字段中提供 hasSubmittedRequest。判断基于 ai_run / ai_message 中 role=USER 的持久记录。
+5. Agent Control 提供 hasRequests/hasRuns 字段，或在详情返回字段中提供 hasSubmittedRequest。判断基于 ai_run / ai_message 中 role=USER 的持久记录。
 6. 快速连续点击由按钮 pending 状态加 API 幂等键保护，不能产生重复空会话。
 7. Agent 不同版本仍保持会话绑定不可变 Release；本需求不允许复用空会话时静默改变它的 Agent Release。
 
@@ -534,7 +534,7 @@ evaluation/
 - 事务边界放 Service；Dataset Case 快照和 EvalRun 创建在同一事务内。
 - 任务领取使用数据库原子语句/行锁；不可在 Java 层先读后无锁更新。
 - 禁止新增物理外键；逻辑关联通过 Service 校验和删除保护处理。
-- 新数据库结构只通过新 Flyway migration，例如 V13__agent_evaluation.sql；已发布版本不得改写。
+- 新数据库结构必须通过新的、尚未发布的 Flyway 迁移；已发布版本不得改写。
 
 ### 12.3 阿里巴巴规范
 
@@ -599,7 +599,7 @@ evaluation/
 - 展示实验进度、逐 Case Score、模型/Release 差异。
 - 支持从线上 Trace 生成 Dataset Case。
 
-### 阶段五：OPS Web
+### 阶段五：Web
 
 - 新增 Evaluation 页面、API types/client、路由及 AI Admin 菜单。
 - 总览、数据集、评估器、实验、Trace 详情、人工复核。
@@ -643,7 +643,7 @@ evaluation/
 - Java 与 Maven 版本沿用根 POM：JDK 21；Spring Boot、MyBatis、AgentScope 不无故升级。
 - 持久层全部使用 MyBatis；Mapper SQL 全在 XML 文件。
 - 数据结构通过新 Flyway migration。
-- Web 变更位于现有 OPS Web。
+- Web 变更位于现有 `iot-protocol-expert-web`。
 - Java 静态检查/代码规范检查遵循项目 AGENTS.md；是否运行验证命令以用户的验证要求为准。
 - 设计中不引入 Langfuse/Opik 运行依赖。
 
@@ -664,10 +664,10 @@ evaluation/
 
 ### 17.1 入口和部署
 
-- OPS Web 菜单：`Agent 能力评估`，路由 `/ai-evaluation`；登录账号必须同时具备 `ai:use` 与 `ai:admin`。
+- Web 菜单：`Agent 能力评估`，路由 `/ai-evaluation`；登录账号必须同时具备 `ai:use` 与 `ai:admin`。
 - HTTP 根路径：`/api/ai/v1/evaluation`；沿用 OPS Cookie 身份校验与 `X-AI-Client` 写请求校验。服务端按当前用户检查 Dataset/Experiment/Result 所有权。
-- 数据库新增 Flyway `V13__agent_evaluation.sql`，包含会话来源、数据集、用例、实验、结果及评分；未增加物理外键。
-- 设置 AI 服务环境变量 `IPE_TEMPO_QUERY_BASE_URL=http://<tempo-host>:3200`。未配置或 Trace 不可查询时，结果和评分列表仍能使用，链路接口给出错误。
+- 当前 OPS 基线 `V1__pep_control_baseline.sql` 已合并原 `V13__agent_evaluation.sql` 的会话来源、数据集、用例、实验、结果及评分表；旧 V13 仅保存在 `docs/legacy-migrations/ipe-ai/`，Control 关闭重复 Flyway。
+- 设置 Control 环境变量 `IPE_TEMPO_QUERY_BASE_URL=http://<tempo-host>:3200`。未配置或 Trace 不可查询时，结果和评分列表仍能使用，链路接口给出错误。
 - 使用现有 JDK 21 / Spring Boot / AgentScope / MyBatis，无 Langfuse 或 Opik 运行时依赖。
 
 ### 17.2 实际执行状态机
@@ -697,11 +697,11 @@ evaluation/
 - AgentScope 通过 `ContentFilteringTracer` 执行正文策略：默认丢弃消息、工具参数和结果正文；显式开启后复用 `SensitiveDataSanitizer` 脱敏并按配置截断。
 - Runtime 从工具调用增量事件生成 `tool.arguments`、`tool.completed` / `tool.failed`，Control 将其中的参数和结果分别限制为最多 8000 字符后写入 `ai_tool_call.args_summary/result_summary`。Judge 使用这份证据，不要求 Tempo 保存正文。
 - Runtime 增加 Run/Release 元数据和 Token 事件。异步链路沿用项目现有 Micrometer/OTel 上下文传播。
-- Trace 查询由 AI 服务端代理 Tempo；Web 解析 Span 父子关系，显示属性和事件，并支持选中节点人工打分。最终复验 Trace `89efd4447cc7ea7f95d54b5dd0f9ed6e` 包含 144 个 Span，链路为 `agent.run -> invoke_agent -> chat/execute_tool`。
+- Trace 查询由 Control 服务端代理 Tempo；Web 解析 Span 父子关系，显示属性和事件，并支持选中节点人工打分。最终复验 Trace `<current-trace-id>` 包含 146 个 Span，链路为 `agent.run -> invoke_agent -> chat/execute_tool`。
 - Trace 正文是否可查仍依赖实际部署的 OTel 采样、导出、Collector 与 Tempo 接收/保留配置；应用配置不等同于基础设施无限容量。
 
 ### 17.5 实施边界与验收方式
 
 - 成本字段预留；没有价格表时保持空值，不填入估算零成本。货币预算、任意自定义 Evaluator 插件、多轮仿真、分布式高并发评测、在线 Judge 采样策略、专用标注队列属于后续扩展。
 - 当前界面查询前 100 个实验/数据集，结果 API 支持分页；实验指标对比基于各自数据集快照，跨不同快照不能认定是严格回归结论。
-- 2026-11-17 至 2026-11-18 的全流程已执行 Runtime 实际模型调用、Tempo 查询和浏览器交互。最终实验 `12fae36d-5c71-4206-a890-8784feff3950` 的 2/2 结果均为 `answer_quality=1.0`；工具题结果 `1a7dc3e3-7644-4d10-9ed6-64809461b71e` 的 Judge 引用 `data=[]`、`partial=false`、`warnings=[]` 与 `FLOW_OK`。本次人工评分最终为 0.9，浏览器刷新后仍可见；较早专项复验的 `e9059e2b796da845` Span 人工评分为 0.92，作为历史证据保留。
+- 2026-11-17 至 2026-11-18 的全流程已执行 Runtime 实际模型调用、Tempo 查询和浏览器交互。最终实验 `<current-experiment-id>` 的 2/2 结果均为 `answer_quality=1.0`；工具题结果 `<tool-result-id>` 的 Judge 引用 `data=[]`、`partial=false`、`warnings=[]` 与 `FLOW_OK`。本次人工评分最终为 0.9，浏览器刷新后仍可见；较早专项复验的 `<earlier-skill-span-id>` Span 人工评分为 0.92，作为历史证据保留。

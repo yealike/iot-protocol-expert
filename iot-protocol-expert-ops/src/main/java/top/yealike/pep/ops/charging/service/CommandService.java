@@ -77,15 +77,7 @@ public class CommandService {
             record.sentAt = LocalDateTime.now();
             record.ackAt = LocalDateTime.now();
             record.responsePayload = toJson(result);
-            if (result.success()) {
-                record.status = CommandRecord.Status.SUCCESS;
-            } else if (result.message() != null && result.message().contains("超时")) {
-                record.status = CommandRecord.Status.TIMEOUT;
-            } else if (result.message() != null && result.message().contains("未插枪")) {
-                record.status = CommandRecord.Status.WAITING_STATE;
-            } else {
-                record.status = CommandRecord.Status.REJECTED;
-            }
+            record.status = classify(result);
         } catch (RuntimeException e) {
             record.ackAt = LocalDateTime.now();
             record.status = CommandRecord.Status.UNKNOWN;
@@ -115,22 +107,22 @@ public class CommandService {
         }
         validateGun(device, gunNo);
         boolean ocpp = "OCPP16J".equals(device.protocol);
-        ChargeOrder order = orders.create(device.id, gunNo, 1, physicalCard, idTag, device.protocol, ocpp);
+        String normalizedIdTag = idTag == null || idTag.isBlank() ? (ocpp ? "IPE-APP" : "0") : idTag;
+        ChargeOrder order = orders.create(device.id, gunNo, 1, physicalCard, normalizedIdTag, device.protocol, ocpp);
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("orderNo", order.orderNo);
         params.put("gunNo", gunNo);
-        params.put("idTag", idTag == null || idTag.isBlank() ? (ocpp ? "IPE-APP" : "0") : idTag);
+        params.put("idTag", normalizedIdTag);
         params.put("physicalCard", physicalCard);
         params.put("balance", balanceText == null || balanceText.isBlank() ? "1000.00" : balanceText);
         CommandRecord record = submit(device.id, "remote-start", params, operator);
-        if (record.status == CommandRecord.Status.SUCCESS) {
-            if (ocpp) {
-                orders.markCharging(order.orderNo, null);
-            }
-        } else if (record.status == CommandRecord.Status.WAITING_STATE) {
+        if (record.status == CommandRecord.Status.WAITING_STATE) {
             // 未插枪：订单保持待启动，60 秒内插枪后设备会补发启动确认。
-        } else {
+        } else if (record.status == CommandRecord.Status.REJECTED) {
             orders.fail(order.orderNo, "远程启动失败: " + record.responsePayload);
+        } else {
+            // Accepted 只表示命令已受理；超时或通道异常同样不代表设备没有执行。
+            // 订单保留为 PENDING，等待设备 StartTransaction 或 90 秒超时回收。
         }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("orderNo", order.orderNo);
@@ -157,7 +149,9 @@ public class CommandService {
             params.put("transactionId", order.ocppTransactionId);
         }
         CommandRecord record = submit(device.id, "remote-stop", params, operator);
-        if (record.status == CommandRecord.Status.SUCCESS) {
+        if (record.status == CommandRecord.Status.SUCCESS && !"OCPP16J".equals(device.protocol)) {
+            // 云快充的停机会影响已有交易流程；OCPP 的 Accepted 只代表已受理，
+            // 必须由随后的 StopTransaction 驱动结算。
             orders.stop(order.orderNo, 0x40);
         }
         Map<String, Object> result = new LinkedHashMap<>();
@@ -193,5 +187,25 @@ public class CommandService {
         } catch (RuntimeException e) {
             return String.valueOf(value);
         }
+    }
+
+    private static CommandRecord.Status classify(OpsDtos.CommandResult result) {
+        Object structured = result.data() == null ? null : result.data().get("outcome");
+        if (structured != null) {
+            String outcome = String.valueOf(structured);
+            if ("REJECTED".equals(outcome)) return CommandRecord.Status.REJECTED;
+            if ("TIMEOUT".equals(outcome)) return CommandRecord.Status.TIMEOUT;
+            if ("WAITING_STATE".equals(outcome)) return CommandRecord.Status.WAITING_STATE;
+            if ("ACCEPTED".equals(outcome)) return CommandRecord.Status.SUCCESS;
+            if ("UNKNOWN".equals(outcome)) return CommandRecord.Status.UNKNOWN;
+        }
+        if (result.success()) return CommandRecord.Status.SUCCESS;
+        String message = result.message() == null ? "" : result.message();
+        if (message.contains("超时")) return CommandRecord.Status.TIMEOUT;
+        if (message.contains("未插枪")) return CommandRecord.Status.WAITING_STATE;
+        if (message.contains("拒绝") || message.contains("不支持")) {
+            return CommandRecord.Status.REJECTED;
+        }
+        return CommandRecord.Status.UNKNOWN;
     }
 }

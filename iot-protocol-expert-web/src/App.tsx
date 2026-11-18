@@ -24,6 +24,7 @@ import Investigations from './pages/Investigations'
 import Usage from './pages/Usage'
 import AiAdmin from './pages/ai-admin/AiAdmin'
 import ModelsPage from './pages/ai-admin/ModelsPage'
+import ProvidersPage from './pages/ai-admin/ProvidersPage'
 import McpsPage from './pages/ai-admin/McpsPage'
 import SkillsPage from './pages/ai-admin/SkillsPage'
 import AgentsPage from './pages/ai-admin/AgentsPage'
@@ -86,7 +87,7 @@ export default function App() {
           <Route path="/alarms" element={<Alarms />} />
           <Route path="/assistant" element={<Assistant />} />
           <Route path="/investigations" element={<Investigations />} />
-          <Route path="/usage" element={<Usage />} />
+          <Route path="/usage" element={<Usage user={user} />} />
           <Route
             path="/ai-evaluation"
             element={
@@ -102,6 +103,7 @@ export default function App() {
           <Route path="/ai-admin" element={<AiAdmin user={user} />}>
             <Route index element={<Navigate to="models" replace />} />
             <Route path="models" element={<ModelsPage />} />
+            <Route path="providers" element={<ProvidersPage />} />
             <Route path="mcps" element={<McpsPage />} />
             <Route path="skills" element={<SkillsPage />} />
             <Route path="agents" element={<AgentsPage />} />

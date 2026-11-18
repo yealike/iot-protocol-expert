@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -78,13 +79,22 @@ public class OrderService {
         order.amountSource = ChargeOrder.AMOUNT_SOURCE_ESTIMATE;
         order.createdAt = LocalDateTime.now();
         order.updatedAt = LocalDateTime.now();
-        return orders.save(order);
+        try {
+            return orders.save(order);
+        } catch (DataIntegrityViolationException exception) {
+            throw new OrderConflictException("枪 " + gunNo + " 已有进行中订单");
+        }
     }
 
     @Transactional
     public int bindOcppTransactionId(String orderNo, BigDecimal meterStartWh) {
-        ChargeOrder order = require(orderNo);
+        orders.lockOcppTransactionSequence();
+        ChargeOrder order =
+                orders.lockByOrderNo(orderNo).orElseThrow(() -> new IllegalArgumentException("订单不存在: " + orderNo));
         if (order.ocppTransactionId == null) {
+            if (order.status != ChargeOrder.Status.PENDING) {
+                throw new IllegalStateException("订单状态不允许启动交易: " + order.status);
+            }
             order.ocppTransactionId = Math.toIntExact(orders.maxOcppTransactionId() + 1);
             order.protocolTransactionId = String.valueOf(order.ocppTransactionId);
             order.meterStartWh = meterStartWh;
@@ -95,16 +105,16 @@ public class OrderService {
     }
 
     @Transactional
-    public void applyMeter(String orderNo, BigDecimal energy, BigDecimal amount) {
-        orders.findByOrderNo(orderNo).ifPresent(order -> {
-            if (order.status == ChargeOrder.Status.SETTLED || order.status == ChargeOrder.Status.FAILED) {
-                return;
-            }
-            if (energy != null && energy.signum() >= 0) order.energy = energy;
-            if (amount != null && amount.signum() >= 0) order.amount = amount;
-            order.updatedAt = LocalDateTime.now();
-            orders.save(order);
-        });
+    public boolean applyMeter(String orderNo, BigDecimal energy, BigDecimal amount) {
+        ChargeOrder order = orders.lockByOrderNo(orderNo).orElse(null);
+        if (order == null || order.status == ChargeOrder.Status.SETTLED || order.status == ChargeOrder.Status.FAILED) {
+            return false;
+        }
+        if (energy != null && energy.signum() >= 0) order.energy = energy;
+        if (amount != null && amount.signum() >= 0) order.amount = amount;
+        order.updatedAt = LocalDateTime.now();
+        orders.save(order);
+        return true;
     }
 
     /** 实时帧驱动订单进入充电态：0x31 启动路径没有单独的确认，以实时状态为准。 */
@@ -121,6 +131,9 @@ public class OrderService {
         ChargeOrder order = transactionNo != null && !transactionNo.isBlank()
                 ? findByOrderNo(transactionNo)
                 : active(device.id, gunNo);
+        if (order != null) {
+            order = orders.lockByOrderNo(order.orderNo).orElse(null);
+        }
         if (order == null
                 || !java.util.Objects.equals(order.deviceId, device.id)
                 || !java.util.Objects.equals(order.gunNo, gunNo)) {
@@ -143,8 +156,8 @@ public class OrderService {
 
     @Transactional
     public void markCharging(String orderNo, LocalDateTime startTime) {
-        orders.findByOrderNo(orderNo).ifPresent(order -> {
-            if (order.status == ChargeOrder.Status.SETTLED || order.status == ChargeOrder.Status.STOPPED) return;
+        orders.lockByOrderNo(orderNo).ifPresent(order -> {
+            if (order.status != ChargeOrder.Status.PENDING && order.status != ChargeOrder.Status.CHARGING) return;
             order.status = ChargeOrder.Status.CHARGING;
             if (order.startTime == null) {
                 order.startTime = startTime == null ? LocalDateTime.now() : startTime;
@@ -156,8 +169,8 @@ public class OrderService {
 
     @Transactional
     public void stop(String orderNo, int stopReason) {
-        orders.findByOrderNo(orderNo).ifPresent(order -> {
-            if (order.status == ChargeOrder.Status.SETTLED) return;
+        orders.lockByOrderNo(orderNo).ifPresent(order -> {
+            if (order.status != ChargeOrder.Status.PENDING && order.status != ChargeOrder.Status.CHARGING) return;
             order.status = ChargeOrder.Status.STOPPED;
             if (order.endTime == null) order.endTime = LocalDateTime.now();
             order.stopReason = stopReason;
@@ -168,7 +181,10 @@ public class OrderService {
 
     @Transactional
     public void fail(String orderNo, String reason) {
-        orders.findByOrderNo(orderNo).ifPresent(order -> {
+        orders.lockByOrderNo(orderNo).ifPresent(order -> {
+            if (order.status != ChargeOrder.Status.PENDING) {
+                return;
+            }
             order.status = ChargeOrder.Status.FAILED;
             order.failReason = reason == null ? null : reason.substring(0, Math.min(reason.length(), 250));
             order.updatedAt = LocalDateTime.now();
@@ -185,7 +201,10 @@ public class OrderService {
             LocalDateTime endTime,
             int stopReason,
             String amountSource) {
-        orders.findByOrderNo(orderNo).ifPresent(order -> {
+        orders.lockByOrderNo(orderNo).ifPresent(order -> {
+            if (order.status == ChargeOrder.Status.SETTLED || order.status == ChargeOrder.Status.FAILED) {
+                return;
+            }
             order.status = ChargeOrder.Status.SETTLED;
             if (energy != null && energy.signum() >= 0) order.energy = energy;
             if (amount != null && amount.signum() >= 0) order.amount = amount;
@@ -200,6 +219,10 @@ public class OrderService {
 
     public ChargeOrder findByOrderNo(String orderNo) {
         return orders.findByOrderNo(orderNo).orElse(null);
+    }
+
+    public ChargeOrder lockByOrderNo(String orderNo) {
+        return orders.lockByOrderNo(orderNo).orElse(null);
     }
 
     public ChargeOrder require(String orderNo) {
@@ -218,6 +241,21 @@ public class OrderService {
                         .orElse(null);
     }
 
+    public ChargeOrder byOcppTransactionId(Long deviceId, Integer transactionId) {
+        return transactionId == null
+                ? null
+                : orders.findTopByDeviceIdAndOcppTransactionIdAndProtocolOrderByCreatedAtDesc(
+                                deviceId, transactionId, "OCPP16J")
+                        .orElse(null);
+    }
+
+    public ChargeOrder lockOcppTransactionId(Long deviceId, Integer transactionId) {
+        return transactionId == null
+                ? null
+                : orders.lockByDeviceIdAndOcppTransactionId(deviceId, transactionId, "OCPP16J")
+                        .orElse(null);
+    }
+
     public List<ChargeOrder> recent() {
         return orders.findTop200ByOrderByIdDesc();
     }
@@ -230,14 +268,16 @@ public class OrderService {
     @Transactional
     public void expirePending() {
         LocalDateTime cutoff = LocalDateTime.now().minusSeconds(90);
-        for (ChargeOrder order : orders.findTop200ByOrderByIdDesc()) {
-            if (order.status == ChargeOrder.Status.PENDING
-                    && order.createdAt != null
-                    && order.createdAt.isBefore(cutoff)) {
-                order.status = ChargeOrder.Status.FAILED;
-                order.failReason = "90秒内未完成启动";
-                order.updatedAt = LocalDateTime.now();
-                orders.save(order);
+        for (ChargeOrder order : orders.findPendingBefore(cutoff, 200)) {
+            ChargeOrder locked = orders.lockByOrderNo(order.orderNo).orElse(null);
+            if (locked != null
+                    && locked.status == ChargeOrder.Status.PENDING
+                    && locked.createdAt != null
+                    && locked.createdAt.isBefore(cutoff)) {
+                locked.status = ChargeOrder.Status.FAILED;
+                locked.failReason = "90秒内未完成启动";
+                locked.updatedAt = LocalDateTime.now();
+                orders.save(locked);
             }
         }
     }

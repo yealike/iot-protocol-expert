@@ -45,7 +45,7 @@ public class CatalogService {
             Integer contextWindow,
             int maxOutputTokens,
             String countingMode) {
-        requireCode(key);
+        requireModelKey(key);
         Provider provider = repository
                 .findProvider(providerCode)
                 .orElseThrow(() -> ApiException.notFound("供应商不存在：" + providerCode));
@@ -78,6 +78,12 @@ public class CatalogService {
     private static void requireCode(String code) {
         if (code == null || !code.matches("[a-zA-Z0-9_.-]{2,64}")) {
             throw ApiException.badRequest("MODEL_REQUEST_INVALID", "编码须为 2 至 64 位字母、数字、点、下划线或短横线");
+        }
+    }
+
+    private static void requireModelKey(String key) {
+        if (key == null || !key.matches("[a-z0-9][a-z0-9-]{1,39}")) {
+            throw ApiException.badRequest("MODEL_REQUEST_INVALID", "逻辑模型 key 须为 2 至 40 位小写字母、数字或短横线");
         }
     }
 

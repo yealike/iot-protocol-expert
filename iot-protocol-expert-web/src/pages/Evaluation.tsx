@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   Alert,
@@ -38,6 +38,7 @@ export default function Evaluation() {
   const [dialog, setDialog] = useState<'dataset' | 'case' | 'experiment' | 'score'>()
   const [trace, setTrace] = useState<Record<string, unknown>>()
   const [editingCase, setEditingCase] = useState<EvalCase>()
+  const [selectedAgentId, setSelectedAgentId] = useState<string>()
   const [compareIds, setCompareIds] = useState<React.Key[]>([])
   const [busy, setBusy] = useState(false)
   const [form] = Form.useForm()
@@ -63,11 +64,34 @@ export default function Evaluation() {
     queryFn: () => ev.scores(result!.id),
     enabled: !!result
   })
-  const agents = useQuery({ queryKey: ['ai-agent-catalog'], queryFn: api.aiAgentCatalog })
+  const agents = useQuery({ queryKey: ['ai-agents-admin'], queryFn: api.aiAgents })
+  const agentReleases = useQuery({
+    queryKey: ['ai-agent-releases', selectedAgentId],
+    queryFn: () => api.aiAgentReleases(selectedAgentId!),
+    enabled: !!selectedAgentId
+  })
   const models = useQuery({ queryKey: ['ai-models'], queryFn: api.aiModels })
+  const activeReleases = (agentReleases.data ?? [])
+    .filter((release) => release.state === 'ACTIVE')
+    .sort((left, right) => right.generation - left.generation)
+
+  useEffect(() => {
+    if (dialog !== 'experiment' || !selectedAgentId) return
+    const selectedVersion = form.getFieldValue('agentVersion') as string | undefined
+    if (selectedVersion && activeReleases.some((release) => release.version === selectedVersion)) {
+      return
+    }
+    const agent = agents.data?.find((item) => item.id === selectedAgentId)
+    const preferred =
+      activeReleases.find((release) => release.version === agent?.publishedVersion) ??
+      activeReleases[0]
+    if (preferred) form.setFieldValue('agentVersion', preferred.version)
+  }, [activeReleases, agents.data, dialog, form, selectedAgentId])
+
   const open = (kind: typeof dialog) => {
     form.resetFields()
     setEditingCase(undefined)
+    setSelectedAgentId(undefined)
     setDialog(kind)
   }
   const save = async () => {
@@ -76,11 +100,24 @@ export default function Evaluation() {
       setBusy(true)
       if (dialog === 'dataset') await ev.createDataset(v)
       if (dialog === 'case') {
+        const contains = ((v.contains ?? '') as string)
+          .split('\n')
+          .map((item) => item.trim())
+          .filter(Boolean)
+        const requiredTools = ((v.requiredTools ?? '') as string)
+          .split('\n')
+          .map((item) => item.trim())
+          .filter(Boolean)
+        const assertions = { ...(editingCase?.assertions ?? {}) }
+        delete assertions.contains
+        delete assertions.requiredTools
+        if (contains.length) assertions.contains = contains
+        if (requiredTools.length) assertions.requiredTools = requiredTools
         const value = {
           caseKey: v.caseKey,
           input: { question: v.question },
           expectedOutput: { answer: v.answer ?? '' },
-          assertions: { contains: (v.contains ?? '').split('\n').filter(Boolean) },
+          assertions,
           enabled: v.enabled !== false,
           weight: v.weight ?? editingCase?.weight ?? 1,
           tags: (v.tags ?? '')
@@ -93,8 +130,14 @@ export default function Evaluation() {
         else await ev.addCase(dataset!.id, value)
       }
       if (dialog === 'experiment') {
-        const agent = agents.data?.find((a) => a.agentKey === v.agentKey)
-        await ev.start({ ...v, agentVersion: agent?.version })
+        const agent = agents.data?.find((item) => item.id === v.agentId)
+        if (!agent) throw new Error('请选择 Agent')
+        await ev.start({
+          datasetId: v.datasetId,
+          agentKey: agent.key,
+          agentVersion: v.agentVersion,
+          judgeModelId: v.judgeModelId ?? null
+        })
       }
       if (dialog === 'score')
         await ev.score(result!.id, {
@@ -127,7 +170,15 @@ export default function Evaluation() {
   return (
     <Space direction="vertical" style={{ width: '100%' }} size="large">
       <Typography.Title level={3}>Agent 能力评估</Typography.Title>
-      {[datasets.error, experiments.error, cases.error, results.error, scores.error]
+      {[
+        datasets.error,
+        experiments.error,
+        cases.error,
+        results.error,
+        scores.error,
+        agents.error,
+        agentReleases.error
+      ]
         .filter(Boolean)
         .map((e, i) => (
           <Alert key={i} type="error" message={(e as Error).message} />
@@ -268,6 +319,11 @@ export default function Evaluation() {
             { title: '输入', render: (_, r) => <pre>{pretty(r.input)}</pre> },
             { title: '参考答案', render: (_, r) => <pre>{pretty(r.expectedOutput)}</pre> },
             {
+              title: '断言',
+              render: (_, r) =>
+                Object.keys(r.assertions ?? {}).length ? <pre>{pretty(r.assertions)}</pre> : '—'
+            },
+            {
               title: '操作',
               render: (_, r) => (
                 <Button
@@ -279,6 +335,7 @@ export default function Evaluation() {
                       question: r.input.question,
                       answer: r.expectedOutput?.answer,
                       contains: ((r.assertions?.contains as string[]) ?? []).join('\n'),
+                      requiredTools: ((r.assertions?.requiredTools as string[]) ?? []).join('\n'),
                       enabled: r.enabled,
                       weight: r.weight,
                       tags: r.tags?.join(',')
@@ -342,6 +399,12 @@ export default function Evaluation() {
           <Table
             rowKey="id"
             dataSource={scores.data}
+            expandable={{
+              rowExpandable: (row) => !!row.evidence,
+              expandedRowRender: (row) => (
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap' }}>{pretty(row.evidence)}</pre>
+              )
+            }}
             columns={[
               { title: '指标', dataIndex: 'metricKey' },
               { title: '范围', render: (_, r) => r.spanId ?? r.scope },
@@ -351,7 +414,13 @@ export default function Evaluation() {
                   String(r.scoreNumber ?? r.scoreBoolean ?? r.scoreText ?? r.scoreLabel ?? '')
               },
               { title: '来源', dataIndex: 'source' },
-              { title: '理由', dataIndex: 'reason' }
+              { title: '理由', dataIndex: 'reason' },
+              {
+                title: '证据',
+                width: 100,
+                render: (_, row) =>
+                  row.evidence ? <Typography.Text type="secondary">展开查看</Typography.Text> : '—'
+              }
             ]}
           />
         </Card>
@@ -428,6 +497,13 @@ export default function Evaluation() {
               <Form.Item name="contains" label="答案必须包含（每行一个）">
                 <Input.TextArea />
               </Form.Item>
+              <Form.Item
+                name="requiredTools"
+                label="必须成功调用的工具（每行一个）"
+                extra="工具名需与 Agent 绑定版本的 MCP 工具名一致。"
+              >
+                <Input.TextArea placeholder={'protocol_search\nprotocol_lookup'} />
+              </Form.Item>
               <Form.Item name="weight" label="用例权重" initialValue={1}>
                 <InputNumber min={0.0001} max={100} />
               </Form.Item>
@@ -454,14 +530,45 @@ export default function Evaluation() {
                 />
               </Form.Item>
               <Form.Item
-                name="agentKey"
-                label="Agent（固定当前发布版本）"
+                name="agentId"
+                label="Agent"
                 rules={[{ required: true }]}
               >
                 <Select
-                  options={agents.data?.map((a) => ({
-                    value: a.agentKey,
-                    label: `${a.name} / ${a.version}`
+                  showSearch
+                  optionFilterProp="label"
+                  loading={agents.isLoading}
+                  options={agents.data?.map((agent) => ({
+                    value: agent.id,
+                    label: `${agent.displayName} / ${agent.key}${
+                      agent.publishedVersion ? ` · ${agent.publishedVersion}` : ''
+                    }`
+                  }))}
+                  onChange={(agentId) => {
+                    setSelectedAgentId(agentId)
+                    form.setFieldValue('agentVersion', undefined)
+                  }}
+                />
+              </Form.Item>
+              {agentReleases.error ? (
+                <Alert type="error" showIcon message={agentReleases.error.message} />
+              ) : null}
+              <Form.Item
+                name="agentVersion"
+                label="Agent 发布版本"
+                extra="仅列出状态为 ACTIVE 的历史发布版本。"
+                rules={[{ required: true, message: '请选择发布版本' }]}
+              >
+                <Select
+                  loading={agentReleases.isLoading}
+                  disabled={!selectedAgentId}
+                  placeholder={selectedAgentId ? '选择已激活的发布版本' : '请先选择 Agent'}
+                  notFoundContent={
+                    agentReleases.isLoading ? '正在加载发布版本' : '该 Agent 没有 ACTIVE 发布版本'
+                  }
+                  options={activeReleases.map((release) => ({
+                    value: release.version,
+                    label: `${release.version} · generation ${release.generation}`
                   }))}
                 />
               </Form.Item>

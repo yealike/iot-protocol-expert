@@ -5,6 +5,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -20,6 +22,7 @@ import top.yealike.pep.control.support.JsonSupport;
 @PreAuthorize("hasAuthority('ai:admin')")
 @Tag(name = "Agent 能力评估", description = "数据集、实验、链路查询和人工评分；数据按当前用户隔离")
 public class EvaluationController {
+    private static final Logger log = LoggerFactory.getLogger(EvaluationController.class);
     private final EvaluationService service;
     private final RestClient tempo;
     private final String tempoUrl;
@@ -175,6 +178,9 @@ public class EvaluationController {
             return JsonSupport.readMap(body);
         } catch (org.springframework.web.client.HttpClientErrorException.NotFound exception) {
             throw AiExceptions.notFound("Trace 尚未入库或已超过保留时间");
+        } catch (org.springframework.web.client.RestClientException exception) {
+            log.warn("Tempo 查询失败: {}", exception.getMessage());
+            throw AiExceptions.unavailable("Tempo 查询失败，请检查查询地址和网络连通性");
         }
     }
 }

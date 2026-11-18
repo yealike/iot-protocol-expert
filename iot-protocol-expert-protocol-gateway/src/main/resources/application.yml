@@ -50,7 +50,7 @@ ipe:
     pending-timeout-seconds: ${IPE_PROTOCOL_PENDING_TIMEOUT_SECONDS:15}
     ops-base-url: ${IPE_OPS_BASE_URL:http://127.0.0.1:19082}
     ops-service-token: ${IPE_OPS_SERVICE_TOKEN:local-service-token}
-    ops-timeout-ms: ${IPE_OPS_TIMEOUT_MS:5000}
+    ops-timeout-ms: ${IPE_OPS_TIMEOUT_MS:15000}
 
 logging:
   structured:

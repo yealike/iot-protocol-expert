@@ -302,6 +302,19 @@ public class QuotaRepository {
                 """, state, id);
     }
 
+    public boolean markReservationDispatched(UUID id) {
+        return jdbc.update("""
+                update pep_metering.quota_reservation
+                   set state = 'DISPATCHED',
+                       dispatched_at = now(),
+                       version = version + 1,
+                       updated_at = now()
+                 where id = ?
+                   and state = 'HELD'
+                   and dispatch_deadline >= now()
+                """, id) == 1;
+    }
+
     public void updateChargeState(UUID id, String state, Long settledUnits) {
         jdbc.update("""
                 update pep_metering.reservation_charge
@@ -316,6 +329,16 @@ public class QuotaRepository {
                    set state = ?, provider_request_id = coalesce(?, provider_request_id), updated_at = now()
                  where id = ?
                 """, state, providerRequestId, id);
+    }
+
+    public void markCallDispatched(UUID id) {
+        jdbc.update("""
+                update pep_metering.model_call
+                   set state = 'DISPATCHED',
+                       dispatched_at = now(),
+                       updated_at = now()
+                 where id = ?
+                """, id);
     }
 
     public void appendLedger(

@@ -11,6 +11,10 @@ import type {
   AiConversationDetail,
   AiCredential,
   AiCredentialCreate,
+  AiGatewayModel,
+  AiGatewayModelCreate,
+  AiGatewayProvider,
+  AiGatewayProviderCreate,
   AiMcpComponent,
   AiMcpCreate,
   AiMcpRelease,
@@ -46,6 +50,7 @@ import type {
   InvestigationEvent,
   InvestigationTask,
   ProjectInfo,
+  QuotaGrantRequest,
   QuotaSnapshot,
   TenantInfo,
   UsageItem,
@@ -332,6 +337,14 @@ export const api = {
   aiRotateCredential: (id: string, secret: string) =>
     aiRequest<AiCredential>(`/credentials/${encodeURIComponent(id)}`, aiJson({ secret }, 'PUT')),
 
+  aiGatewayProviders: () =>
+    aiRequest<AiGatewayProvider[]>('/model-catalog/providers'),
+  aiCreateGatewayProvider: (body: AiGatewayProviderCreate) =>
+    aiRequest<AiGatewayProvider>('/model-catalog/providers', aiJson(body)),
+  aiGatewayModels: () => aiRequest<AiGatewayModel[]>('/model-catalog/models'),
+  aiCreateGatewayModel: (body: AiGatewayModelCreate) =>
+    aiRequest<AiGatewayModel>('/model-catalog/models', aiJson(body)),
+
   // ---------------------------------------------------------------- AI 管理：MCP
 
   aiMcps: () => aiRequest<AiMcpComponent[]>('/mcps'),
@@ -507,7 +520,19 @@ export const api = {
     ),
 
   myQuota: () => request<QuotaSnapshot>('/api/control/v1/me/quota'),
-  myUsage: (limit = 100) => request<UsageItem[]>(`/api/control/v1/me/usage?limit=${limit}`)
+  myUsage: (limit = 100) => request<UsageItem[]>(`/api/control/v1/me/usage?limit=${limit}`),
+  adminQuotaAccount: (scopeKind: string, subjectId: string) =>
+    request<QuotaSnapshot>(
+      `/api/control/v1/admin/quota-accounts?scopeKind=${encodeURIComponent(
+        scopeKind
+      )}&subjectId=${encodeURIComponent(subjectId)}`
+    ),
+  grantQuota: (body: QuotaGrantRequest, idempotencyKey: string) =>
+    request<Record<string, unknown>>('/api/control/v1/admin/quota-grants', {
+      method: 'POST',
+      headers: { 'Idempotency-Key': idempotencyKey },
+      body: JSON.stringify(body)
+    })
 }
 
 /**

@@ -64,8 +64,8 @@ public class InternalOrderController {
     @GetMapping("/by-ocpp")
     public OpsDtos.OrderView byOcpp(
             @RequestParam String protocol, @RequestParam String protocolDeviceId, @RequestParam Integer transactionId) {
-        devices.resolve(protocol, protocolDeviceId);
-        ChargeOrder order = orders.byOcppTransactionId(transactionId);
+        DeviceInstance device = devices.resolve(protocol, protocolDeviceId);
+        ChargeOrder order = orders.byOcppTransactionId(device.id, transactionId);
         return order == null ? null : orders.view(order);
     }
 

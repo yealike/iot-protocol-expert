@@ -1,7 +1,8 @@
 import { Alert, Card, Col, Empty, Row, Statistic, Table, Tag, Typography } from 'antd'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '../api/client'
-import type { UsageItem } from '../api/types'
+import type { CurrentUser, UsageItem } from '../api/types'
+import QuotaAdmin from './QuotaAdmin'
 
 const { Text } = Typography
 
@@ -13,9 +14,10 @@ function activationLabel(state: string) {
   return state === 'ACTIVE' ? '窗口已激活' : '等待首次调用'
 }
 
-export default function Usage() {
+export default function Usage({ user }: { user: CurrentUser }) {
   const quota = useQuery({ queryKey: ['my-quota'], queryFn: api.myQuota })
   const usage = useQuery({ queryKey: ['my-usage'], queryFn: () => api.myUsage(100) })
+  const canGrant = (user.permissions ?? []).includes('quota:grant')
 
   return (
     <div className="page-stack">
@@ -125,6 +127,8 @@ export default function Usage() {
           ]}
         />
       </Card>
+
+      {canGrant ? <QuotaAdmin user={user} /> : null}
     </div>
   )
 }

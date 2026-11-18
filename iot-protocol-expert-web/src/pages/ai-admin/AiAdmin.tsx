@@ -1,10 +1,17 @@
 import { Alert, Tabs } from 'antd'
-import { ApiOutlined, RobotOutlined, SettingOutlined, ToolOutlined } from '@ant-design/icons'
+import {
+  ApiOutlined,
+  CloudServerOutlined,
+  RobotOutlined,
+  SettingOutlined,
+  ToolOutlined
+} from '@ant-design/icons'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import type { CurrentUser } from '../../api/types'
 
 const tabs = [
   { key: 'models', label: '模型配置', icon: <SettingOutlined /> },
+  { key: 'providers', label: '供应商登记', icon: <CloudServerOutlined /> },
   { key: 'mcps', label: 'MCP 服务', icon: <ApiOutlined /> },
   { key: 'skills', label: 'Skill 编辑', icon: <ToolOutlined /> },
   { key: 'agents', label: 'Agent 构建', icon: <RobotOutlined /> },

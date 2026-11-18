@@ -57,7 +57,7 @@ public class ProtocolProperties {
     private String opsServiceToken = "local-service-token";
 
     /** 内部 HTTP 超时毫秒。 */
-    private int opsTimeoutMs = 5000;
+    private int opsTimeoutMs = 15000;
 
     public boolean isYkcEnabled() {
         return ykcEnabled;

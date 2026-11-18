@@ -11,6 +11,7 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import tools.jackson.databind.json.JsonMapper;
 import top.yealike.pep.model.contract.RunTokenPayload;
 import top.yealike.pep.modelgateway.auth.GatewayAuthFilter;
+import top.yealike.pep.modelgateway.quota.QuotaService;
 
 class ChatCompletionsControllerStreamingTest {
     @Test
@@ -78,5 +79,35 @@ class ChatCompletionsControllerStreamingTest {
                 .andExpect(status().isOk())
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(jsonPath("$.usage.total_tokens").value(17));
+    }
+
+    @Test
+    void interruptedStreamMarksReservationUncertainWithoutSettlingUsage() throws Exception {
+        var calls = mock(ModelCallService.class);
+        var providers = mock(ProviderClient.class);
+        var prepared = mock(ModelCallService.PreparedCall.class);
+        var reservation = mock(QuotaService.ReservationHandle.class);
+        when(prepared.stream()).thenReturn(true);
+        when(prepared.reservation()).thenReturn(reservation);
+        when(calls.prepare(any(), anyMap(), isNull(), isNull())).thenReturn(prepared);
+        doThrow(new ProviderClient.UpstreamStreamException(new java.io.IOException("missing done marker")))
+                .when(providers)
+                .stream(any(), any(), any());
+        var mvc = MockMvcBuilders.standaloneSetup(new ChatCompletionsController(
+                        calls, providers, JsonMapper.builder().build()))
+                .build();
+
+        var result = mvc.perform(post("/v1/chat/completions")
+                        .requestAttr(GatewayAuthFilter.RUN_TOKEN_ATTRIBUTE, mock(RunTokenPayload.class))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .accept(MediaType.TEXT_EVENT_STREAM)
+                        .content("{\"model\":\"test-model\",\"stream\":true}"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        result.getAsyncResult(5000);
+        mvc.perform(asyncDispatch(result)).andExpect(status().isOk());
+
+        verify(calls).uncertain(prepared, null);
+        verify(calls, never()).settle(any(), any(), any(), any());
     }
 }

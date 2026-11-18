@@ -1,10 +1,14 @@
 package top.yealike.pep.gateway.ops;
 
+import io.micrometer.core.instrument.MeterRegistry;
 import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicLong;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -18,9 +22,18 @@ public class OpsClient {
 
     private final RestClient client;
     private final String token;
+    private final Executor telemetryExecutor;
+    private final MeterRegistry meters;
+    private final AtomicLong lastRetentionWarning = new AtomicLong();
 
-    public OpsClient(RestClient.Builder builder, ProtocolProperties properties) {
+    public OpsClient(
+            RestClient.Builder builder,
+            ProtocolProperties properties,
+            @Qualifier("frameRetentionExecutor") Executor telemetryExecutor,
+            MeterRegistry meters) {
         this.token = properties.getOpsServiceToken();
+        this.telemetryExecutor = telemetryExecutor;
+        this.meters = meters;
         this.client = builder.baseUrl(properties.getOpsBaseUrl())
                 .requestFactory(requestFactory(properties.getOpsTimeoutMs()))
                 .build();
@@ -163,10 +176,20 @@ public class OpsClient {
     }
 
     public void frame(OpsDtos.FrameRequest request) {
+        // Frame retention is diagnostic side data. It must not block protocol I/O or consume
+        // the command deadline when the OPS database is slow or unavailable.
         try {
-            postBody("/internal/frames", request);
+            telemetryExecutor.execute(() -> {
+                try {
+                    postBody("/internal/frames", request);
+                } catch (RuntimeException e) {
+                    meters.counter("ipe.protocol.frame.retention.failed").increment();
+                    warnRateLimited("报文留存失败 {} {}: {}", request.protocol(), request.direction(), e.getMessage());
+                }
+            });
         } catch (RuntimeException e) {
-            log.warn("报文留存失败 {} {}: {}", request.protocol(), request.direction(), e.getMessage());
+            meters.counter("ipe.protocol.frame.retention.dropped").increment();
+            warnRateLimited("报文留存队列已满，丢弃诊断帧 {} {}", request.protocol(), request.direction());
         }
     }
 
@@ -252,5 +275,13 @@ public class OpsClient {
                 .withTimeouts(Duration.ofMillis(Math.max(timeoutMs, 500)), Duration.ofMillis(Math.max(timeoutMs, 500)));
         return org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder.detect()
                 .build(settings);
+    }
+
+    private void warnRateLimited(String pattern, Object... arguments) {
+        long now = System.nanoTime();
+        long previous = lastRetentionWarning.get();
+        if (now - previous >= Duration.ofSeconds(30).toNanos() && lastRetentionWarning.compareAndSet(previous, now)) {
+            log.warn(pattern, arguments);
+        }
     }
 }

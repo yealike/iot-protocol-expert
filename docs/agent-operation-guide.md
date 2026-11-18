@@ -1,6 +1,6 @@
 # Agent 配置、运行、评估与配额操作说明
 
-本说明对应 2026-11-17 至 2026-11-18 的实际验证。最新一轮真实 PostgreSQL 配额回归为 `QuotaServicePostgresTest` 17/17 通过；完整验收结果及未完成项见 [流程验收报告](agent-full-flow-report-2026-11-17.md)。
+本说明对应 2026-11-17 至 2026-11-18 的实际验证。最新一轮真实 PostgreSQL 配额回归为 `QuotaServicePostgresTest` 20/20 通过；完整验收结果及未完成项见 [流程验收报告](agent-full-flow-report-2026-11-17.md)。
 
 ## 先从哪里进入
 
@@ -11,18 +11,19 @@
 | 配置模型、MCP、Skill、Agent | AI 能力管理 `/ai-admin` | 管理员使用；保存草稿和发布版本是两步 |
 | 和已发布 Agent 对话 | AI 助手 `/assistant` | 普通用户也可使用，但需要 Agent 授权及个人模型额度 |
 | 建评测集、启动实验、看分数 | Agent 能力评估 `/ai-evaluation` | 需要 `ai:admin`；数据集、实验及评分按当前用户隔离 |
-| 查看自己的限额和消费记录 | 模型额度 `/usage` | 当前页面用于查询，不包含管理员分配额度的按钮 |
+| 查看自己的限额和消费记录 | 模型额度 `/usage` | 普通用户查看当前额度策略、冻结/剩余单位及最近模型调用 |
+| 分配用户或服务账号额度 | 模型额度 `/usage` → 额度分配与管理 | 具备 `quota:grant` 的管理员可填写主体、模式和上限并查看目标主体快照 |
 | 配置用户角色和站点范围 | 用户管理 `/users` | 角色权限、Agent 策略、业务数据权限、模型额度分别生效 |
 
 当前“Agent 编排”指模型、系统提示、Skill、MCP 工具白名单和执行预算的组合，由 ReAct Agent 执行。当前没有可视化 DAG 编排器。
 
 ## 直接体验已经准备好的样例
 
-在 AI 助手中新建会话，选择“流程验收演示 Agent”，其 key 为 `flow-1117-223747`，当前可用默认版本为 `1.1.1`。
+在 AI 助手中新建会话，选择“流程验收演示 Agent”，其 key 为 `<agent-key>`，当前可用默认版本为 `1.1.1`。
 
 1. 输入 `基础回执`，预期回复 `FLOW_OK`。
 2. 输入：`请先读取 Skill 的参考资料 references/checklist.md，再查询协议文档数量。只回答文档条数和参考文件中的验收标记。`
-3. 在执行详情检查 `load_skill`、`read_skill_resource` 和 `mcp_flow-1117-223747__list_documents`。应逐个检查工具状态，不能只看 Run 的 COMPLETED。
+3. 在执行详情检查 `load_skill`、`read_skill_resource` 和 `mcp_<agent-key>__list_documents`。应逐个检查工具状态，不能只看 Run 的 COMPLETED。
 4. 第二条提问需要管理员身份：协议文档工具要求 `ai:admin`，普通操作员返回 403 是业务权限生效。
 5. 打开“模型额度”，检查本账号的消费记录。额度属于当前登录用户，管理员有管理权限并不意味着自动拥有个人模型额度。
 
@@ -67,7 +68,7 @@ Higress 提供 REST-to-MCP 和路由；Control 管理组件、发布版本及权
 7. 人工评分范围为 0～1。同一结果、同一指标、同一 Span 再次评分，会保留历史并替换当前有效评分。
 8. 对比版本时，在实验列表勾选两条实验。优先比较断言、精确匹配、工具成功率和质量分，不能只比较执行成功率。
 
-浏览器路径已复验：可重新登录独立验收管理员，查看当前实验、结果、144 Span 链路和“链路与评分”抽屉；较早的专项复验中曾为 `execute_tool/read_skill_resource`（Span `e9059e2b796da845`）提交 `human_quality=0.92`，当前全流程人工评分最终为 0.9，刷新后均可见。当前页面启动实验时固定使用所选 Agent 的当前发布版本；需要评估历史版本时使用实验 API 的 `agentVersion` 字段。
+浏览器路径已复验：可重新登录独立验收管理员，查看实验 `<current-experiment-id>`、结果、146 Span 链路和“链路与评分”抽屉；较早的专项复验中曾为 `execute_tool/read_skill_resource`（Span `<earlier-skill-span-id>`）提交 `human_quality=0.92`，当前全流程人工评分最终为 0.9，刷新后均可见。当前页面启动实验时固定使用所选 Agent 的当前发布版本；需要评估历史版本时使用实验 API 的 `agentVersion` 字段。
 
 | 指标 | 含义 |
 | --- | --- |
@@ -78,9 +79,9 @@ Higress 提供 REST-to-MCP 和路由；Control 管理组件、发布版本及权
 | `answer_quality` | LLM Judge 的 0～1 评分，受提供的证据和模型判断影响 |
 | `manual_quality` / `human_quality` | 人工定义的指标；机器评分不会被人工分数覆盖 |
 
-Judge 返回 ERROR 时，该结果没有有效质量分，不能当作 0 分或满分。最终复验实验 `12fae36d-5c71-4206-a890-8784feff3950` 的 2/2 结果均为 `answer_quality=1.0`。当前工具题结果 `1a7dc3e3-7644-4d10-9ed6-64809461b71e` 的 Judge 输入包含持久化的工具参数与结果，证据中出现 `data=[]`、`partial=false`、`warnings=[]` 和 `FLOW_OK`。规则断言与 Judge 是两类独立信号，仍应分别查看。
+Judge 返回 ERROR 时，该结果没有有效质量分，不能当作 0 分或满分。最终复验实验 `<current-experiment-id>` 的 2/2 结果均为 `answer_quality=1.0`。当前工具题结果 `<tool-result-id>` 的 Judge 输入包含持久化的工具参数与结果，证据中出现 `data=[]`、`partial=false`、`warnings=[]` 和 `FLOW_OK`。规则断言与 Judge 是两类独立信号，仍应分别查看。
 
-打开结果详情后点击“加载链路”，请求由 Control 服务端代理到 Tempo；部署侧通过 `IPE_TEMPO_QUERY_BASE_URL` 指定查询地址。当前已实测结果 `1a7dc3e3-7644-4d10-9ed6-64809461b71e` 对应 Trace `89efd4447cc7ea7f95d54b5dd0f9ed6e`，共 144 个 Span，链路为 `agent.run -> invoke_agent -> chat/execute_tool`。查询失败或超过保留期时，页面应明确显示不可用，Run 结果和已有评分仍可查看。
+打开结果详情后点击“加载链路”，请求由 Control 服务端代理到 Tempo；部署侧通过 `IPE_TEMPO_QUERY_BASE_URL` 指定查询地址。当前已实测结果 `<tool-result-id>` 对应 Trace `<current-trace-id>`，共 146 个 Span，链路为 `agent.run -> invoke_agent -> chat/execute_tool`。查询失败或超过保留期时，页面应明确显示不可用，Run 结果和已有评分仍可查看。
 
 ### 评估审计证据与 Trace 内容开关
 
@@ -94,7 +95,14 @@ Judge 返回 ERROR 时，该结果没有有效质量分，不能当作 0 分或�
 
 ## 用户额度怎么分配
 
-当前额度分配通过管理员 API，前端尚无分配表单。登录具备 `quota:grant` 的管理员后，可在当前页面的浏览器开发者控制台使用以下示例；先将 `subjectId` 替换为“用户管理”中的用户 ID。
+具备 `quota:grant` 的管理员可打开“模型额度”页面，在下方“额度分配与管理”表单操作：
+
+1. 选择主体类型。普通 Agent 用户选择 `USER`；LLM Judge 使用 `SERVICE_ACCOUNT`。
+2. 填写 `subjectId`，例如用户管理中的用户 ID 或 `ipe-evaluator`。
+3. 选择 `TOTAL` 或 `ON_FIRST_USE_WINDOW`。窗口模式还必须填写有效窗口秒数。
+4. 填写额度上限、可选策略标识和原因，点击“保存额度策略”。表单会展示目标主体的当前上限、已用、冻结、剩余和待对账状态。
+
+表单使用页面生成的幂等键；连续修改表单会重新生成键。需要脚本集成或排查接口时，也可调用下面的管理员 API：
 
 ```javascript
 const grantIdempotencyKey = crypto.randomUUID()

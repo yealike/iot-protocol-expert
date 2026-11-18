@@ -31,7 +31,7 @@ class OcppTelemetryTest {
         order.gunNo = "01";
         order.status = ChargeOrder.Status.CHARGING;
         when(devices.resolve("OCPP16J", "pile")).thenReturn(device);
-        when(orders.byOcppTransactionId(3)).thenReturn(order);
+        when(orders.byOcppTransactionId(1L, 3)).thenReturn(order);
         service.meterValues(
                 new OpsDtos.MeterValuesRequest("pile", 1, 3, null, BigDecimal.TEN, null, null, null, null, null));
         verifyNoInteractions(telemetry, properties);
@@ -55,7 +55,7 @@ class OcppTelemetryTest {
         order.status = ChargeOrder.Status.CHARGING;
         order.energy = BigDecimal.ZERO;
         when(devices.resolve("OCPP16J", "pile")).thenReturn(device);
-        when(orders.byOcppTransactionId(3)).thenReturn(order);
+        when(orders.byOcppTransactionId(1L, 3)).thenReturn(order);
         when(rates.pricePerKwh(any())).thenReturn(BigDecimal.ONE);
         service.meterValues(new OpsDtos.MeterValuesRequest(
                 "pile",

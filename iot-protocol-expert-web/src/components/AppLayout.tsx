@@ -119,7 +119,8 @@ export default function AppLayout({ user, children }: Props) {
                         ? user.permissions?.includes('investigation:read')
                         : item.key === '/usage'
                           ? user.permissions?.includes('ai:use') ||
-                            user.permissions?.includes('usage:read')
+                            user.permissions?.includes('usage:read') ||
+                            user.permissions?.includes('quota:grant')
                           : true
           )}
           style={{ background: 'transparent' }}

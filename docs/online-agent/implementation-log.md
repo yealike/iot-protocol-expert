@@ -1,5 +1,7 @@
 # 在线 Agent 平台实施记录
 
+> **历史文档（2026-11-16）**：本文记录旧模块拆分和 Nacos MCP/Skill Registry 方案，已不代表当前实现。当前 Nacos 仅负责可选的进程/Agent 实例发现；MCP/Skill 登记、版本和发布由 Control 管理，REST-to-MCP 由 Higress 承担。当前架构与验收证据见 [模块与组件治理](../module-architecture.md) 和 [Agent 全流程验收报告](../agent-full-flow-report-2026-11-17.md)。
+
 > 设计基线：`设计文档/Agent在线配置、发布与运行方案.md`
 > 记录日期：2026-11-16
 > 代码基线：`b38a97c`（`develop`）；工作区包含尚未提交的在线 Agent 实现、V7/V8 迁移、前端页面和本地脚本。

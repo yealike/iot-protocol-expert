@@ -49,9 +49,7 @@ public class OcppCommandFacade {
         JsonNode reply = call(
                 pileCode, OcppConstants.CHANGE_CONFIGURATION, Map.of("key", key, "value", value == null ? "" : value));
         String status = reply == null ? "" : text(reply, "status", "");
-        if (OcppConstants.ACCEPTED.equals(status)
-                || OcppConstants.REJECTED.equals(status)
-                || OcppConstants.NOT_SUPPORTED.equals(status)) {
+        if (OcppConstants.ACCEPTED.equals(status)) {
             configurationStore.set(pileCode, key, value == null ? "" : value);
         }
         return reply;

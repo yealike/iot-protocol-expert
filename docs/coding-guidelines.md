@@ -1,6 +1,6 @@
 # 阿里巴巴开发规范适配与审查记录
 
-审查日期：2026-11-17。范围：八个后端 Maven 模块的 Java、MyBatis XML、Flyway SQL，重点人工检查持久化、删除、并发、参数边界及异常响应。前端和线上数据库未在本次审查范围内。
+审查日期：2026-11-18。范围：11 个 Maven reactor 模块中的 Java、MyBatis XML、Flyway SQL，重点人工检查持久化、删除、并发、参数边界及异常响应。前端和线上数据库未在本次审查范围内。
 
 依据：[阿里巴巴 P3C 官方仓库](https://github.com/alibaba/p3c)、[Java 开发手册在线版](https://alibaba.github.io/Alibaba-Java-Coding-Guidelines/)。项目使用 Java 21 / Spring Boot 4 / PostgreSQL，沿用既有 Spotless 格式化；MySQL 专属 DDL 不机械套用。检查脚本实现规范的明确子集，不是完整 P3C 扫描器，零告警不代表代码完全符合手册。
 
@@ -55,6 +55,6 @@ ScheduledThreadPoolExecutor 的延迟队列仍是 JDK 无界实现：Modbus 每�
 
 数据库集成测试按项目既有环境变量条件执行；本次未向共享测试、UAT 或生产数据库执行迁移。新迁移需在部署环境由 Flyway 执行，现有数据不会因移除约束而删除。数据库迁移和真实网络负载行为仍需部署前在隔离环境验收。
 
-本次最终验证：`mvn -B -Pcoding-guidelines spotless:apply verify` 成功；Surefire 共 211 项，201 项通过、10 项按环境条件跳过，0 失败/错误；规范检查 427 文件、0 告警；`git diff --check` 通过。2 个 PostgreSQL 隔离测试因未设置 `IPE_REVIEW_PG_URL` 跳过，未对共享测试、UAT 或生产数据库执行迁移。
+本次最终验证（2026-11-18）：`mvn -B -Pcoding-guidelines clean verify` 成功；11 个 reactor 模块全部 `SUCCESS`；Surefire 共 279 项，249 项通过、30 项按环境条件跳过，0 失败/错误；规范检查 462 个文件、0 项违规。
 
 残余风险：Runtime 不引入数据库，内部 HMAC nonce 仍只在本进程内去重；多副本部署时同一签名请求在 30 秒时间窗内仍可能被重放到另一副本，必须固定单副本路由或后续引入共享 nonce 存储。`EndpointPolicy` 在连接前解析 DNS，但未把解析结果固定到实际连接，DNS rebinding 的最终阻断仍需网络层出口策略配合。

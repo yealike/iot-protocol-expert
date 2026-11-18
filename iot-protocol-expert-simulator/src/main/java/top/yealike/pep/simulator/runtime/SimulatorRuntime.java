@@ -32,6 +32,7 @@ import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import top.yealike.pep.codec.Frame;
 import top.yealike.pep.codec.FrameCodec;
@@ -46,6 +47,7 @@ import top.yealike.pep.codec.frames.ParallelFrames;
 import top.yealike.pep.codec.frames.RealtimeFrames;
 import top.yealike.pep.codec.frames.RegistrationFrames;
 import top.yealike.pep.codec.frames.SettingFrames;
+import top.yealike.pep.codec.ocpp16.OcppConstants;
 import top.yealike.pep.observability.protocol.ProtocolTelemetry;
 import top.yealike.pep.simulator.config.SimulatorProperties;
 
@@ -136,6 +138,7 @@ public class SimulatorRuntime {
         private int lockStatus = 255;
         private OperationFrames.RemoteStart waitingStart;
         private Integer ocppTransactionId;
+        private BigDecimal ocppMeterStartWh = BigDecimal.ZERO;
         private int waitingSequence;
         private long waitingUntil;
         private boolean fault;
@@ -247,6 +250,8 @@ public class SimulatorRuntime {
     private final Map<String, Gun> guns = new LinkedHashMap<>();
     private final Deque<FrameLog> logs = new ArrayDeque<>();
     private final Map<String, PendingTransaction> pendingTransactions = new ConcurrentHashMap<>();
+    private final Map<Integer, PendingOcppStop> pendingOcppStops = new ConcurrentHashMap<>();
+    private final java.util.Set<Integer> ocppStopsInFlight = ConcurrentHashMap.newKeySet();
     private final AtomicInteger sequence = new AtomicInteger();
     private final EventLoopGroup group = new NioEventLoopGroup(2);
 
@@ -406,6 +411,9 @@ public class SimulatorRuntime {
         history.clear();
         offlineCards.clear();
         pendingTransactions.clear();
+        pendingOcppStops.clear();
+        ocppStopsInFlight.clear();
+        ocppClient.clearTransactions();
         parallelAcks.clear();
         parallelCommands.clear();
         connected = false;
@@ -496,7 +504,6 @@ public class SimulatorRuntime {
         manualDisconnect = true;
         if (protocol == Protocol.OCPP16J) {
             ocppClient.disconnect();
-            ocppClient.clearTransactions();
         }
         if (channel != null) {
             channel.close();
@@ -550,6 +557,11 @@ public class SimulatorRuntime {
         lastError = null;
         long now = System.currentTimeMillis();
         guns.values().forEach(g -> g.heartbeatAckAt = now);
+        pendingOcppStops.values().forEach(stop -> {
+            stop.nextAt = 0;
+            stop.retriesLeft = properties.getTransactionMaxRetries();
+        });
+        flushOcppStops(now);
         log.info("OCPP BootNotification 通过，心跳间隔 {} 秒", interval);
     }
 
@@ -557,7 +569,6 @@ public class SimulatorRuntime {
         connected = false;
         loggedIn = false;
         channel = null;
-        ocppClient.clearTransactions();
         if (pendingParallelNo != null) cancelParallel();
         if (!manualDisconnect && reason != null && !reason.isBlank()) {
             lastError = reason;
@@ -584,12 +595,14 @@ public class SimulatorRuntime {
         log.warn("OCPP 枪 {} 启动失败: {}", gunNo, reason);
     }
 
-    public synchronized void onOcppTransactionStarted(String gunNo, int transactionId, int startType) {
+    public synchronized void onOcppTransactionStarted(
+            String gunNo, int transactionId, int startType, BigDecimal meterStartWh) {
         Gun gun = guns.get(gunNo);
         if (gun == null) {
             return;
         }
         gun.ocppTransactionId = transactionId;
+        gun.ocppMeterStartWh = meterStartWh == null ? BigDecimal.ZERO : meterStartWh;
         gun.phase = gun.plugged ? "已插枪" : "待机";
         String synthetic = properties.getPileCode()
                 + gunNo
@@ -1277,8 +1290,7 @@ public class SimulatorRuntime {
         history.add(0, tx);
         if (history.size() > 100) history.removeLast();
         if (isOcpp()) {
-            ocppClient.stopTransaction(gun.gunNo, gun.energy, reason);
-            gun.ocppTransactionId = null;
+            queueOcppStop(gun, reason);
             sendRealtime(gun);
             ocppClient.statusNotification(
                     Integer.parseInt(gun.gunNo), gunRuntimeStatus(gun.gunNo), gunFaultCode(gun.gunNo));
@@ -1409,6 +1421,7 @@ public class SimulatorRuntime {
         if (!loggedIn) {
             return;
         }
+        flushOcppStops(now);
         if (guns.values().stream().anyMatch(g -> now - g.heartbeatAckAt > properties.getHeartbeatSeconds() * 3000L)) {
             lastError = "OCPP 心跳应答超时";
             ocppClient.disconnect();
@@ -1513,6 +1526,100 @@ public class SimulatorRuntime {
         }
     }
 
+    private void queueOcppStop(Gun gun, int reason) {
+        Integer transactionId = gun.ocppTransactionId;
+        if (transactionId == null) {
+            return;
+        }
+        BigDecimal meterStart = gun.ocppMeterStartWh == null ? BigDecimal.ZERO : gun.ocppMeterStartWh;
+        BigDecimal meterStop = meterStart.add(gun.energy.multiply(new BigDecimal("1000")));
+        PendingOcppStop stop = new PendingOcppStop(
+                gun.gunNo,
+                transactionId,
+                meterStop,
+                java.time.Instant.now().toString(),
+                reason,
+                properties.getTransactionMaxRetries(),
+                0);
+        pendingOcppStops.put(transactionId, stop);
+        gun.ocppTransactionId = null;
+        gun.ocppMeterStartWh = BigDecimal.ZERO;
+        ocppClient.forgetTransaction(gun.gunNo);
+        persist();
+        if (loggedIn && connected) {
+            flushOcppStops(System.currentTimeMillis());
+        }
+    }
+
+    private void flushOcppStops(long now) {
+        if (!loggedIn || !connected) {
+            return;
+        }
+        for (PendingOcppStop stop : pendingOcppStops.values()) {
+            if (now < stop.nextAt || stop.retriesLeft <= 0 || !ocppStopsInFlight.add(stop.transactionId)) {
+                continue;
+            }
+            stop.retriesLeft--;
+            stop.nextAt = now + properties.getTransactionRetrySeconds() * 1000L;
+            ocppClient
+                    .stopTransaction(
+                            stop.transactionId, stop.meterStopWh, java.time.Instant.parse(stop.endedAt), stop.reason)
+                    .whenComplete((reply, error) -> {
+                        String failure = ocppStopReplyFailure(reply);
+                        if (error != null) {
+                            onOcppStopFailed(stop.transactionId, error.getMessage());
+                        } else if (failure != null) {
+                            onOcppStopFailed(stop.transactionId, failure);
+                        } else {
+                            onOcppStopAcknowledged(stop.transactionId);
+                        }
+                    });
+        }
+    }
+
+    static String ocppStopReplyFailure(JsonNode reply) {
+        if (reply == null) {
+            return "设备未返回 StopTransaction 应答";
+        }
+        if (reply.has("errorCode")) {
+            return reply.path("errorCode").asString("Error")
+                    + " "
+                    + reply.path("errorDescription").asString("");
+        }
+        JsonNode idTagInfo = reply.get("idTagInfo");
+        if (idTagInfo != null) {
+            String status = idTagInfo.path("status").asString("");
+            if (!OcppConstants.ACCEPTED.equals(status)) {
+                return "StopTransaction idTagInfo 未通过: " + (status.isBlank() ? "缺少 status" : status);
+            }
+        }
+        return null;
+    }
+
+    synchronized void onOcppStopAcknowledged(int transactionId) {
+        ocppStopsInFlight.remove(transactionId);
+        if (pendingOcppStops.remove(transactionId) != null) {
+            persist();
+            log.info("OCPP StopTransaction {} 已确认并移出待传队列", transactionId);
+        }
+    }
+
+    synchronized void onOcppStopFailed(int transactionId, String message) {
+        ocppStopsInFlight.remove(transactionId);
+        PendingOcppStop stop = pendingOcppStops.get(transactionId);
+        if (stop == null) {
+            return;
+        }
+        stop.nextAt = System.currentTimeMillis() + properties.getTransactionRetrySeconds() * 1000L;
+        lastError = "OCPP StopTransaction 待补传: " + (message == null || message.isBlank() ? "设备未应答" : message);
+        persist();
+        log.warn(
+                "OCPP StopTransaction {} 失败，保留待传记录，剩余重试 {} 次: {}",
+                transactionId,
+                Math.max(stop.retriesLeft, 0),
+                message);
+    }
+
     // ------------------------------------------------------------------ 控制接口
 
     public synchronized String plug(String gunNo) {
@@ -1604,9 +1711,7 @@ public class SimulatorRuntime {
         gun.phase = enable ? "故障" : "待机";
         if (isOcpp()) {
             ocppClient.statusNotification(
-                    Integer.parseInt(gun.gunNo),
-                    enable ? "Faulted" : (gun.allowWork ? "Available" : "Unavailable"),
-                    gun.ocppFaultCode);
+                    Integer.parseInt(gun.gunNo), enable ? "Faulted" : gunRuntimeStatus(gun.gunNo), gun.ocppFaultCode);
         }
         sendRealtime(gun);
         return enable ? "已注入故障" : "故障已恢复";
@@ -1757,6 +1862,16 @@ public class SimulatorRuntime {
         data.put("upgradeStatus", upgradeStatus);
         data.put("lastError", persistenceError == null ? lastError : persistenceError);
         data.put("pendingTransactions", pendingTransactions.keySet());
+        data.put(
+                "pendingOcppStops",
+                pendingOcppStops.values().stream()
+                        .map(stop -> Map.of(
+                                "transactionId", stop.transactionId,
+                                "gunNo", stop.gunNo,
+                                "meterStopWh", stop.meterStopWh,
+                                "reason", stop.reason,
+                                "retriesLeft", Math.max(stop.retriesLeft, 0)))
+                        .toList());
         data.put("serverTime", LocalDateTime.now());
         return data;
     }
@@ -2336,6 +2451,10 @@ public class SimulatorRuntime {
                     p.setProperty(key + "card", g.physicalCard);
                     p.setProperty(key + "type", Integer.toString(g.startType));
                     p.setProperty(key + "soc", Integer.toString(g.soc));
+                    if (g.ocppTransactionId != null) {
+                        p.setProperty(key + "ocppTransactionId", Integer.toString(g.ocppTransactionId));
+                        p.setProperty(key + "ocppMeterStartWh", g.ocppMeterStartWh.toPlainString());
+                    }
                     g.ledger.checkpoint(p, key + "ledger.");
                 }
             }
@@ -2347,6 +2466,13 @@ public class SimulatorRuntime {
                         "tx." + e.getKey(),
                         java.util.HexFormat.of()
                                 .formatHex(OperationFrames.encodeTransaction(e.getValue().transaction)));
+            for (PendingOcppStop stop : pendingOcppStops.values()) {
+                String key = "ocpp.stop." + stop.transactionId + ".";
+                p.setProperty(key + "gunNo", stop.gunNo);
+                p.setProperty(key + "meterStopWh", stop.meterStopWh.toPlainString());
+                p.setProperty(key + "endedAt", stop.endedAt);
+                p.setProperty(key + "reason", Integer.toString(stop.reason));
+            }
             stateStore.save(deviceKey(), p, List.copyOf(history));
             persistenceError = null;
         } catch (Exception e) {
@@ -2421,6 +2547,25 @@ public class SimulatorRuntime {
                                 tx.transactionNo(),
                                 new PendingTransaction(tx, properties.getTransactionMaxRetries(), 0));
                 }
+                if (k.startsWith("ocpp.stop.") && k.endsWith(".gunNo")) {
+                    String transactionText = k.substring("ocpp.stop.".length(), k.lastIndexOf('.'));
+                    try {
+                        int transactionId = Integer.parseInt(transactionText);
+                        String key = "ocpp.stop." + transactionId + ".";
+                        pendingOcppStops.put(
+                                transactionId,
+                                new PendingOcppStop(
+                                        p.getProperty(key + "gunNo"),
+                                        transactionId,
+                                        new BigDecimal(p.getProperty(key + "meterStopWh", "0")),
+                                        p.getProperty(key + "endedAt"),
+                                        Integer.parseInt(p.getProperty(key + "reason", "69")),
+                                        properties.getTransactionMaxRetries(),
+                                        0));
+                    } catch (RuntimeException e) {
+                        log.warn("忽略损坏的 OCPP 待传记录 {}: {}", k, e.getMessage());
+                    }
+                }
             }
             if (p.containsKey("history.json")) {
                 history.addAll(List.of(JsonMapper.shared()
@@ -2451,6 +2596,11 @@ public class SimulatorRuntime {
                 g.physicalCard = p.getProperty(key + "card");
                 g.startType = Integer.parseInt(p.getProperty(key + "type"));
                 g.soc = Integer.parseInt(p.getProperty(key + "soc"));
+                if (p.containsKey(key + "ocppTransactionId")) {
+                    g.ocppTransactionId = Integer.parseInt(p.getProperty(key + "ocppTransactionId"));
+                    g.ocppMeterStartWh = new BigDecimal(p.getProperty(key + "ocppMeterStartWh", "0"));
+                    ocppClient.restoreTransaction(g.gunNo, g.ocppTransactionId, g.ocppMeterStartWh);
+                }
                 g.energy = g.ledger.energy();
                 g.amount = g.ledger.amount();
                 g.state = GunState.CHARGING;
@@ -2477,6 +2627,33 @@ public class SimulatorRuntime {
 
         private PendingTransaction(OperationFrames.Transaction transaction, int retriesLeft, long nextAt) {
             this.transaction = transaction;
+            this.retriesLeft = retriesLeft;
+            this.nextAt = nextAt;
+        }
+    }
+
+    private static final class PendingOcppStop {
+        private final String gunNo;
+        private final int transactionId;
+        private final BigDecimal meterStopWh;
+        private final String endedAt;
+        private final int reason;
+        private int retriesLeft;
+        private long nextAt;
+
+        private PendingOcppStop(
+                String gunNo,
+                int transactionId,
+                BigDecimal meterStopWh,
+                String endedAt,
+                int reason,
+                int retriesLeft,
+                long nextAt) {
+            this.gunNo = gunNo;
+            this.transactionId = transactionId;
+            this.meterStopWh = meterStopWh;
+            this.endedAt = endedAt;
+            this.reason = reason;
             this.retriesLeft = retriesLeft;
             this.nextAt = nextAt;
         }

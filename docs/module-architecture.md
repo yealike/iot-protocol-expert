@@ -60,7 +60,7 @@ Higress 支持直接配置 REST-to-MCP，无需把 Nacos AI Registry 作为前�
 
 ## 数据库与会话迁移
 
-本轮先拆分应用，不迁移数据库或重写已执行 SQL。历史 `V1__pep_control_baseline.sql`、`V2__platform_access.sql`、`V3__investigations.sql` 原样放在 OPS，继续使用原 `pep_platform.flyway_schema_history`。OPS 先启动完成迁移；Control 关闭重复 Flyway，使用同一个数据库中的现有 `pep_platform` / `pep_agent` 表。租户项目管理在 Control，用户身份由 OPS 管理；数据库层仍有共享身份/授权读取。两者还不能直接配置为互不相关的独立数据库。
+本轮先拆分应用，不迁移数据库或重写已执行 SQL。历史 `V1__pep_control_baseline.sql`、`V2__platform_access.sql`、`V3__investigations.sql` 原样放在 OPS，继续使用原 `pep_platform.flyway_schema_history`。当前新增 `V4__ocpp_transaction_uniqueness.sql` 和 `V5__active_charge_order_uniqueness.sql`，OPS 按 V1–V5 执行。Control 关闭重复 Flyway，使用同一个数据库中的现有 `pep_platform` / `pep_agent` 表。租户项目管理在 Control，用户身份由 OPS 管理；数据库层仍有共享身份/授权读取。两者还不能直接配置为互不相关的独立数据库。
 
 后续独立拆库时，需要单独设计身份授权投影和迁移基线，不能直接移动/改名历史迁移或开启另一套 Flyway 对已有版本重复执行。模型网关和模拟器继续保留自己的数据库连接与 Flyway 历史。
 
@@ -76,4 +76,4 @@ Higress 支持直接配置 REST-to-MCP，无需把 Nacos AI Registry 作为前�
 - 先启动 OPS，再启动 Control、模型网关、Runtime、协议网关和模拟器。`scripts/start-local.ps1` 按此顺序执行。
 - 需要种子发布时运行 `scripts/seed-ai.ps1`，提前配置可访问的 Higress MCP 入口。
 
-本轮验证包含独立 OPS/Control Spring 上下文、Cookie 身份代理、内部服务令牌、固定 MCP 入口和不依赖组件注册的发布事务。真实 PostgreSQL、Higress/Nacos 联调与部署环境迁移需在隔离环境另行验收。
+2026-11-18 已完成本地真实 PostgreSQL、Higress/Nacos、真实模型与 Agent/Trace 全流程验收；剩余外部部署迁移及长时故障/压力矩阵。

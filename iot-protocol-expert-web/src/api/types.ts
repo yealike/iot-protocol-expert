@@ -434,9 +434,6 @@ export interface AiModelCreate {
   key: string
   displayName: string
   description?: string
-  baseUrl: string
-  modelName: string
-  credentialId?: string | null
   options?: Record<string, unknown>
 }
 
@@ -444,11 +441,46 @@ export interface AiModelUpdate {
   expectedRevision: number
   displayName: string
   description?: string
-  baseUrl: string
-  modelName: string
-  credentialId?: string | null
   options?: Record<string, unknown>
   enabled: boolean
+}
+
+export interface AiGatewayProvider {
+  id: string
+  code: string
+  name: string
+  baseUrl: string
+  state: string
+  credentialConfigured: boolean
+}
+
+export interface AiGatewayProviderCreate {
+  code: string
+  name: string
+  baseUrl: string
+  apiKey: string
+}
+
+export interface AiGatewayModel {
+  id: string
+  key: string
+  displayName: string
+  providerId: string
+  upstreamModel: string
+  contextWindow?: number | null
+  maxOutputTokens?: number | null
+  countingMode: string
+  state: string
+}
+
+export interface AiGatewayModelCreate {
+  key: string
+  displayName: string
+  providerCode: string
+  upstreamModel: string
+  contextWindow?: number | null
+  maxOutputTokens?: number | null
+  countingMode?: string
 }
 
 export interface AiModelTestResult {
@@ -974,6 +1006,16 @@ export interface QuotaSnapshot {
   subjectId: string
   policies: QuotaPolicyState[]
   pendingReconciliation: number
+}
+
+export interface QuotaGrantRequest {
+  scopeKind: 'USER' | 'SERVICE_ACCOUNT'
+  subjectId: string
+  mode: 'TOTAL' | 'ON_FIRST_USE_WINDOW'
+  limitUnits: number
+  durationSeconds?: number | null
+  policyKey?: string
+  reason?: string
 }
 
 export interface UsageItem {

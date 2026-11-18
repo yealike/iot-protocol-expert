@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { useNavigate } from 'react-router-dom'
 import {
   Alert,
   App,
@@ -9,7 +10,6 @@ import {
   Form,
   Input,
   Modal,
-  Select,
   Space,
   Switch,
   Table,
@@ -26,9 +26,6 @@ interface ModelFormValues {
   key: string
   displayName: string
   description?: string
-  baseUrl: string
-  modelName: string
-  credentialId?: string
   enabled: boolean
   optionsJson: string
 }
@@ -45,6 +42,7 @@ interface RotateFormValues {
 
 export default function ModelsPage() {
   const { message, modal } = App.useApp()
+  const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [modelForm] = Form.useForm<ModelFormValues>()
   const [credentialForm] = Form.useForm<CredentialFormValues>()
@@ -72,9 +70,6 @@ export default function ModelsPage() {
           expectedRevision: model.revision,
           displayName: values.displayName,
           description: values.description,
-          baseUrl: values.baseUrl,
-          modelName: values.modelName,
-          credentialId: values.credentialId || null,
           options,
           enabled: values.enabled
         })
@@ -83,9 +78,6 @@ export default function ModelsPage() {
         key: values.key,
         displayName: values.displayName,
         description: values.description,
-        baseUrl: values.baseUrl,
-        modelName: values.modelName,
-        credentialId: values.credentialId || null,
         options
       })
     },
@@ -142,9 +134,6 @@ export default function ModelsPage() {
             key: model.key,
             displayName: model.displayName,
             description: model.description ?? '',
-            baseUrl: model.baseUrl,
-            modelName: model.modelName,
-            credentialId: model.credentialId ?? undefined,
             enabled: model.enabled,
             optionsJson: jsonText(model.options)
           }
@@ -152,9 +141,6 @@ export default function ModelsPage() {
             key: '',
             displayName: '',
             description: '',
-            baseUrl: '',
-            modelName: '',
-            credentialId: undefined,
             enabled: true,
             optionsJson: jsonText({ temperature: 0.1, maxTokens: 2048 })
           }
@@ -166,22 +152,11 @@ export default function ModelsPage() {
     modal.confirm({
       title: '测试模型连通性',
       content:
-        '该操作会向模型供应商发送最小请求，并产生少量 token 消耗。工具调用、Skill 与 RAG 不会参与测试。',
+        '该操作会按逻辑模型 key 经模型网关向上游供应商发送最小请求，并产生少量 token 消耗。工具调用、Skill 与 RAG 不会参与测试。',
       okText: '开始测试',
       cancelText: '取消',
       onOk: () => testModel.mutate(model)
     })
-  }
-
-  const credentialOptions = (credentials.data ?? []).map((credential) => ({
-    value: credential.id,
-    label: `${credential.displayName}（${credential.key}${credential.enabled ? '' : ' · 停用'}）`,
-    disabled: !credential.enabled
-  }))
-
-  const credentialName = (id?: string | null) => {
-    if (!id) return '未绑定'
-    return credentials.data?.find((item) => item.id === id)?.key ?? id
   }
 
   return (
@@ -189,16 +164,19 @@ export default function ModelsPage() {
       <Alert
         type="info"
         showIcon
-        message="模型测试与保存分离"
-        description="列表不会回显 API key。凭据只按引用绑定，轮换后新 Run 使用新 revision；保存模型不会自动发起外部请求。"
+        message="逻辑模型配置与供应商上游分离"
+        description="此页维护模型网关的逻辑模型 key。上游 Base URL、实际模型名与 API Key 在模型网关的供应商登记中管理，不会在此页提交或回显。保存配置不会自动发起外部请求。"
       />
 
       <Card
         title="模型配置"
         extra={
-          <Button type="primary" onClick={() => openModelEditor(null)}>
-            新建模型
-          </Button>
+          <Space>
+            <Button onClick={() => navigate('/ai-admin/providers')}>上游供应商登记</Button>
+            <Button type="primary" onClick={() => openModelEditor(null)}>
+              新建逻辑模型
+            </Button>
+          </Space>
         }
       >
         <ErrorAlert error={models.error} />
@@ -221,19 +199,19 @@ export default function ModelsPage() {
                 </Space>
               )
             },
-            { title: 'Provider', dataIndex: 'providerType', width: 130 },
-            { title: '模型', dataIndex: 'modelName', width: 150 },
             {
-              title: 'Base URL',
-              dataIndex: 'baseUrl',
-              width: 220,
+              title: '说明',
+              dataIndex: 'description',
+              width: 260,
               ellipsis: true
             },
             {
-              title: '凭据引用',
-              width: 150,
+              title: '生成参数',
+              width: 220,
               render: (_, model) => (
-                <Text className="mono">{credentialName(model.credentialId)}</Text>
+                <Text className="mono" ellipsis>
+                  {jsonText(model.options)}
+                </Text>
               )
             },
             {
@@ -273,12 +251,12 @@ export default function ModelsPage() {
       </Card>
 
       <Card
-        title="凭据引用"
+        title="共享凭据引用"
         extra={<Button onClick={() => setCredentialEditorOpen(true)}>新建凭据</Button>}
       >
         <Paragraph type="secondary">
           Secret 采用只写模式：创建或轮换后仅显示掩码、keyId 与 secretRevision。MCP
-          和模型只能通过引用使用凭据。
+          等支持引用解析的平台资源可用凭据；模型供应商的上游密钥以模型网关供应商登记为准。
         </Paragraph>
         <ErrorAlert error={credentials.error} />
         <Table
@@ -369,10 +347,17 @@ export default function ModelsPage() {
           layout="vertical"
           onFinish={(values) => saveModel.mutate({ values, model: editingModel })}
         >
+          <Alert
+            type="info"
+            showIcon
+            style={{ marginBottom: 16 }}
+            message="这里只配置 Control 的逻辑模型 key。请先在模型网关登记同名上游模型，再让 Agent 或 API 引用此 key。"
+          />
           <div className="product-form-grid">
             <Form.Item
               name="key"
-              label="模型 key"
+              label="逻辑模型 key"
+              extra="调用和网关路由均使用此 key。"
               rules={[
                 { required: true },
                 {
@@ -385,26 +370,6 @@ export default function ModelsPage() {
             </Form.Item>
             <Form.Item name="displayName" label="显示名称" rules={[{ required: true }]}>
               <Input placeholder="DeepSeek 默认模型" maxLength={128} />
-            </Form.Item>
-            <Form.Item
-              name="baseUrl"
-              label="Base URL"
-              rules={[
-                { required: true },
-                { pattern: /^https?:\/\//, message: '必须是 http(s) 地址' }
-              ]}
-            >
-              <Input placeholder="https://api.deepseek.com" />
-            </Form.Item>
-            <Form.Item name="modelName" label="模型名称" rules={[{ required: true }]}>
-              <Input placeholder="deepseek-chat" maxLength={128} />
-            </Form.Item>
-            <Form.Item name="credentialId" label="凭据引用">
-              <Select
-                allowClear
-                placeholder="可暂不绑定；发布 Agent 时会再次校验"
-                options={credentialOptions}
-              />
             </Form.Item>
             <Form.Item name="enabled" label="启用" valuePropName="checked">
               <Switch disabled={!editingModel} />
@@ -469,10 +434,10 @@ export default function ModelsPage() {
               }
             ]}
           >
-            <Input placeholder="deepseek-api-key" />
+            <Input placeholder="platform-api-key" />
           </Form.Item>
           <Form.Item name="displayName" label="显示名称" rules={[{ required: true }]}>
-            <Input placeholder="DeepSeek API Key" maxLength={128} />
+            <Input placeholder="平台资源 API Key" maxLength={128} />
           </Form.Item>
           <Form.Item name="secret" label="Secret" rules={[{ required: true, min: 8, max: 4096 }]}>
             <Input.Password autoComplete="new-password" />

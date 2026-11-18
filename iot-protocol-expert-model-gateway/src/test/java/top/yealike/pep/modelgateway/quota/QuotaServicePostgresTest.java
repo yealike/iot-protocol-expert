@@ -3,6 +3,7 @@ package top.yealike.pep.modelgateway.quota;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -326,6 +327,31 @@ class QuotaServicePostgresTest {
     }
 
     @Test
+    void windowGrantSynchronizesCurrentBucketBeforeSnapshot() {
+        String policyKey = "window-" + subject;
+        grant("ON_FIRST_USE_WINDOW", 100, 3_600L, policyKey);
+        var reservation = quota.reserve(request(10));
+        quota.markDispatched(reservation.reservationId());
+        quota.settle(reservation.reservationId(), usage(7), "provider-window", "{}");
+
+        grant("ON_FIRST_USE_WINDOW", 200, 7_200L, policyKey);
+
+        var snapshot = quota.snapshot("USER", subject);
+        @SuppressWarnings("unchecked")
+        var policy = ((List<java.util.Map<String, Object>>) snapshot.get("policies")).getFirst();
+        assertThat(policy)
+                .containsEntry("limitUnits", 200L)
+                .containsEntry("usedUnits", 7L)
+                .containsEntry("heldUnits", 0L)
+                .containsEntry("remainingUnits", 193L);
+        assertThat(jdbc.queryForObject(
+                        "select policy_revision from pep_metering.quota_bucket where id = "
+                                + "(select current_bucket_id from pep_metering.quota_account)",
+                        Long.class))
+                .isEqualTo(2L);
+    }
+
+    @Test
     void expiredDispatchedReservationBecomesUncertainAndCanBeReconciled() {
         grant("TOTAL", 100, null, "total-" + subject);
         var reservation = quota.reserve(request(10));
@@ -375,6 +401,54 @@ class QuotaServicePostgresTest {
                         String.class,
                         reservation.reservationId()))
                 .isEqualTo("RELEASED");
+    }
+
+    @Test
+    void dispatchIsBlockedAfterDeadlineAndExpiredReservationCanBeReleased() {
+        grant("TOTAL", 100, null, "deadline-" + subject);
+        var reservation = quota.reserve(request(10));
+        jdbc.update("update pep_metering.quota_reservation set dispatch_deadline = now() - interval '1 second'");
+
+        assertThat(quota.markDispatched(reservation.reservationId())).isFalse();
+        assertThat(jdbc.queryForObject(
+                        "select state from pep_metering.quota_reservation where id = ?",
+                        String.class,
+                        reservation.reservationId()))
+                .isEqualTo("HELD");
+        assertThat(jdbc.queryForObject(
+                        "select dispatched_at from pep_metering.quota_reservation where id = ?",
+                        OffsetDateTime.class,
+                        reservation.reservationId()))
+                .isNull();
+
+        quota.reconcileExpiredReservations();
+
+        assertThat(jdbc.queryForObject(
+                        "select state from pep_metering.quota_reservation where id = ?",
+                        String.class,
+                        reservation.reservationId()))
+                .isEqualTo("RELEASED");
+        assertThat(jdbc.queryForObject("select held_units from pep_metering.quota_bucket", Long.class))
+                .isZero();
+    }
+
+    @Test
+    void dispatchedReservationAndCallRecordDispatchTime() {
+        grant("TOTAL", 100, null, "dispatched-at-" + subject);
+        var reservation = quota.reserve(request(10));
+
+        assertThat(quota.markDispatched(reservation.reservationId())).isTrue();
+
+        assertThat(jdbc.queryForObject(
+                        "select dispatched_at from pep_metering.quota_reservation where id = ?",
+                        OffsetDateTime.class,
+                        reservation.reservationId()))
+                .isNotNull();
+        assertThat(jdbc.queryForObject(
+                        "select dispatched_at from pep_metering.model_call where id = ?",
+                        OffsetDateTime.class,
+                        reservation.callId()))
+                .isNotNull();
     }
 
     @Test

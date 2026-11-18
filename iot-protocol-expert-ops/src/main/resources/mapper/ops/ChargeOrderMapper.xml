@@ -88,6 +88,13 @@
         where order_no = #{orderNo}
     </select>
 
+    <select id="selectByOrderNoForUpdate" resultMap="ChargeOrderMap">
+        select <include refid="columns"/>
+        from pep_domain.charge_order
+        where order_no = #{orderNo}
+        for update
+    </select>
+
     <select id="selectTopActive" resultMap="ChargeOrderMap">
         select <include refid="columns"/>
         from pep_domain.charge_order
@@ -110,6 +117,27 @@
         limit 1
     </select>
 
+    <select id="selectTopByDeviceAndOcppTransaction" resultMap="ChargeOrderMap">
+        select <include refid="columns"/>
+        from pep_domain.charge_order
+        where device_id = #{deviceId}
+          and ocpp_transaction_id = #{ocppTransactionId}
+          and protocol = #{protocol}
+        order by created_at desc
+        limit 1
+    </select>
+
+    <select id="selectByDeviceAndOcppTransactionForUpdate" resultMap="ChargeOrderMap">
+        select <include refid="columns"/>
+        from pep_domain.charge_order
+        where device_id = #{deviceId}
+          and ocpp_transaction_id = #{ocppTransactionId}
+          and protocol = #{protocol}
+        order by created_at desc
+        limit 1
+        for update
+    </select>
+
     <select id="selectTopByDevice" resultMap="ChargeOrderMap">
         select <include refid="columns"/>
         from pep_domain.charge_order
@@ -123,6 +151,15 @@
         from pep_domain.charge_order
         order by id desc
         limit 200
+    </select>
+
+    <select id="selectPendingBefore" resultMap="ChargeOrderMap">
+        select <include refid="columns"/>
+        from pep_domain.charge_order
+        where status = 'PENDING'
+          and created_at &lt; #{cutoff}
+        order by created_at asc, id asc
+        limit #{limit}
     </select>
 
     <select id="search" resultMap="ChargeOrderMap">
@@ -143,6 +180,11 @@
         select coalesce(max(ocpp_transaction_id), 0)
         from pep_domain.charge_order
         where protocol = 'OCPP16J'
+    </select>
+
+    <select id="lockOcppTransactionSequence" resultType="int">
+        select 1
+        from (select pg_advisory_xact_lock(741852963)) locked
     </select>
 
     <select id="countByStatusIn" resultType="long">

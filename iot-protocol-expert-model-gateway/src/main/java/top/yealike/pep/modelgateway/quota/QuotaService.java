@@ -226,8 +226,10 @@ public class QuotaService {
             if (!"HELD".equals(reservation.state())) {
                 return false;
             }
-            repository.updateReservationState(reservationId, "DISPATCHED");
-            repository.updateCallState(reservation.modelCallId(), "DISPATCHED", null);
+            if (!repository.markReservationDispatched(reservationId)) {
+                return false;
+            }
+            repository.markCallDispatched(reservation.modelCallId());
             for (QuotaRecords.Charge charge : repository.lockCharges(reservationId)) {
                 repository.updateChargeState(charge.id(), "DISPATCHED", null);
                 QuotaRecords.Bucket bucket =
@@ -536,7 +538,7 @@ public class QuotaService {
                 boolean modeChanged = previousPolicy != null && !mode.equals(previousPolicy.mode());
                 if (modeChanged && account.currentBucketId() != null) {
                     repository.setCurrentBucket(account.id(), null, account.version());
-                } else if ("TOTAL".equals(mode) && account.currentBucketId() != null) {
+                } else if (account.currentBucketId() != null) {
                     repository
                             .lockBucket(account.currentBucketId())
                             .ifPresent(bucket ->

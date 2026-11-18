@@ -125,6 +125,7 @@ class MapperSqlSmokeTest {
             orders.selectById(-1L);
             orders.selectByOrderNo("__missing__");
             orders.selectTop200();
+            orders.selectPendingBefore(LocalDateTime.now(), 10);
             orders.search(null, null, null, null, null, from, to, null, 10, 0);
             orders.countSearch(null, null, null, null, null, from, to, null);
             orders.maxOcppTransactionId();

@@ -221,7 +221,7 @@ public class OcppSimulatorClient {
                                 if (transactionId > 0 && OcppConstants.ACCEPTED.equals(startStatus)) {
                                     transactionIds.put(gunNo, transactionId);
                                     meterStartsWh.put(gunNo, meterStart);
-                                    runtime.onOcppTransactionStarted(gunNo, transactionId, startType);
+                                    runtime.onOcppTransactionStarted(gunNo, transactionId, startType, meterStart);
                                 } else {
                                     runtime.onOcppStartRejected(gunNo, "StartTransaction 未通过: " + startStatus);
                                 }
@@ -237,24 +237,24 @@ public class OcppSimulatorClient {
                 });
     }
 
-    public void stopTransaction(String gunNo, BigDecimal energyKwh, int reason) {
-        Integer transactionId = transactionIds.remove(gunNo);
-        BigDecimal start = meterStartsWh.remove(gunNo);
-        if (transactionId == null || !isConnected()) {
-            return;
-        }
-        BigDecimal meterStop = (start == null ? BigDecimal.ZERO : start).add(energyKwh.multiply(THOUSAND));
+    public CompletableFuture<JsonNode> stopTransaction(
+            int transactionId, BigDecimal meterStop, Instant endedAt, int reason) {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("transactionId", transactionId);
         payload.put("meterStop", meterStop.setScale(3, RoundingMode.HALF_UP));
-        payload.put("timestamp", Instant.now().toString());
+        payload.put("timestamp", endedAt.toString());
         payload.put("reason", mapStopReason(reason));
-        call(OcppConstants.STOP_TRANSACTION, payload, false)
-                .thenAccept(reply -> log.info("OCPP 交易 {} StopTransaction 已应答", transactionId))
-                .exceptionally(error -> {
-                    runtime.onOcppError("OCPP StopTransaction 失败: " + rootMessage(error));
-                    return null;
-                });
+        return call(OcppConstants.STOP_TRANSACTION, payload, false);
+    }
+
+    public void forgetTransaction(String gunNo) {
+        transactionIds.remove(gunNo);
+        meterStartsWh.remove(gunNo);
+    }
+
+    public void restoreTransaction(String gunNo, int transactionId, BigDecimal meterStartWh) {
+        transactionIds.put(gunNo, transactionId);
+        meterStartsWh.put(gunNo, meterStartWh == null ? BigDecimal.ZERO : meterStartWh);
     }
 
     public void clearTransactions() {

@@ -66,15 +66,24 @@ public class OcppBusinessService {
         String gunNo = String.format("%02d", request.connectorId());
         boolean faulted = "Faulted".equals(request.status())
                 || (request.errorCode() != null && !"NoError".equals(request.errorCode()));
-        int state = switch (request.status() == null ? "" : request.status()) {
-            case "Available" -> 2;
+        String status = request.status() == null ? "" : request.status();
+        int state = switch (status) {
+            case "Available" -> 0;
             case "Preparing", "Reserved" -> 2;
             case "Charging", "SuspendedEV", "SuspendedEVSE", "Finishing" -> 3;
             case "Unavailable" -> 0;
             case "Faulted" -> 1;
-            default -> 2;
+            default -> throw new IllegalArgumentException("未知 OCPP 连接器状态: " + status);
         };
-        int plugged = state == 1 || state == 0 ? 0 : 1;
+        // StatusNotification does not carry a separate cable-plugged flag. Available means
+        // the connector has no vehicle, while Preparing and charging states imply a plug.
+        // Faulted/Unavailable do not prove that the cable was removed, so preserve the last
+        // known value instead of silently clearing it.
+        int plugged = switch (status) {
+            case "Available" -> 0;
+            case "Preparing", "Reserved", "Charging", "SuspendedEV", "SuspendedEVSE", "Finishing" -> 1;
+            default -> properties.boolOf(device.id, gunNo, "plugged", false) ? 1 : 0;
+        };
         properties.writeBatch(
                 device.id,
                 gunNo,
@@ -103,9 +112,24 @@ public class OcppBusinessService {
         ChargeOrder order = orders.active(device.id, gunNo);
         if (order == null) {
             order = orders.create(device.id, gunNo, 2, request.idTag(), request.idTag(), "OCPP16J", true);
-        } else if (!"OCPP16J".equals(order.protocol)) {
+        } else {
+            order = orders.lockByOrderNo(order.orderNo);
+            if (order == null) {
+                return new OpsDtos.StartTransactionResult(
+                        false, null, null, "OccurrenceConstraintViolation", "待启动订单已不存在");
+            }
+            if (!"OCPP16J".equals(order.protocol)) {
+                return new OpsDtos.StartTransactionResult(
+                        false, null, null, "OccurrenceConstraintViolation", "枪 " + gunNo + " 存在其它协议的进行中订单");
+            }
+            if (order.status != ChargeOrder.Status.PENDING && order.status != ChargeOrder.Status.CHARGING) {
+                return new OpsDtos.StartTransactionResult(
+                        false, null, null, "OccurrenceConstraintViolation", "订单状态不允许启动: " + order.status);
+            }
+        }
+        if (!matchesIdTag(order, request.idTag())) {
             return new OpsDtos.StartTransactionResult(
-                    false, null, null, "OccurrenceConstraintViolation", "枪 " + gunNo + " 存在其它协议的进行中订单");
+                    false, null, null, "OccurrenceConstraintViolation", "idTag 与待启动订单不一致");
         }
         int transactionId = orders.bindOcppTransactionId(order.orderNo, request.meterStart());
         orders.markCharging(order.orderNo, request.startedAt());
@@ -126,7 +150,7 @@ public class OcppBusinessService {
         String gunNo = String.format("%02d", request.connectorId());
         ChargeOrder order = request.transactionId() == null
                 ? orders.active(device.id, gunNo)
-                : orders.byOcppTransactionId(request.transactionId());
+                : orders.byOcppTransactionId(device.id, request.transactionId());
         if (order == null) {
             return;
         }
@@ -163,7 +187,9 @@ public class OcppBusinessService {
                         .divide(THOUSAND, 4, RoundingMode.HALF_UP);
         BigDecimal amount =
                 energyKwh.multiply(rateModels.pricePerKwh(LocalDateTime.now())).setScale(4, RoundingMode.HALF_UP);
-        orders.applyMeter(order.orderNo, energyKwh, amount);
+        if (!orders.applyMeter(order.orderNo, energyKwh, amount)) {
+            return;
+        }
         properties.writeBatch(
                 device.id,
                 gunNo,
@@ -175,10 +201,32 @@ public class OcppBusinessService {
     @Transactional
     public OpsDtos.StopTransactionResult stopTransaction(OpsDtos.StopTransactionRequest request) {
         DeviceInstance device = devices.resolve("OCPP16J", request.protocolDeviceId());
-        ChargeOrder order = orders.byOcppTransactionId(request.transactionId());
+        ChargeOrder order = orders.lockOcppTransactionId(device.id, request.transactionId());
         if (order == null) {
-            log.warn("OCPP 设备 {} StopTransaction 未找到整数交易号 {}，按已接收处理", device.deviceCode, request.transactionId());
-            return new OpsDtos.StopTransactionResult(true, null, BigDecimal.ZERO, BigDecimal.ZERO, "交易号不存在");
+            log.warn("OCPP 设备 {} StopTransaction 未找到整数交易号 {}", device.deviceCode, request.transactionId());
+            return rejectedStop("交易号不存在");
+        }
+        if (!java.util.Objects.equals(order.deviceId, device.id) || !"OCPP16J".equals(order.protocol)) {
+            log.warn("OCPP 设备 {} 拒绝交易 {} 的停止上报：订单归属设备 {}", device.deviceCode, request.transactionId(), order.deviceId);
+            return rejectedStop("交易号不属于当前设备");
+        }
+        if (!ownsValidGun(device, order.gunNo)) {
+            log.warn("OCPP 设备 {} 拒绝交易 {} 的停止上报：订单枪号 {} 无效", device.deviceCode, request.transactionId(), order.gunNo);
+            return rejectedStop("交易所属枪号无效");
+        }
+        if (order.status == ChargeOrder.Status.SETTLED) {
+            // StopTransaction retries are expected after a lost CALLRESULT. Re-ack the same
+            // transaction without creating another bill.
+            return new OpsDtos.StopTransactionResult(
+                    true,
+                    order.orderNo,
+                    order.energy == null ? BigDecimal.ZERO : order.energy,
+                    order.amount == null ? BigDecimal.ZERO : order.amount,
+                    "订单已结算，重复上报已忽略");
+        }
+        if (order.status != ChargeOrder.Status.CHARGING && order.status != ChargeOrder.Status.STOPPED) {
+            log.warn("OCPP 设备 {} 拒绝交易 {} 的停止上报：订单状态 {}", device.deviceCode, request.transactionId(), order.status);
+            return rejectedStop("订单状态不允许结算: " + order.status);
         }
         BigDecimal meterStart = order.meterStartWh == null ? BigDecimal.ZERO : order.meterStartWh;
         BigDecimal meterStop = request.meterStop() == null ? meterStart : request.meterStop();
@@ -221,6 +269,21 @@ public class OcppBusinessService {
                 amount,
                 request.reason());
         return new OpsDtos.StopTransactionResult(true, order.orderNo, energy, amount, "已结算");
+    }
+
+    private static OpsDtos.StopTransactionResult rejectedStop(String message) {
+        return new OpsDtos.StopTransactionResult(false, null, BigDecimal.ZERO, BigDecimal.ZERO, message);
+    }
+
+    private boolean ownsValidGun(DeviceInstance device, String gunNo) {
+        if (gunNo == null || !gunNo.matches("[0-9]{2}")) return false;
+        int connectorId = Integer.parseInt(gunNo);
+        return connectorId >= 1 && connectorId <= Math.max(devices.gunCount(device.id), 1);
+    }
+
+    private static boolean matchesIdTag(ChargeOrder order, String idTag) {
+        return java.util.Objects.equals(order.logicalCard, idTag)
+                || java.util.Objects.equals(order.physicalCard, idTag);
     }
 
     private void validateConnector(DeviceInstance device, int connectorId) {

@@ -1,5 +1,6 @@
 package top.yealike.pep.gateway.ocpp16;
 
+import io.micrometer.tracing.Tracer;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelId;
 import io.netty.handler.codec.http.websocketx.TextWebSocketFrame;
@@ -21,6 +22,7 @@ import top.yealike.pep.codec.ocpp16.OcppMessageCodec;
 import top.yealike.pep.gateway.core.OnlineDeviceDirectory;
 import top.yealike.pep.gateway.ops.OpsClient;
 import top.yealike.pep.gateway.ops.OpsDtos;
+import top.yealike.pep.observability.protocol.ProtocolTelemetry;
 
 /** OCPP WebSocket 会话、CALL 下行与 CALLRESULT/CALLERROR 关联。 */
 @Component
@@ -33,9 +35,11 @@ public class OcppSessionRegistry implements OnlineDeviceDirectory {
     private final Map<String, PendingCall> pendings = new ConcurrentHashMap<>();
     private final AtomicLong uniqueIds = new AtomicLong(System.currentTimeMillis() % 100_000);
     private final OpsClient ops;
+    private final Tracer tracer;
 
-    public OcppSessionRegistry(OpsClient ops) {
+    public OcppSessionRegistry(OpsClient ops, Tracer tracer) {
         this.ops = ops;
+        this.tracer = tracer;
     }
 
     public record Session(Channel channel, String chargePointId) {}
@@ -201,8 +205,13 @@ public class OcppSessionRegistry implements OnlineDeviceDirectory {
                 wire,
                 summary,
                 message.errorCode(),
-                null,
+                traceId(),
                 LocalDateTime.now()));
+    }
+
+    private String traceId() {
+        var span = tracer.currentSpan();
+        return span == null ? null : span.context().traceId();
     }
 
     private String nextUniqueId() {
@@ -212,7 +221,7 @@ public class OcppSessionRegistry implements OnlineDeviceDirectory {
     private record PendingCall(String chargePointId, String action, CompletableFuture<OcppMessage> future) {}
 
     /** OCPP 下行命令失败。 */
-    public static class OcppCommandException extends RuntimeException {
+    public static class OcppCommandException extends RuntimeException implements ProtocolTelemetry.TimeoutFailure {
         private final boolean timeout;
 
         public OcppCommandException(String message) {
@@ -225,6 +234,7 @@ public class OcppSessionRegistry implements OnlineDeviceDirectory {
             this.timeout = cause instanceof TimeoutException;
         }
 
+        @Override
         public boolean isTimeout() {
             return timeout;
         }

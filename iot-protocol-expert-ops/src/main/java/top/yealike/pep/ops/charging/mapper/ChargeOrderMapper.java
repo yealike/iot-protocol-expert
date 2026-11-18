@@ -28,6 +28,8 @@ public interface ChargeOrderMapper {
 
     ChargeOrder selectByOrderNo(@Param("orderNo") String orderNo);
 
+    ChargeOrder selectByOrderNoForUpdate(@Param("orderNo") String orderNo);
+
     ChargeOrder selectTopActive(
             @Param("deviceId") Long deviceId,
             @Param("gunNo") String gunNo,
@@ -36,9 +38,21 @@ public interface ChargeOrderMapper {
     ChargeOrder selectTopByOcppTransaction(
             @Param("ocppTransactionId") Integer ocppTransactionId, @Param("protocol") String protocol);
 
+    ChargeOrder selectTopByDeviceAndOcppTransaction(
+            @Param("deviceId") Long deviceId,
+            @Param("ocppTransactionId") Integer ocppTransactionId,
+            @Param("protocol") String protocol);
+
+    ChargeOrder selectByDeviceAndOcppTransactionForUpdate(
+            @Param("deviceId") Long deviceId,
+            @Param("ocppTransactionId") Integer ocppTransactionId,
+            @Param("protocol") String protocol);
+
     ChargeOrder selectTopByDevice(@Param("deviceId") Long deviceId);
 
     List<ChargeOrder> selectTop200();
+
+    List<ChargeOrder> selectPendingBefore(@Param("cutoff") LocalDateTime cutoff, @Param("limit") int limit);
 
     List<ChargeOrder> search(
             @Param("stationId") Long stationId,
@@ -63,6 +77,8 @@ public interface ChargeOrderMapper {
             @Param("statuses") Collection<ChargeOrder.Status> statuses);
 
     long maxOcppTransactionId();
+
+    int lockOcppTransactionSequence();
 
     long countByStatusIn(@Param("statuses") Collection<ChargeOrder.Status> statuses);
 
@@ -98,6 +114,10 @@ public interface ChargeOrderMapper {
         return Optional.ofNullable(selectByOrderNo(orderNo));
     }
 
+    default Optional<ChargeOrder> lockByOrderNo(String orderNo) {
+        return Optional.ofNullable(selectByOrderNoForUpdate(orderNo));
+    }
+
     default Optional<ChargeOrder> findTopByDeviceIdAndGunNoAndStatusInOrderByCreatedAtDesc(
             Long deviceId, String gunNo, Collection<ChargeOrder.Status> statuses) {
         return statuses == null || statuses.isEmpty()
@@ -110,12 +130,26 @@ public interface ChargeOrderMapper {
         return Optional.ofNullable(selectTopByOcppTransaction(transactionId, protocol));
     }
 
+    default Optional<ChargeOrder> findTopByDeviceIdAndOcppTransactionIdAndProtocolOrderByCreatedAtDesc(
+            Long deviceId, Integer transactionId, String protocol) {
+        return Optional.ofNullable(selectTopByDeviceAndOcppTransaction(deviceId, transactionId, protocol));
+    }
+
+    default Optional<ChargeOrder> lockByDeviceIdAndOcppTransactionId(
+            Long deviceId, Integer transactionId, String protocol) {
+        return Optional.ofNullable(selectByDeviceAndOcppTransactionForUpdate(deviceId, transactionId, protocol));
+    }
+
     default Optional<ChargeOrder> findTopByDeviceIdOrderByIdDesc(Long deviceId) {
         return Optional.ofNullable(selectTopByDevice(deviceId));
     }
 
     default List<ChargeOrder> findTop200ByOrderByIdDesc() {
         return selectTop200();
+    }
+
+    default List<ChargeOrder> findPendingBefore(LocalDateTime cutoff, int limit) {
+        return selectPendingBefore(cutoff, limit);
     }
 
     default ChargeOrder save(ChargeOrder order) {

@@ -1,8 +1,10 @@
 # AI 跨服务调用
 
+> **历史文档（2026-11-13）**：本文记录旧的 Nacos MCP Registry 自动同步方案，已不代表当前部署。当前 MCP/Skill 版本由 Control 管理，Higress 使用冻结的显式 endpoint，Nacos 仅负责可选的服务和 Agent 实例发现。当前架构见 [模块与组件治理](module-architecture.md)，当前全流程证据见 [Agent 全流程验收报告](agent-full-flow-report-2026-11-17.md)。
+
 AI 的运维调用使用 MCP Streamable HTTP 2025-06-18。运维服务提供订单、账单、设备、遥测、用户身份和协议文档能力。Agent 从 `tools/list` 获取工具描述和参数，按已发布 Agent 策略、用户权限与只读白名单筛选。确定性降级和模型工具复用 `RemoteTools` 的权限检查、调用预算、审计和 MCP 传输。
 
-## 当前部署
+## 历史部署（已废弃）
 
 | 组件 | 配置 |
 | --- | --- |
@@ -37,7 +39,7 @@ AI 侧的目录客户端复用 `spring.cloud.nacos.server-addr` / `username` / `
 
 AI 将身份、站点范围和登录会话 ID 放入绑定到目标操作的 AES-GCM 短时凭据。模型的工具 schema 隐藏该字段，AI 客户端统一生成凭据。Higress 将工具参数转换成 JSON HTTP 请求，运维服务解密并重新校验用户状态、会话版本和站点范围。文档接口要求 `ai:admin`，内容按块传输。运维会话仍保存在本地实例，使用 AI 校验会话不会续期。
 
-## 验证记录
+## 历史验证记录（2026-11-13）
 
 2026-11-13 在本地 19082/19083 启动新版，通过 Higress 验证 MCP 握手、工具目录、浏览器登录态、真实订单详情、过期凭据和越权站点拒绝、文档列表和分块读取。完整文档的 SHA-256 与原件一致。真实 Agent 运行记录的订单工具为 `SUCCEEDED`，随后整轮任务为 `RUN_TIMEOUT`。旧透传入口返回 404。
 

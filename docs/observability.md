@@ -3,13 +3,14 @@
 当前方案：应用通过 **OTLP HTTP** 把 trace、log、metric 发送到服务器上的 **OpenTelemetry Collector**，Collector 再分发：
 
 ```text
-Protocol/Ops/Simulator/AI --OTLP HTTP--> Collector :4318
+Protocol Gateway/OPS/Control/Runtime/Model Gateway/Simulator --OTLP HTTP--> Collector :4318
                                          ├── traces  --> Tempo :3200  --> Grafana
                                          ├── logs    --> Loki :3100   --> Grafana
                                          └── metrics --> Prometheus (scrape :8889) --> Grafana
 
-Ops --JDBC--> PostgreSQL (设备/订单/账单/报文/命令/排障)
-AI  --JDBC--> PostgreSQL (会话/Run/事件/知识库)
+OPS --JDBC--> PostgreSQL (设备/订单/账单/报文/命令/排障)
+Control --JDBC--> PostgreSQL (会话/Run/事件/知识库)
+Model Gateway --JDBC--> PostgreSQL (模型目录/额度/用量)
 ```
 
 集中式可观测性组件部署在独立服务器上，应用仍可在本机运行。真实服务器地址、账号和部署路径仅保存在本机配置中。
@@ -35,7 +36,7 @@ Runtime 的 AgentScope 元数据埋点另有服务级开关 `IPE_RUNTIME_OTEL_EN
 
 `/actuator/telemetry` 仅 `local` profile 启用，缓存最近 1000 个 Span，供没有 Grafana 时快速排查；生产链路以 Tempo 为准。
 
-AI 助手（`19083`）的 `health` / `prometheus` 入口遵循同一规则；AI Trace 不单独建 exporter，直接复用本节的 OTLP 管道。
+Control（`19083`）、Runtime（`19084`）和 Model Gateway（`19085`）的 `health` / `prometheus` 入口遵循同一规则；Trace 与日志不单独建 exporter，直接复用本节的 OTLP 管道。
 
 ## IDEA 启动
 
@@ -49,12 +50,13 @@ IPE_ENVIRONMENT=local
 # IPE_RUNTIME_OTEL_ENABLED=true
 ```
 
-服务名由 `spring.application.name` 自动区分（`iot-protocol-expert-ops` / `iot-protocol-expert-protocol-gateway` /
+服务名由 `spring.application.name` 自动区分（`iot-protocol-expert-ops` / `iot-protocol-expert-agent-control` /
+`iot-protocol-expert-agent-runtime` / `iot-protocol-expert-model-gateway` / `iot-protocol-expert-protocol-gateway` /
 `iot-protocol-expert-simulator`），不需要 Agent 参数或单独的服务名变量。`.env.local` 已被 `.gitignore` 忽略。
 
 ## Grafana
 
-- 本机 Grafana 地址：<http://127.0.0.1:3000>
+- Grafana 地址：`http://<observability-host>:3000`
 - 数据源：`IPE Tempo`、`IPE Loki`、`IPE Prometheus`
 - 常用入口：
   - Explore → `IPE Tempo` → Search，按 service / span 名称查询
@@ -67,9 +69,9 @@ Tempo 数据源自带 Trace → Logs 跳转；Loki 的 `trace_id` 派生字段�
 
 | 组件 | 地址 | 说明 |
 |---|---|---|
-| OTel Collector | `127.0.0.1:4317`（gRPC）/ `4318`（HTTP，本机示例） | 应用唯一入口；batch、脱敏、队列重试 |
-| Tempo | `127.0.0.1:3200`（仅本机/Grafana） | 本地文件存储，trace 保留 7 天 |
-| Loki | `127.0.0.1:3100` | 单机 filesystem，日志保留 7 天 |
+| OTel Collector | `<observability-host>:4317`（gRPC）/ `4318`（HTTP，Tailscale） | 应用唯一入口；batch、脱敏、队列重试；健康检查 `13133` 仅本机 |
+| Tempo | `<observability-host>:3200`（Tailscale） | 本地文件存储，trace 保留 7 天；Grafana 走容器网络 `tempo:3200` |
+| Loki | `<observability-host>:3100`（Tailscale） | 单机 filesystem，日志保留 7 天；Grafana 走容器网络 `loki:3100` |
 | Prometheus | `9090` | 抓取 Collector `:8889` 暴露的应用指标与 spanmetrics |
 | Grafana | `3000` | 统一查询与展示 |
 
@@ -98,7 +100,7 @@ ai run execute                     # Run 队列恢复的父 Span
     └── execute_tool search_protocol_knowledge
 ```
 
-最终全流程实测：结果 `1a7dc3e3-7644-4d10-9ed6-64809461b71e` 的 Trace `89efd4447cc7ea7f95d54b5dd0f9ed6e` 包含 144 个 Span，实际链路为 `agent.run -> invoke_agent -> chat/execute_tool`，其中 `execute_tool` 为 `read_skill_resource`。较早专项复验的结果 `f676acdf-4d48-4938-8894-8fe710eac522` 对应 146 Span 的 Trace `4ee37cd161c4148f38e6c07a7cadb9f8`，作为历史证据保留。
+最终全流程实测：结果 `<tool-result-id>` 的 Trace `<current-trace-id>` 包含 146 个 Span，实际链路为 `agent.run -> invoke_agent -> chat/execute_tool`，其中 `execute_tool` 包含 Skill 读取与 MCP 文档查询。较早专项复验的 Trace `<earlier-trace-id>` 也保留 146 个 Span 作为历史证据。
 
 默认只导出元数据与 token；`gen_ai.input.messages`、`gen_ai.output.messages`、`gen_ai.tool.call.arguments/result`、
 `gen_ai.tool.definitions`、`agentscope.function.*` 不写入 Span 属性、Event、异常附加属性或 Link。需要在本地查看消息或工具正文时显式开启：
@@ -108,7 +110,7 @@ $env:IPE_RUNTIME_OTEL_CONTENT_ENABLED='true'
 $env:IPE_RUNTIME_OTEL_MAX_CONTENT_CHARS='8192'
 ```
 
-开启后仍会对常见凭据 JSON 字段、Bearer Token、`sk-*` 密钥、URL 内嵌凭据和私钥块做脱敏；`IPE_RUNTIME_OTEL_MAX_CONTENT_CHARS` 大于 0 时再按配置长度截断，示例中的 8192 表示 8192 字符上限，设置为 0 表示不设应用层字符上限。prompt/response 属于业务数据，不应在生产默认开启；Tempo / Doris 的保留期和访问权限需要同步评估。
+开启后仍会对常见凭据 JSON 字段、Bearer Token、`sk-*` 密钥、URL 内嵌凭据和私钥块做脱敏；`IPE_RUNTIME_OTEL_MAX_CONTENT_CHARS` 大于 0 时再按配置长度截断，示例中的 8192 表示 8192 字符上限，设置为 0 表示不设应用层字符上限。prompt/response 属于业务数据，不应在生产默认开启；Tempo 的保留期和访问权限需要同步评估。
 
 `IPE_RUNTIME_OTEL_CONTENT_ENABLED` 只控制 Tempo 中的消息和工具正文属性。评估所需的工具参数/结果审计证据由 Runtime 事件写入 Control 数据库，每次调用的参数整体或结果整体最多 8000 字符并在写入前脱敏；它与 Trace 内容开关独立，详见 [Agent 能力评估](agent-evaluation.md) 和 [Agent 使用说明](agent-operation-guide.md)。
 
@@ -116,7 +118,7 @@ Grafana 查询：
 
 - Tempo Explore 选择 `service_name=iot-protocol-expert-agent-runtime`，按 Span 名称 `invoke_agent`、`chat`、`execute_tool` 过滤。
 - 打开任一 `chat` Span，在 Attributes 中查看 `gen_ai.usage.input_tokens` / `output_tokens`。
-- 按 `trace_id` 汇总所有 `chat` Span 的 token 属性，可得到一次对话的总 token；Doris 查询按实际 `otel_traces` 表结构调整。
+- 按 `trace_id` 使用 Tempo TraceQL 汇总所有 `chat` Span 的 token 属性，可得到一次对话的总 token。
 
 ## 指标
 
@@ -164,18 +166,19 @@ Simulator（29081，TCP 28768、OCPP 28769）三个实例，再启动本地 OTLP
 脚本需要 `psycopg2`；数据库账号需能连接 `postgres` 管理库并创建、终止连接和删除临时数据库。连接配置优先读取
 `PEP_CONTROL_DB_*`，兼容 `IPE_OPS_DB_*`；URL、用户名和密码从同一组配置读取，原 URL 的 TLS query 参数会保留。
 
-Tempo 查询地址和 Loki 地址必须从 Control/OPS 所在网络可达；Collector 写入地址不能替代 Tempo 查询地址。若服务端
-只监听本机，应部署受控的反向代理后再配置 `IPE_TEMPO_QUERY_BASE_URL` 和 `IPE_LOKI_URL`，否则结果页的“加载链路”
-和服务侧日志诊断会明确不可用。
+Tempo 查询地址和 Loki 地址必须从 Control/OPS 所在网络可达；Collector 写入地址不能替代 Tempo 查询地址。服务器上的
+Compose 使用 `IPE_BIND_ADDRESS=<tailscale-ip>` 将 `3100` / `3200` 绑定到 Tailscale 接口，本机通过 Tailscale 直连，
+`.env.local` 配置 `IPE_TEMPO_QUERY_BASE_URL=http://<tailscale-ip>:3200`、`IPE_LOKI_URL=http://<tailscale-ip>:3100`。
+不要改成 `0.0.0.0`，也不要把这两个端口映射到公网；应用代码仍只在本机运行。
 
 服务端健康检查：
 
 ```bash
 cd /path/to/ipe-observability
 docker compose ps
-curl -s 127.0.0.1:3200/ready     # Tempo
-curl -s 127.0.0.1:3100/ready     # Loki
-curl -s 127.0.0.1:13133          # Collector
+curl -s <tailscale-ip>:3200/ready     # Tempo
+curl -s <tailscale-ip>:3100/ready     # Loki
+curl -s 127.0.0.1:13133              # Collector（仅本机）
 ```
 
 结果见 `docs/spring-observability-verification.json`；验收 JSON 是本机生成产物，默认不纳入版本控制。

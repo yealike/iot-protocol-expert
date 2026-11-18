@@ -52,6 +52,7 @@ export interface Score {
   scoreLabel?: string
   scoreText?: string
   reason?: string
+  evidence?: Record<string, unknown>
   source: string
 }
 const get = <T>(path: string) => aiRequest<T>('/evaluation' + path)

@@ -49,9 +49,15 @@ public class ProviderClient {
                     }
                     try (BufferedReader reader =
                             new BufferedReader(new InputStreamReader(response.getBody(), StandardCharsets.UTF_8))) {
+                        boolean completed = false;
                         String line;
                         while ((line = reader.readLine()) != null) {
                             sink.accept(line);
+                            completed = completed || isCompletionMarker(line);
+                        }
+                        if (!completed) {
+                            throw new UpstreamStreamException(
+                                    new IOException("upstream stream ended without data: [DONE]"));
                         }
                     } catch (IOException exception) {
                         throw new UpstreamStreamException(exception);
@@ -67,6 +73,11 @@ public class ProviderClient {
             return value;
         }
         return value + "/chat/completions";
+    }
+
+    private static boolean isCompletionMarker(String line) {
+        String value = line == null ? "" : line.strip();
+        return "data: [DONE]".equals(value) || "data:[DONE]".equals(value);
     }
 
     @FunctionalInterface

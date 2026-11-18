@@ -4,7 +4,7 @@
 
 ## 1. 现状与目标
 
-当前系统由独立 React 前端、ops 运营服务、protocol 协议通道、simulator 模拟器和 codec 库组成。协议通道负责接入与转发，业务数据保存在 ops。当前总览只展示设备、站点和告警等基础数量，页面仍有与当前业务不符的「光储充放全类型设备」文案。
+当前系统由 OPS、Agent Control、Agent Runtime、Model Gateway、Protocol Gateway、Simulator 六个后端应用、统一 Web 和四个 `shared/` 模块组成。本文只覆盖 OPS 运营域重构；应用边界见 [模块与组件治理](module-architecture.md)。当前总览只展示设备、站点和告警等基础数量，页面仍有与当前业务不符的「光储充放全类型设备」文案。
 
 代码已有的基础能力：
 

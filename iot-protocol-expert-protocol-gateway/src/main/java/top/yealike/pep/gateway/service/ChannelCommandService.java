@@ -44,7 +44,13 @@ public class ChannelCommandService {
         try {
             return "OCPP16J".equalsIgnoreCase(request.protocol()) ? ocpp(request) : ykc(request);
         } catch (RuntimeException e) {
-            return new OpsDtos.CommandResult(false, e.getMessage() == null ? "命令执行失败" : e.getMessage(), Map.of());
+            String outcome =
+                    e instanceof top.yealike.pep.observability.protocol.ProtocolTelemetry.TimeoutFailure timeoutFailure
+                                    && timeoutFailure.isTimeout()
+                            ? "TIMEOUT"
+                            : "UNKNOWN";
+            return new OpsDtos.CommandResult(
+                    false, e.getMessage() == null ? "命令执行失败" : e.getMessage(), Map.of("outcome", outcome));
         }
     }
 
@@ -78,6 +84,9 @@ public class ChannelCommandService {
                 data.put("transactionNo", result.transactionNo());
                 data.put("failReason", result.failReason());
                 data.put("success", result.success());
+                data.put(
+                        "outcome",
+                        result.success() ? "ACCEPTED" : result.failReason() == 5 ? "WAITING_STATE" : "REJECTED");
                 String message = result.success()
                         ? "远程启动成功"
                         : result.failReason() == 5
@@ -97,7 +106,13 @@ public class ChannelCommandService {
                 yield new OpsDtos.CommandResult(
                         result.success(),
                         result.success() ? "远程停机成功，等待交易记录" : "桩停机失败，原因=" + result.failReason(),
-                        Map.of("gunNo", gunNo, "success", result.success()));
+                        Map.of(
+                                "gunNo",
+                                gunNo,
+                                "success",
+                                result.success(),
+                                "outcome",
+                                result.success() ? "ACCEPTED" : "REJECTED"));
             }
             case "read-realtime" ->
                 new OpsDtos.CommandResult(
@@ -194,7 +209,7 @@ public class ChannelCommandService {
                 return new OpsDtos.CommandResult(
                         accepted,
                         accepted ? "OCPP 远程启动已受理，等待设备 StartTransaction" : "设备拒绝远程启动: " + status,
-                        Map.of("status", status));
+                        Map.of("status", status, "outcome", accepted ? "ACCEPTED" : "REJECTED"));
             }
             case "remote-stop" -> {
                 Integer transactionId = intVal(params, "transactionId", 0);
@@ -206,7 +221,7 @@ public class ChannelCommandService {
                 return new OpsDtos.CommandResult(
                         accepted,
                         accepted ? "OCPP 远程停机已受理，等待 StopTransaction" : "设备拒绝远程停机: " + status,
-                        Map.of("status", status));
+                        Map.of("status", status, "outcome", accepted ? "ACCEPTED" : "REJECTED"));
             }
             case "reset" -> {
                 return result(ocppCommands.reset(code, str(params, "mode")), "重启命令已发送");
@@ -273,7 +288,29 @@ public class ChannelCommandService {
     }
 
     private static OpsDtos.CommandResult result(JsonNode reply, String successMessage) {
-        return new OpsDtos.CommandResult(true, successMessage, Map.of("reply", reply == null ? Map.of() : reply));
+        if (reply == null) {
+            return new OpsDtos.CommandResult(false, "设备未返回应答", Map.of());
+        }
+        if (reply.has("errorCode")) {
+            String code = reply.path("errorCode").asString("Error");
+            String description = reply.path("errorDescription").asString("");
+            return new OpsDtos.CommandResult(
+                    false,
+                    "设备返回错误: " + code + (description.isBlank() ? "" : " " + description),
+                    Map.of("reply", reply));
+        }
+        String status = reply.path("status").asString("");
+        if (List.of(
+                        OcppConstants.REJECTED,
+                        OcppConstants.NOT_SUPPORTED,
+                        "NotImplemented",
+                        "UnlockFailed",
+                        "UnknownMessageId",
+                        "UnknownVendorId")
+                .contains(status)) {
+            return new OpsDtos.CommandResult(false, "设备拒绝命令: " + status, Map.of("reply", reply));
+        }
+        return new OpsDtos.CommandResult(true, successMessage, Map.of("reply", reply));
     }
 
     private static String str(Map<String, Object> params, String key) {
