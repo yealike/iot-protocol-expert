@@ -54,6 +54,7 @@
 | Prometheus 指标 | 检查 HTTP、TCP、JVM 指标 | 三类指标均存在；Simulator 已补齐 Prometheus registry 依赖 |
 | Tempo / Loki | 通过服务器回环端口转发查询健康状态和实际数据 | 两者 ready；Tempo 当前 Trace 返回 144 Span；Loki 返回 OPS、Gateway、Simulator 日志流 |
 | Nacos 服务可见性 | 使用 Nacos 3 登录与服务管理 API | 7 个注册服务均可见；认证成功，旧接口 501 不再作为验收入口 |
+| 服务器资源复查 | 按最新资源清单只读检查 SSH、Nacos、Higress、数据库端口和可观测性入口 | 所列 TCP 端口均可达；Grafana、Prometheus 健康，Tempo / Loki ready，最新 Trace 仍为 144 Span，Loki 保留 7 个服务流；本地临时服务停止后 Nacos 服务数为 0，符合预期 |
 | 浏览器最终复核 | 在评估结果抽屉点击“加载链路”并展开 Span | 实际显示评分、Trace ID、Span 树和属性，不再出现“服务暂时不可用” |
 
 ## 版本对比实测
@@ -111,8 +112,8 @@
 ## 验证与交付状态
 
 - `python scripts/verify-coding-guidelines.py`：455 个文件，0 项违规。
-- JDK 21 下最终 `-Pcoding-guidelines clean verify`：11 个 reactor 模块全部 `SUCCESS`，总耗时 1 分 38 秒；244 项测试、0 失败、0 错误、27 项按环境条件跳过。编码规范扫描 455 个文件、0 项违规。
-- 模块级结果：Device Codec 19、Runtime Contract 12、OPS 9（3 项跳过）、Control 84（3 项跳过）、Protocol Gateway 9、Simulator 27（3 项跳过）、Model Gateway 23（18 项跳过）、Runtime 52。
+- JDK 21 下最终 `-Pcoding-guidelines clean verify`：11 个 reactor 模块全部 `SUCCESS`，总耗时约 1 分钟；244 项测试、0 失败、0 错误、27 项按环境条件跳过。编码规范扫描 455 个文件、0 项违规。
+- 模块级结果：Device Codec 19、Runtime Contract 12、OPS 9（3 项跳过）、Control 89（3 项跳过）、Protocol Gateway 9、Simulator 27（3 项跳过）、Model Gateway 23（18 项跳过）、Runtime 56。
 - 模型网关常规测试包含 MVC 异步 SSE/JSON 回归、逻辑调用重放拒绝、失效预占阻断派发和 UUID 无符号排序边界。
 - 真实 PostgreSQL 配额测试：停掉共享数据库上的网关调度进程后，`QuotaServicePostgresTest` 最新一轮 17/17 通过。覆盖首次使用窗口、并发预占、总量与窗口原子回滚、重复结算、释放、跨窗迟到结算、100 并发建窗、授予重放与内容冲突、WINDOW/TOTAL 切换、TOTAL 补额同步、过期 `DISPATCHED` 转 `UNCERTAIN`、管理员对账释放、释放后迟到结算、并发授予 revision 分配和同一幂等键并发重放；测试结束后网关已重新启动。
 - Runtime OTel 元数据埋点由 `IPE_RUNTIME_OTEL_ENABLED` 控制；未显式设置时跟随 `IPE_OTLP_ENABLED`（两者都未设置时默认开启）。本地公共脚本不再强制写入 `false`，显式环境变量仍可单独关闭 Runtime AgentScope Span。

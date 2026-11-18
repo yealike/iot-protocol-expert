@@ -88,8 +88,8 @@ Runtime 的模型调用中间件写入 `X-PEP-Logical-Call-Id`、`X-PEP-Attempt-
 
 2026-11-18 本机最终复验：
 
-- JDK 21 下 `-Pcoding-guidelines clean verify`：11 个 reactor 模块全部 `SUCCESS`，总耗时 1 分 38 秒；244 项测试、0 失败、0 错误、27 项按环境条件跳过。编码规范扫描 455 个文件、0 项违规。
-- 模块级结果：Device Codec 19、Runtime Contract 12、OPS 9（3 项跳过）、Control 84（3 项跳过）、Protocol Gateway 9、Simulator 27（3 项跳过）、Model Gateway 23（18 项跳过）、Runtime 52。
+- JDK 21 下 `-Pcoding-guidelines clean verify`：11 个 reactor 模块全部 `SUCCESS`，总耗时约 1 分钟；244 项测试、0 失败、0 错误、27 项按环境条件跳过。编码规范扫描 455 个文件、0 项违规。
+- 模块级结果：Device Codec 19、Runtime Contract 12、OPS 9（3 项跳过）、Control 89（3 项跳过）、Protocol Gateway 9、Simulator 27（3 项跳过）、Model Gateway 23（18 项跳过）、Runtime 56。
 - 真实 PostgreSQL：`ControlMigrationPostgresTest`、`InvestigationPostgresTest`、`MeteringMigrationPostgresTest` 通过。
 - 配额并发：`QuotaServicePostgresTest` 最新一轮 17/17 通过，覆盖懒启动、70/40 并发、总量+窗口原子回滚、重复结算、释放、跨窗迟到结算、100 并发建窗、授予重放与内容冲突、WINDOW/TOTAL 切换、补齐当前桶的 `limit_units`/`policy_revision`、过期 `DISPATCHED` 转 `UNCERTAIN`、管理员对账释放、释放后 `LATE_SETTLED`、并发授予 revision 分配及同一幂等键并发重放。
 - Control 启动：Flyway 识别 4 个迁移，健康检查 UP；`admin` 登录后可读租户、项目、成员和调查任务。
