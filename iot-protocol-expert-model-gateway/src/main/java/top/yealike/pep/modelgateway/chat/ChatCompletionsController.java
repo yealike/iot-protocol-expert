@@ -46,7 +46,7 @@ public class ChatCompletionsController {
             path = "/v1/chat/completions",
             consumes = MediaType.APPLICATION_JSON_VALUE,
             produces = {MediaType.APPLICATION_JSON_VALUE, MediaType.TEXT_EVENT_STREAM_VALUE})
-    public ResponseEntity<?> completions(
+    public ResponseEntity<StreamingResponseBody> completions(
             @RequestBody Map<String, Object> body,
             @RequestAttribute(GatewayAuthFilter.RUN_TOKEN_ATTRIBUTE) RunTokenPayload token,
             @RequestHeader(value = ModelCallHeaders.LOGICAL_CALL_ID, required = false) String logicalCallId,
@@ -58,7 +58,7 @@ public class ChatCompletionsController {
         return complete(call);
     }
 
-    private ResponseEntity<?> complete(ModelCallService.PreparedCall call) {
+    private ResponseEntity<StreamingResponseBody> complete(ModelCallService.PreparedCall call) {
         ProviderClient.ProviderResponse response;
         try {
             response = providers.complete(call.model(), call.upstreamBody());
@@ -85,7 +85,7 @@ public class ChatCompletionsController {
         }
         return ResponseEntity.ok()
                 .header(HttpHeaders.CONTENT_TYPE, response.contentType())
-                .body(response.body());
+                .body(output -> output.write(response.body().getBytes(StandardCharsets.UTF_8)));
     }
 
     private ResponseEntity<StreamingResponseBody> stream(ModelCallService.PreparedCall call) {

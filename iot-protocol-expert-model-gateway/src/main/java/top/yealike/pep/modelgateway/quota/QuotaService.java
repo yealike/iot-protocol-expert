@@ -3,9 +3,12 @@ package top.yealike.pep.modelgateway.quota;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -27,6 +30,8 @@ import top.yealike.pep.modelgateway.support.ApiException;
 public class QuotaService {
 
     private static final Logger log = LoggerFactory.getLogger(QuotaService.class);
+    // PostgreSQL 的 uuid 按无符号字节序比较；规范字符串序与其一致，UUID.compareTo 则按有符号 long。
+    private static final Comparator<UUID> DATABASE_UUID_ORDER = Comparator.comparing(UUID::toString);
 
     private final QuotaRepository repository;
     private final TransactionTemplate transactions;
@@ -77,6 +82,7 @@ public class QuotaService {
     }
 
     private ReservationHandle doReserve(ReservationRequest request) {
+        repository.lockAdvisory("model-call:" + request.logicalCallId() + ":" + request.attemptNo());
         var existing = repository.findCall(request.logicalCallId(), request.attemptNo());
         if (existing.isPresent()) {
             QuotaRecords.Call call = existing.get();
@@ -178,8 +184,8 @@ public class QuotaService {
             if (current == null) {
                 return createBucket(account, policy, now, "TOTAL", "ACTIVE", null);
             }
-            if (current.limitUnits() != policy.limitUnits()) {
-                repository.updateBucketLimit(current.id(), policy.limitUnits());
+            if (current.limitUnits() != policy.limitUnits() || current.policyRevision() != policy.revision()) {
+                repository.updateBucketPolicy(current.id(), policy.limitUnits(), policy.revision());
                 current = repository.findBucket(current.id()).orElseThrow();
             }
             return current;
@@ -213,12 +219,12 @@ public class QuotaService {
         return repository.findBucket(bucketId).orElseThrow();
     }
 
-    public void markDispatched(UUID reservationId) {
-        transactions.executeWithoutResult(status -> {
+    public boolean markDispatched(UUID reservationId) {
+        return transactions.execute(status -> {
             QuotaRecords.Reservation reservation =
                     repository.lockReservation(reservationId).orElseThrow(() -> ApiException.notFound("预占不存在"));
             if (!"HELD".equals(reservation.state())) {
-                return;
+                return false;
             }
             repository.updateReservationState(reservationId, "DISPATCHED");
             repository.updateCallState(reservation.modelCallId(), "DISPATCHED", null);
@@ -230,6 +236,7 @@ public class QuotaService {
                     repository.updateBucketState(bucket.id(), "ACTIVE");
                 }
             }
+            return true;
         });
     }
 
@@ -241,12 +248,12 @@ public class QuotaService {
                 return;
             }
             if ("RELEASED".equals(reservation.state())) {
-                log.warn("usage arrived after release: reservation={} units={}", reservationId, usage.quotaUnits());
-                repository.updateCallState(reservation.modelCallId(), "UNCERTAIN", providerRequestId);
+                List<QuotaRecords.Charge> charges = lockChargesAndAccounts(reservationId);
+                settleReleased(reservation, charges, usage, providerRequestId, rawUsage);
                 return;
             }
             long settled = usage.quotaUnits();
-            for (QuotaRecords.Charge charge : repository.lockCharges(reservationId)) {
+            for (QuotaRecords.Charge charge : lockChargesAndAccounts(reservationId)) {
                 repository.updateChargeState(charge.id(), "SETTLED", settled);
                 repository.settleBucket(charge.bucketId(), charge.reservedUnits(), settled);
                 repository.appendLedger(
@@ -270,6 +277,39 @@ public class QuotaService {
         });
     }
 
+    private void settleReleased(
+            QuotaRecords.Reservation reservation,
+            List<QuotaRecords.Charge> charges,
+            ModelUsage usage,
+            String providerRequestId,
+            String rawUsage) {
+        log.warn("usage arrived after release: reservation={} units={}", reservation.id(), usage.quotaUnits());
+        long settled = usage.quotaUnits();
+        for (QuotaRecords.Charge charge : charges) {
+            if (!"RELEASED".equals(charge.state())) {
+                continue;
+            }
+            repository.updateChargeState(charge.id(), "SETTLED", settled);
+            repository.settleReleasedBucket(charge.bucketId(), settled);
+            repository.appendLedger(
+                    charge.accountId(),
+                    charge.bucketId(),
+                    reservation.id(),
+                    "LATE_SETTLED",
+                    settled,
+                    0,
+                    "LATE_SETTLED:" + charge.id());
+            QuotaRecords.Bucket bucket =
+                    repository.lockBucket(charge.bucketId()).orElseThrow();
+            if (bucket.usedUnits() + bucket.heldUnits() > bucket.limitUnits()) {
+                repository.markDebt(charge.accountId(), bucket.usedUnits() + bucket.heldUnits() - bucket.limitUnits());
+            }
+        }
+        repository.insertUsage(reservation.modelCallId(), usage, null, rawUsage);
+        repository.updateReservationState(reservation.id(), "SETTLED");
+        repository.updateCallState(reservation.modelCallId(), "SETTLED", providerRequestId);
+    }
+
     /** 仅在确定未派发时释放；已派发或不确定的调用必须对账，不能直接退款。 */
     public void release(UUID reservationId) {
         release(reservationId, false);
@@ -287,10 +327,13 @@ public class QuotaService {
             if ("RELEASED".equals(reservation.state()) || "SETTLED".equals(reservation.state())) {
                 return;
             }
-            if (!"HELD".equals(reservation.state()) && !(allowDispatched && "DISPATCHED".equals(reservation.state()))) {
+            boolean releasable = "HELD".equals(reservation.state())
+                    || (allowDispatched
+                            && ("DISPATCHED".equals(reservation.state()) || "UNCERTAIN".equals(reservation.state())));
+            if (!releasable) {
                 throw ApiException.conflict(ModelErrorCodes.QUOTA_PENDING_RECONCILIATION, "调用已派发，不能直接释放，请走对账");
             }
-            for (QuotaRecords.Charge charge : repository.lockCharges(reservationId)) {
+            for (QuotaRecords.Charge charge : lockChargesAndAccounts(reservationId)) {
                 repository.updateChargeState(charge.id(), "RELEASED", null);
                 repository.addHeld(charge.bucketId(), -charge.reservedUnits());
                 repository.appendLedger(
@@ -312,15 +355,19 @@ public class QuotaService {
         transactions.executeWithoutResult(status -> {
             QuotaRecords.Reservation reservation =
                     repository.lockReservation(reservationId).orElseThrow(() -> ApiException.notFound("预占不存在"));
-            if ("SETTLED".equals(reservation.state()) || "RELEASED".equals(reservation.state())) {
-                return;
-            }
-            repository.updateReservationState(reservationId, "UNCERTAIN");
-            repository.updateCallState(reservation.modelCallId(), "UNCERTAIN", providerRequestId);
-            for (QuotaRecords.Charge charge : repository.lockCharges(reservationId)) {
-                repository.updateChargeState(charge.id(), "UNCERTAIN", null);
-            }
+            markUncertainLocked(reservation, providerRequestId);
         });
+    }
+
+    private void markUncertainLocked(QuotaRecords.Reservation reservation, String providerRequestId) {
+        if ("SETTLED".equals(reservation.state()) || "RELEASED".equals(reservation.state())) {
+            return;
+        }
+        repository.updateReservationState(reservation.id(), "UNCERTAIN");
+        repository.updateCallState(reservation.modelCallId(), "UNCERTAIN", providerRequestId);
+        for (QuotaRecords.Charge charge : repository.lockCharges(reservation.id())) {
+            repository.updateChargeState(charge.id(), "UNCERTAIN", null);
+        }
     }
 
     public void reconcileRelease(UUID reservationId) {
@@ -330,7 +377,7 @@ public class QuotaService {
             if (!"UNCERTAIN".equals(reservation.state())) {
                 throw ApiException.conflict(ModelErrorCodes.CALL_CONFLICT, "只有不确定调用可以对账");
             }
-            for (QuotaRecords.Charge charge : repository.lockCharges(reservationId)) {
+            for (QuotaRecords.Charge charge : lockChargesAndAccounts(reservationId)) {
                 repository.updateChargeState(charge.id(), "RELEASED", null);
                 repository.addHeld(charge.bucketId(), -charge.reservedUnits());
                 repository.appendLedger(
@@ -348,6 +395,8 @@ public class QuotaService {
     }
 
     private void voidProvisional(UUID accountId, UUID bucketId) {
+        QuotaRecords.Account account =
+                repository.lockAccount(accountId).orElseThrow(() -> ApiException.notFound("额度账户不存在"));
         QuotaRecords.Bucket bucket = repository.lockBucket(bucketId).orElseThrow();
         if (!"PROVISIONAL".equals(bucket.activationState())) {
             return;
@@ -356,17 +405,44 @@ public class QuotaService {
             return;
         }
         repository.updateBucketState(bucketId, "VOID");
-        QuotaRecords.Account account = repository.findAccount(accountId).orElseThrow();
         if (bucketId.equals(account.currentBucketId())) {
             repository.setCurrentBucket(accountId, null, account.version());
         }
     }
 
+    private List<QuotaRecords.Charge> lockChargesAndAccounts(UUID reservationId) {
+        List<QuotaRecords.Charge> charges = repository.lockCharges(reservationId);
+        lockChargeAccounts(charges);
+        return charges;
+    }
+
+    private void lockChargeAccounts(Collection<QuotaRecords.Charge> charges) {
+        charges.stream()
+                .map(QuotaRecords.Charge::accountId)
+                .distinct()
+                .sorted(databaseUuidOrder())
+                .forEach(accountId ->
+                        repository.lockAccount(accountId).orElseThrow(() -> ApiException.notFound("额度账户不存在")));
+    }
+
+    static Comparator<UUID> databaseUuidOrder() {
+        return DATABASE_UUID_ORDER;
+    }
+
     @Scheduled(fixedDelayString = "${pep.gateway.sweep-interval-ms:30000}")
-    public void expireHeldReservations() {
+    public void reconcileExpiredReservations() {
         transactions.executeWithoutResult(status -> {
-            for (QuotaRecords.Reservation reservation : repository.expiredHeldReservations(50)) {
-                for (QuotaRecords.Charge charge : repository.lockCharges(reservation.id())) {
+            List<QuotaRecords.Reservation> heldReservations = repository.expiredHeldReservations(50);
+            Map<UUID, List<QuotaRecords.Charge>> chargesByReservation = new LinkedHashMap<>();
+            List<QuotaRecords.Charge> allCharges = new ArrayList<>();
+            for (QuotaRecords.Reservation reservation : heldReservations) {
+                List<QuotaRecords.Charge> charges = repository.lockCharges(reservation.id());
+                chargesByReservation.put(reservation.id(), charges);
+                allCharges.addAll(charges);
+            }
+            lockChargeAccounts(allCharges);
+            for (QuotaRecords.Reservation reservation : heldReservations) {
+                for (QuotaRecords.Charge charge : chargesByReservation.get(reservation.id())) {
                     repository.updateChargeState(charge.id(), "RELEASED", null);
                     repository.addHeld(charge.bucketId(), -charge.reservedUnits());
                     repository.appendLedger(
@@ -381,6 +457,12 @@ public class QuotaService {
                 }
                 repository.updateReservationState(reservation.id(), "RELEASED");
                 repository.updateCallState(reservation.modelCallId(), "RELEASED", null);
+            }
+        });
+        transactions.executeWithoutResult(status -> {
+            OffsetDateTime cutoff = repository.now().minusSeconds(properties.getReservationTtlSeconds());
+            for (QuotaRecords.Reservation reservation : repository.expiredDispatchedReservations(cutoff, 50)) {
+                markUncertainLocked(reservation, null);
             }
         });
     }
@@ -413,9 +495,14 @@ public class QuotaService {
         if (request.idempotencyKey() == null || request.idempotencyKey().isBlank()) {
             throw ApiException.badRequest(ModelErrorCodes.REQUEST_INVALID, "缺少 Idempotency-Key");
         }
+        String policyKey = request.policyKey() == null || request.policyKey().isBlank()
+                ? request.scopeKind().toLowerCase(java.util.Locale.ROOT) + ":" + request.subjectId() + ":" + mode
+                : request.policyKey();
         return transactions.execute(status -> {
+            repository.lockAdvisory("quota-grant:" + request.actorId() + ":" + request.idempotencyKey());
             var replay = repository.findChangeRequest(request.actorId(), request.idempotencyKey());
             if (replay.isPresent()) {
+                requireMatchingReplay(request, mode, policyKey, replay.get());
                 Map<String, Object> body = new LinkedHashMap<>();
                 body.put("accountId", replay.get().accountId().toString());
                 body.put("revision", replay.get().newRevision());
@@ -423,10 +510,7 @@ public class QuotaService {
                 body.put("replayed", true);
                 return body;
             }
-            String policyKey = request.policyKey() == null
-                            || request.policyKey().isBlank()
-                    ? request.scopeKind().toLowerCase(java.util.Locale.ROOT) + ":" + request.subjectId() + ":" + mode
-                    : request.policyKey();
+            repository.lockAdvisory("quota-policy:" + policyKey);
             int max = repository.maxPolicyRevision(policyKey);
             long revision = max + 1L;
             OffsetDateTime now = repository.now();
@@ -441,12 +525,23 @@ public class QuotaService {
                     null);
             UUID accountId = UUID.randomUUID();
             repository.insertAccount(accountId, request.scopeKind(), request.subjectId(), policyKey, revision);
-            QuotaRecords.Account account = repository.accounts(request.scopeKind(), request.subjectId()).stream()
+            QuotaRecords.Account account = repository.lockAccounts(request.scopeKind(), request.subjectId()).stream()
                     .filter(value -> value.policyKey().equals(policyKey))
                     .findFirst()
                     .orElseThrow();
             long oldRevision = account.activeRevision();
             if (oldRevision != revision) {
+                QuotaRecords.Policy previousPolicy =
+                        repository.findPolicy(account.policyKey(), oldRevision).orElse(null);
+                boolean modeChanged = previousPolicy != null && !mode.equals(previousPolicy.mode());
+                if (modeChanged && account.currentBucketId() != null) {
+                    repository.setCurrentBucket(account.id(), null, account.version());
+                } else if ("TOTAL".equals(mode) && account.currentBucketId() != null) {
+                    repository
+                            .lockBucket(account.currentBucketId())
+                            .ifPresent(bucket ->
+                                    repository.updateBucketPolicy(bucket.id(), request.limitUnits(), revision));
+                }
                 repository.updateAccountRevision(account.id(), revision);
             }
             repository.insertChangeRequest(
@@ -465,6 +560,32 @@ public class QuotaService {
             body.put("mode", mode);
             return body;
         });
+    }
+
+    private void requireMatchingReplay(
+            GrantRequest request, String mode, String policyKey, QuotaRecords.ChangeRequest replay) {
+        QuotaRecords.Account account = repository
+                .findAccount(replay.accountId())
+                .orElseThrow(() -> ApiException.conflict(ModelErrorCodes.CALL_CONFLICT, "幂等记录对应的额度账户不存在"));
+        QuotaRecords.Policy policy = replay.newRevision() == null
+                ? null
+                : repository
+                        .findPolicy(account.policyKey(), replay.newRevision())
+                        .orElse(null);
+        String expectedReason = request.reason() == null ? "" : request.reason();
+        Long expectedDuration = "ON_FIRST_USE_WINDOW".equals(mode) ? request.durationSeconds() : null;
+        boolean matches = Objects.equals(account.scopeKind(), request.scopeKind())
+                && Objects.equals(account.subjectId(), request.subjectId())
+                && Objects.equals(account.policyKey(), policyKey)
+                && "GRANT".equals(replay.action())
+                && Objects.equals(replay.effectiveMode(), mode)
+                && Objects.equals(replay.reason(), expectedReason)
+                && policy != null
+                && policy.limitUnits() == request.limitUnits()
+                && Objects.equals(policy.durationSeconds(), expectedDuration);
+        if (!matches) {
+            throw ApiException.conflict(ModelErrorCodes.CALL_CONFLICT, "同一 Idempotency-Key 不能用于不同的额度授予内容");
+        }
     }
 
     public Map<String, Object> suspend(UUID accountId, String state, String actorId, String reason) {

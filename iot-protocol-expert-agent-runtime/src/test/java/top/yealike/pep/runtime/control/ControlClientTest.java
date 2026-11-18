@@ -27,6 +27,41 @@ import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 class ControlClientTest {
 
     @Test
+    void fetchesSkillVersionsAndFilesFromControlWithoutSkillNamingInstances() throws Exception {
+        AtomicInteger requests = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/internal/ai/v1/skills/", exchange -> {
+            requests.incrementAndGet();
+            respond(
+                    exchange,
+                    exchange.getRequestURI().getPath().endsWith("/file")
+                            ? "{\"path\":\"SKILL.md\",\"content\":\"test content\",\"sha256\":\"digest\"}"
+                            : "{\"key\":\"test-skill\",\"version\":\"1.0.0\",\"bundleDigest\":\"digest\",\"files\":[]}");
+        });
+        server.start();
+        try {
+            var registry = mock(NacosRuntimeRegistry.class);
+            when(registry.enabled()).thenReturn(true);
+            when(registry.discoverBaseUrl("control"))
+                    .thenReturn("http://127.0.0.1:" + server.getAddress().getPort());
+            var client = new ControlClient(
+                    RestClient.builder().build(),
+                    JsonMapper.builder().build(),
+                    TestFixtures.properties("http://127.0.0.1:1", "test-secret"),
+                    registry);
+
+            assertThat(client.skillDescriptor("test-skill", "1.0.0").key()).isEqualTo("test-skill");
+            assertThat(client.skillFile("test-skill", "1.0.0", "SKILL.md").content())
+                    .isEqualTo("test content");
+            assertThat(requests).hasValue(2);
+            org.mockito.Mockito.verify(registry, org.mockito.Mockito.never())
+                    .discoverBaseUrl(org.mockito.ArgumentMatchers.startsWith("ipe-skill"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
     void signsAsRuntimeForControlAudience() throws Exception {
         AtomicBoolean signatureValid = new AtomicBoolean();
         AtomicBoolean serviceHeaderValid = new AtomicBoolean();

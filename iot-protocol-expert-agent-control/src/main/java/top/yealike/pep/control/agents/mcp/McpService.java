@@ -305,12 +305,20 @@ public class McpService {
         }
         long generation = Math.max(component.publicationGeneration() + 1, publications.nextGeneration("MCP", id));
         String catalogDigest = ComponentDigests.mcpCatalog(tools);
-        String contentDigest =
-                Digests.digest(Map.of("transport", "STREAMABLE_HTTP", "endpoint", resolved.endpoint(), "tools", tools));
+        String contentDigest = Digests.digest(Map.of(
+                "transport",
+                "STREAMABLE_HTTP",
+                "endpoint",
+                resolved.endpoint(),
+                "tools",
+                tools,
+                "contextMode",
+                contextMode(component)));
         Map<String, Object> endpointPolicy = new LinkedHashMap<>();
         URI resolvedUri = URI.create(resolved.endpoint());
         endpointPolicy.put("endpoint", resolved.endpoint());
         endpointPolicy.put("authority", "PLATFORM");
+        endpointPolicy.put("contextMode", contextMode(component));
         endpointPolicy.put("path", resolvedUri.getRawPath());
         endpointPolicy.put("query", resolvedUri.getRawQuery() == null ? "" : resolvedUri.getRawQuery());
         endpointPolicy.put(
@@ -521,8 +529,20 @@ public class McpService {
         }
     }
 
+    private static String contextMode(McpComponent component) {
+        String configured = text(component.draft().get("contextMode"));
+        return configured.isBlank() ? ("ops".equalsIgnoreCase(component.key()) ? "OPS" : "NONE") : configured;
+    }
+
     private static void validateConfig(
             String origin, Map<String, Object> nativeRegistryRef, Map<String, Object> draft) {
+        String mode = draft == null ? "" : text(draft.get("contextMode"));
+        if (!mode.isBlank() && !List.of("NONE", "OPS").contains(mode)) {
+            throw AiExceptions.badRequest("MCP contextMode 只支持 NONE 或 OPS");
+        }
+        if ("OPS".equals(mode) && credentialId(draft) == null) {
+            throw AiExceptions.badRequest("OPS 业务工具必须绑定用户身份上下文凭据");
+        }
         if ("NATIVE_REGISTRY".equals(origin)) {
             if (draft != null && draft.get("endpoint") instanceof String endpoint && !endpoint.isBlank()) {
                 validatedEndpoint(endpoint);

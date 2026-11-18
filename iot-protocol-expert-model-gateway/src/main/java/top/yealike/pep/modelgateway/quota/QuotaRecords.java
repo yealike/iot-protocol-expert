@@ -47,7 +47,7 @@ public final class QuotaRecords {
 
     public record Reservation(UUID id, UUID modelCallId, long reservedUnits, String state) {}
 
-    public record ChangeRequest(UUID accountId, Long newRevision, String action, String effectiveMode) {}
+    public record ChangeRequest(UUID accountId, Long newRevision, String action, String effectiveMode, String reason) {}
 
     public record Charge(
             UUID id,

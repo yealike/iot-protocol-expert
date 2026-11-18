@@ -2,6 +2,8 @@
 
 充电桩协议调查与验证工作台。核心闭环是「调查任务 → 证据 → 假设 → 实验 → 结论」，同时提供设备接入、订单、模型网关、配额和 Agent 发布能力。使用 Java 21、Spring Boot、PostgreSQL 和独立 React 前端。
 
+首次使用 Agent，先看 [配置、对话、评估与配额操作说明](docs/agent-operation-guide.md)。全流程验收、配额修复、剩余限制及可追溯对象见 [2026-11-17 全流程验收与配额修复报告](docs/agent-full-flow-report-2026-11-17.md)。
+
 | 模块 | 职责 | 默认端口 |
 | --- | --- | --- |
 | `iot-protocol-expert-ops` | 用户身份、设备、充电交易、告警、遥测及业务内部接口 | HTTP 19082 |

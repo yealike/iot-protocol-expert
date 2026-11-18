@@ -7,6 +7,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -15,6 +16,7 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 import top.yealike.pep.control.config.ModelGatewayProperties;
 import top.yealike.pep.control.support.AiExceptions.AiException;
+import top.yealike.pep.model.contract.ModelCallHeaders;
 
 class ModelGatewayClientTest {
 
@@ -85,6 +87,22 @@ class ModelGatewayClientTest {
         assertThatThrownBy(() -> client.usage("USER", "user-1", 100, null, null))
                 .isInstanceOf(AiException.class)
                 .hasMessage("模型网关查询暂不可用");
+        server.verify();
+    }
+
+    @Test
+    void chatSendsLogicalCallHeaders() {
+        server.expect(requestTo("http://localhost:19085/v1/chat/completions"))
+                .andExpect(header("Authorization", "Bearer run-token"))
+                .andExpect(header(ModelCallHeaders.ATTEMPT_NO, "1"))
+                .andExpect(request -> {
+                    String logicalCallId = request.getHeaders().getFirst(ModelCallHeaders.LOGICAL_CALL_ID);
+                    assertThat(logicalCallId).isNotBlank();
+                    assertThat(UUID.fromString(logicalCallId)).isNotNull();
+                })
+                .andRespond(withSuccess("{\"choices\":[]}", MediaType.APPLICATION_JSON));
+
+        assertThat(client.chat("run-token", java.util.Map.of("model", "test"))).containsKey("choices");
         server.verify();
     }
 }

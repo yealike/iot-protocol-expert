@@ -40,6 +40,7 @@ interface McpFormValues {
   description?: string
   origin: AiComponentOrigin
   enabled: boolean
+  contextMode?: 'NONE' | 'OPS'
   timeoutMs?: number
   credentialId?: string
   endpoint?: string
@@ -98,6 +99,7 @@ export default function McpsPage() {
       const draft: Record<string, unknown> = {
         ...(mcp?.draft ?? {}),
         transport: 'STREAMABLE_HTTP',
+        contextMode: values.contextMode ?? 'NONE',
         timeoutMs: values.timeoutMs ?? 20000
       }
       if (values.credentialId) {
@@ -209,6 +211,10 @@ export default function McpsPage() {
             origin: mcpOrigin,
             enabled: mcp.enabled,
             timeoutMs: typeof draft.timeoutMs === 'number' ? draft.timeoutMs : 20000,
+            contextMode:
+              draft.contextMode === 'OPS' || (!draft.contextMode && mcp.key === 'ops')
+                ? 'OPS'
+                : 'NONE',
             credentialId: stringValue(draft.credentialId),
             endpoint: stringValue(draft.endpoint),
             serverName: stringValue(nativeRef.serverName),
@@ -222,6 +228,7 @@ export default function McpsPage() {
             origin: 'REMOTE',
             enabled: true,
             timeoutMs: 20000,
+            contextMode: 'NONE',
             credentialId: undefined,
             endpoint: '',
             serverName: '',
@@ -468,6 +475,14 @@ export default function McpsPage() {
               rules={[{ required: true }, { type: 'number', min: 1000, max: 20000 }]}
             >
               <InputNumber style={{ width: '100%' }} min={1000} max={20000} step={1000} />
+            </Form.Item>
+            <Form.Item name="contextMode" label="调用鉴权方式" rules={[{ required: true }]}>
+              <Select
+                options={[
+                  { value: 'NONE', label: '普通 MCP（公开或 Bearer 凭据）' },
+                  { value: 'OPS', label: 'OPS 业务工具（校验用户身份）' }
+                ]}
+              />
             </Form.Item>
             <Form.Item name="credentialId" label="鉴权凭据引用">
               <Select allowClear placeholder="公开 MCP 可留空" options={credentialOptions} />

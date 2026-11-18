@@ -11,8 +11,8 @@
 | 数据库所有权 | `pep_platform`（身份/租户/项目）、`pep_domain`（设备/订单/审计）、`pep_agent`（Agent 与调查）、`pep_metering`（模型计量） |
 | 身份与权限 | 8 个内置角色、作用域角色绑定、项目成员、服务账号、访问密钥、资源共享、统一 `AccessService` |
 | 调查任务 | 任务/事件/证据/假设/实验/结论/审批，任务行锁串行分配事件序号，证据 SHA-256 去重，结论版本追加 |
-| 模型网关 | 逻辑模型目录、AES-256-GCM 供应商密钥、短期 Run 凭据、预占/结算/释放/调整、唯一模型出口 |
-| 配额 | TOTAL 与 `ON_FIRST_USE_WINDOW`；首次调用懒启动固定窗口；冻结与结算原子化；幂等授予与重放 |
+| 模型网关 | 逻辑模型目录、AES-256-GCM 供应商密钥、短期 Run 凭据、预占/结算/释放/调整、唯一模型出口；逻辑调用 ID、attempt 与 Run ID 贯穿调用，重放及失效预占在供应商派发前阻断 |
+| 配额 | TOTAL 与 `ON_FIRST_USE_WINDOW`；首次调用懒启动固定窗口；冻结与结算原子化；过期派发转待对账；补额同事务同步；并发授予与幂等内容绑定；模式切换重建当前桶 |
 | Runtime | 不访问数据库，通过 HMAC 签名的 `/internal/ai/v1/**` 拉取发布、Run 上下文并回写事件 |
 | 本地运行 | `start-local.ps1` 五进程编排、`stop-local.ps1`、`seed-ai.ps1`、`reset-ai.ps1` |
 | 前端 | 新增「调查任务」「模型额度」页面；AI/Control API 经同源代理转发至 19083，OPS 与登录转发至 19082 |
@@ -64,10 +64,13 @@ POST /api/model-gateway/v1/admin/models
 POST /api/model-gateway/v1/admin/quota-grants
 GET  /api/model-gateway/v1/me/quota?scopeKind=USER&subjectId=...
 GET  /api/model-gateway/v1/me/usage?scopeKind=USER&subjectId=...
+POST /api/model-gateway/v1/admin/calls/{reservationId}/reconcile-release
 POST /v1/chat/completions
 ```
 
 网关只接受两类身份：`Authorization: Bearer <RunToken>`（Runtime 调用）或 `X-PEP-Service-Token`（Control 管理/查询）。浏览器通过 Control 的 `/api/control/v1/me/quota` 与 `/me/usage` 访问，扣费主体由服务端会话确定。
+
+Runtime 的模型调用中间件写入 `X-PEP-Logical-Call-Id`、`X-PEP-Attempt-No`、`X-PEP-Run-Id`；Control 的模型测试调用写入逻辑调用 ID 与 attempt，并由短期运行凭据携带 Run ID。网关按逻辑调用 ID 与 attempt 查找调用，再用请求 SHA-256 识别内容冲突并拒绝重放。`markDispatched=false` 表示预占已释放或失效，调用在供应商请求前终止。管理员对账入口经 Control 暴露为 `POST /api/control/v1/admin/calls/{reservationId}/reconcile-release`。
 
 ## 3. 数据库与迁移
 
@@ -75,16 +78,20 @@ POST /v1/chat/completions
 - `V2__platform_access.sql`：`pep_platform.app_user`、租户、项目、成员、角色、角色绑定、服务账号、访问密钥、资源共享、审计事件；旧角色一次性映射到新角色。
 - `V3__investigations.sql`：调查任务、事件、证据、假设、实验、结论和审批。
 - `V1__metering_baseline.sql`：供应商、逻辑模型、策略版本、额度账户、窗口桶、调用、预占、结算、调整和幂等变更请求。
+- `V2__quota_sweep_indexes.sql`：为 `HELD` 预约按 `dispatch_deadline`、`DISPATCHED` 预约按 `created_at` 增加 partial index，服务过期预占扫描。
 
 迁移测试会断言三件事：种子租户/项目/角色存在、默认绑定完整、上述业务 schema 中没有物理外键。应用启动不得删除旧库；只有显式设置 `PEP_TEST_RESET_SCHEMAS=true` 的测试会清理白名单 schema。
 
+所有同时涉及账户和 bucket 的写入路径都保持“账户 → bucket”的先后关系；结算、释放等路径先锁 reservation/charge，再按 UUID 规范字符串排序锁定账户，最后处理 bucket。该排序与 PostgreSQL `uuid` 的无符号字节序一致，避免 Java `UUID.compareTo` 的有符号 long 顺序造成锁序分歧。`TOTAL` 补额在同一事务内同步桶上限和策略 revision；`WINDOW` / `TOTAL` 切换会清空账户的 `current_bucket_id`，由下一次请求创建新模式的新桶。预约释放后才到的结算仍写 `model_usage`，账本追加 `LATE_SETTLED`，不会恢复已释放的 hold。
+
 ## 4. 验收结果
 
-2026-11-17 本机实测：
+2026-11-17 至 2026-11-18 本机实测：
 
 - `mvn -o test`：10 个模块全部通过；Control 74 个测试、Runtime 46 个、Simulator 27 个、Device Gateway 7 个。
+- JDK 21 下最终 `-Pcoding-guidelines verify`：8 个 reactor 模块全部通过；Control 77 项（3 项环境门控跳过）、Runtime 48 项、模型网关 23 项（18 项环境门控跳过），编码规范扫描 453 个文件、0 项违规。
 - 真实 PostgreSQL：`ControlMigrationPostgresTest`、`InvestigationPostgresTest`、`MeteringMigrationPostgresTest` 通过。
-- 配额并发：`QuotaServicePostgresTest` 8/8 通过，覆盖懒启动、70/40 并发、总量+窗口原子回滚、重复结算、释放、跨窗迟到结算、100 并发建窗和授予幂等。
+- 配额并发：`QuotaServicePostgresTest` 最新一轮 17/17 通过，覆盖懒启动、70/40 并发、总量+窗口原子回滚、重复结算、释放、跨窗迟到结算、100 并发建窗、授予重放与内容冲突、WINDOW/TOTAL 切换、补齐当前桶的 `limit_units`/`policy_revision`、过期 `DISPATCHED` 转 `UNCERTAIN`、管理员对账释放、释放后 `LATE_SETTLED`、并发授予 revision 分配及同一幂等键并发重放。
 - Control 启动：Flyway 识别 4 个迁移，健康检查 UP；`admin` 登录后可读租户、项目、成员和调查任务。
 - Runtime 启动：readiness UP，`desired-releases` 对账成功。
 - Gateway 联调：登记本地 mock provider 与逻辑模型，签发 Run 凭据调用 `/v1/chat/completions`，上游 usage 12+5 归一化为 17 并结算；Control 代理读取结果一致。
@@ -100,6 +107,8 @@ POST /v1/chat/completions
 - 前端证据上传、假设/实验/结论编辑、SSE 断线续传的完整交互；当前提供列表、创建、状态推进、证据与事件查看。
 - 配额 TPM/并发治理、模型 fallback 与 Provider 字段级契约矩阵。
 - Testcontainers CI 与 ArchUnit 模块边界测试；当前使用真实 PG 环境变量门控测试。
+- `/me/quota` 的可重复读快照；当前响应由多次查询组合而成，并发补额或结算时可能读到跨提交字段，只用于诊断。
+- 长时间窗口自然续窗、供应商断流/进程崩溃的完整恢复矩阵，以及设备协议和模拟器业务全量回归。
 
 ## 6. 本地验证命令
 

@@ -16,8 +16,6 @@ import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.ObjectMapper;
 import top.yealike.pep.runtime.config.RuntimeProperties;
 import top.yealike.pep.runtime.contract.AgentManifest;
-import top.yealike.pep.runtime.contract.ComponentNames;
-import top.yealike.pep.runtime.contract.ComponentType;
 import top.yealike.pep.runtime.contract.CredentialResolveRequest;
 import top.yealike.pep.runtime.contract.CredentialResolveResponse;
 import top.yealike.pep.runtime.contract.InternalPaths;
@@ -84,17 +82,11 @@ public class ControlClient {
     }
 
     public SkillDescriptor skillDescriptor(String key, String version) {
-        return get(
-                ComponentNames.serviceName(ComponentType.SKILL, key, version),
-                InternalPaths.controlSkill(key, version),
-                SkillDescriptor.class);
+        return get(InternalPaths.controlSkill(key, version), SkillDescriptor.class);
     }
 
     public SkillFile skillFile(String key, String version, String path) {
-        return get(
-                ComponentNames.serviceName(ComponentType.SKILL, key, version),
-                InternalPaths.controlSkillFile(key, version, path),
-                SkillFile.class);
+        return get(InternalPaths.controlSkillFile(key, version, path), SkillFile.class);
     }
 
     public RunClaimResponse claim(RunClaimRequest request) {
@@ -145,10 +137,6 @@ public class ControlClient {
     private <T> T get(String path, Class<T> type) {
         return execute(
                 properties.controlServiceName(), baseUrl(properties.controlServiceName()), "GET", path, null, type);
-    }
-
-    private <T> T get(String serviceName, String path, Class<T> type) {
-        return execute(serviceName, baseUrl(serviceName), "GET", path, null, type);
     }
 
     private <T> T post(String path, Object body, Class<T> type) {

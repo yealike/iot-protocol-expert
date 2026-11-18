@@ -160,6 +160,7 @@ public class ModelProfileService {
                         Map.of("role", "user", "content", userPrompt)));
         body.put("max_tokens", 512);
         body.put("temperature", 0);
+        body.put("response_format", Map.of("type", "json_object"));
         try {
             Map<String, Object> envelope = gateway.chat(gatewayTokens.issueForEvaluator(profile.key()), body);
             Object rawChoices = envelope.get("choices");

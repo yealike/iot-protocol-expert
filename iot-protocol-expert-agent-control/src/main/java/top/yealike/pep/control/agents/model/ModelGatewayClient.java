@@ -11,6 +11,7 @@ import org.springframework.web.client.RestClient;
 import top.yealike.pep.control.config.ModelGatewayProperties;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.control.support.JsonSupport;
+import top.yealike.pep.model.contract.ModelCallHeaders;
 
 /** 控制服务对模型网关的调用；浏览器和 Runtime 都不直接访问网关管理面。 */
 @Service
@@ -31,6 +32,8 @@ public class ModelGatewayClient {
             String response = http.post()
                     .uri(baseUrl() + "/v1/chat/completions")
                     .header("Authorization", "Bearer " + runToken)
+                    .header(ModelCallHeaders.LOGICAL_CALL_ID, UUID.randomUUID().toString())
+                    .header(ModelCallHeaders.ATTEMPT_NO, "1")
                     .body(body)
                     .retrieve()
                     .body(String.class);

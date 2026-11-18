@@ -92,10 +92,18 @@ function Start-PepJar {
         [Parameter(Mandatory = $true)][string]$Jar,
         [Parameter(Mandatory = $true)][int]$Port,
         [string]$HealthPath = "/actuator/health",
-        [string]$BindAddress = "127.0.0.1",
+        [string]$BindAddress = "",
         [int]$TimeoutSeconds = 120,
         [string[]]$ExtraArgs = @()
     )
+
+    if (-not $BindAddress) {
+        $BindAddress = if ($env:IPE_NACOS_DISCOVERY_ENABLED -eq "true" -or $env:IPE_AI_REGISTRY_ENABLED -eq "true") {
+            "0.0.0.0"
+        } else {
+            "127.0.0.1"
+        }
+    }
 
     $runDir = Join-Path $Root "run"
     $logDir = Join-Path $Root "logs"

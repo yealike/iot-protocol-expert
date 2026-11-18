@@ -76,6 +76,7 @@ public class AgentRuntimeFactory {
                 .enableMetaTool(false)
                 .enableTaskList(false)
                 .checkRunning(false)
+                .middleware(new ModelCallHeadersMiddleware(guard.runId()))
                 .build();
     }
 

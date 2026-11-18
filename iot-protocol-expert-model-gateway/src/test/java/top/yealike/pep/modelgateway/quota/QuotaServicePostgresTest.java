@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -19,6 +20,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
+import top.yealike.pep.model.contract.ModelErrorCodes;
 import top.yealike.pep.model.contract.ModelUsage;
 import top.yealike.pep.modelgateway.config.GatewayProperties;
 import top.yealike.pep.modelgateway.support.ApiException;
@@ -246,6 +248,267 @@ class QuotaServicePostgresTest {
                         "select count(*) from pep_metering.quota_policy_version where policy_key = ?",
                         Long.class,
                         "key-" + subject))
+                .isEqualTo(1L);
+    }
+
+    @Test
+    void sameIdempotencyKeyRejectsDifferentGrantPayload() {
+        var request = new QuotaService.GrantRequest(
+                "USER", subject, "TOTAL", 100, null, "idem-" + subject, "test", "admin", "same-key");
+        quota.grant(request);
+
+        assertThatThrownBy(() -> quota.grant(new QuotaService.GrantRequest(
+                        "USER", subject, "TOTAL", 200, null, "idem-" + subject, "different", "admin", "same-key")))
+                .isInstanceOfSatisfying(ApiException.class, exception -> {
+                    assertThat(exception.status()).isEqualTo(409);
+                    assertThat(exception.code()).isEqualTo(ModelErrorCodes.CALL_CONFLICT);
+                });
+        assertThat(jdbc.queryForObject(
+                        "select count(*) from pep_metering.quota_policy_version where policy_key = ?",
+                        Long.class,
+                        "idem-" + subject))
+                .isEqualTo(1L);
+    }
+
+    @Test
+    void switchingWindowToTotalStartsANewTotalBucket() {
+        String policyKey = "switch-" + subject;
+        grant("ON_FIRST_USE_WINDOW", 100, 3600L, policyKey);
+        var windowReservation = quota.reserve(request(10));
+
+        grant("TOTAL", 200, null, policyKey);
+
+        assertThat(quota.snapshot("USER", subject).get("policies"))
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.LIST)
+                .singleElement()
+                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
+                .containsEntry("mode", "TOTAL")
+                .containsEntry("activationState", "NOT_ACTIVATED")
+                .containsEntry("endAt", null);
+        var totalReservation = quota.reserve(request(20));
+
+        assertThat(jdbc.queryForObject(
+                        "select count(*) from pep_metering.quota_bucket where account_id = "
+                                + "(select id from pep_metering.quota_account where policy_key = ?)",
+                        Long.class,
+                        policyKey))
+                .isEqualTo(2L);
+        assertThat(totalReservation.buckets()).singleElement().satisfies(bucket -> {
+            assertThat(bucket.mode()).isEqualTo("TOTAL");
+            assertThat(bucket.activationState()).isEqualTo("ACTIVE");
+            assertThat(bucket.endAt()).isNull();
+        });
+
+        quota.settle(windowReservation.reservationId(), usage(5), "provider-window", "{}");
+    }
+
+    @Test
+    void totalGrantSynchronizesCurrentBucketBeforeSnapshot() {
+        String policyKey = "total-" + subject;
+        grant("TOTAL", 100, null, policyKey);
+        quota.reserve(request(10));
+
+        grant("TOTAL", 200, null, policyKey);
+
+        var snapshot = quota.snapshot("USER", subject);
+        @SuppressWarnings("unchecked")
+        var policy = ((List<java.util.Map<String, Object>>) snapshot.get("policies")).getFirst();
+        assertThat(policy)
+                .containsEntry("limitUnits", 200L)
+                .containsEntry("usedUnits", 0L)
+                .containsEntry("heldUnits", 10L)
+                .containsEntry("remainingUnits", 190L);
+        assertThat(jdbc.queryForObject(
+                        "select policy_revision from pep_metering.quota_bucket where id = "
+                                + "(select current_bucket_id from pep_metering.quota_account)",
+                        Long.class))
+                .isEqualTo(2L);
+    }
+
+    @Test
+    void expiredDispatchedReservationBecomesUncertainAndCanBeReconciled() {
+        grant("TOTAL", 100, null, "total-" + subject);
+        var reservation = quota.reserve(request(10));
+        quota.markDispatched(reservation.reservationId());
+        jdbc.update("update pep_metering.quota_reservation set created_at = now() - interval '901 seconds'");
+
+        quota.reconcileExpiredReservations();
+
+        assertThat(jdbc.queryForObject(
+                        "select state from pep_metering.quota_reservation where id = ?",
+                        String.class,
+                        reservation.reservationId()))
+                .isEqualTo("UNCERTAIN");
+        assertThat(jdbc.queryForObject(
+                        "select state from pep_metering.reservation_charge where reservation_id = ?",
+                        String.class,
+                        reservation.reservationId()))
+                .isEqualTo("UNCERTAIN");
+        assertThat(jdbc.queryForObject(
+                        "select state from pep_metering.model_call where id = ?", String.class, reservation.callId()))
+                .isEqualTo("UNCERTAIN");
+        assertThat(jdbc.queryForObject("select held_units from pep_metering.quota_bucket", Long.class))
+                .isEqualTo(10L);
+        assertThat(quota.snapshot("USER", subject)).containsEntry("pendingReconciliation", 1L);
+
+        quota.reconcileRelease(reservation.reservationId());
+
+        assertThat(jdbc.queryForObject("select held_units from pep_metering.quota_bucket", Long.class))
+                .isZero();
+        assertThat(jdbc.queryForObject(
+                        "select state from pep_metering.quota_reservation where id = ?",
+                        String.class,
+                        reservation.reservationId()))
+                .isEqualTo("RELEASED");
+        assertThat(quota.snapshot("USER", subject)).containsEntry("pendingReconciliation", 0L);
+    }
+
+    @Test
+    void dispatchIsBlockedAfterReservationWasReleased() {
+        grant("TOTAL", 100, null, "dispatch-" + subject);
+        var reservation = quota.reserve(request(10));
+        quota.release(reservation.reservationId());
+
+        assertThat(quota.markDispatched(reservation.reservationId())).isFalse();
+        assertThat(jdbc.queryForObject(
+                        "select state from pep_metering.quota_reservation where id = ?",
+                        String.class,
+                        reservation.reservationId()))
+                .isEqualTo("RELEASED");
+    }
+
+    @Test
+    void definiteProviderRejectionCanReleaseUncertainReservation() {
+        grant("TOTAL", 100, null, "reject-" + subject);
+        var reservation = quota.reserve(request(10));
+        quota.markDispatched(reservation.reservationId());
+        quota.markUncertain(reservation.reservationId(), null);
+
+        quota.releaseRejected(reservation.reservationId());
+
+        assertThat(jdbc.queryForObject(
+                        "select state from pep_metering.quota_reservation where id = ?",
+                        String.class,
+                        reservation.reservationId()))
+                .isEqualTo("RELEASED");
+        assertThat(jdbc.queryForObject("select held_units from pep_metering.quota_bucket", Long.class))
+                .isZero();
+    }
+
+    @Test
+    void lateSettlementAfterReconciliationRecordsUsageWithoutRestoringHold() {
+        grant("TOTAL", 100, null, "total-" + subject);
+        var reservation = quota.reserve(request(10));
+        quota.markDispatched(reservation.reservationId());
+        quota.markUncertain(reservation.reservationId(), null);
+        quota.reconcileRelease(reservation.reservationId());
+        assertThat(jdbc.queryForObject("select held_units from pep_metering.quota_bucket", Long.class))
+                .isZero();
+
+        quota.settle(reservation.reservationId(), usage(7), "provider-late", "{}");
+
+        assertThat(jdbc.queryForObject("select used_units from pep_metering.quota_bucket", Long.class))
+                .isEqualTo(7L);
+        assertThat(jdbc.queryForObject("select held_units from pep_metering.quota_bucket", Long.class))
+                .isZero();
+        assertThat(jdbc.queryForObject(
+                        "select state from pep_metering.quota_reservation where id = ?",
+                        String.class,
+                        reservation.reservationId()))
+                .isEqualTo("SETTLED");
+        assertThat(jdbc.queryForObject(
+                        "select state from pep_metering.reservation_charge where reservation_id = ?",
+                        String.class,
+                        reservation.reservationId()))
+                .isEqualTo("SETTLED");
+        assertThat(jdbc.queryForObject("select count(*) from pep_metering.model_usage", Long.class))
+                .isEqualTo(1L);
+        assertThat(jdbc.queryForList(
+                        "select event_type from pep_metering.quota_ledger_entry order by created_at", String.class))
+                .contains("RECONCILED", "LATE_SETTLED");
+    }
+
+    @Test
+    void concurrentGrantsForSamePolicyUseDistinctRevisions() throws Exception {
+        String policyKey = "concurrent-" + subject;
+        CountDownLatch start = new CountDownLatch(1);
+        List<Callable<Map<String, Object>>> tasks = List.of(
+                () -> {
+                    start.await(10, TimeUnit.SECONDS);
+                    return quota.grant(new QuotaService.GrantRequest(
+                            "USER",
+                            subject,
+                            "TOTAL",
+                            100,
+                            null,
+                            policyKey,
+                            "test",
+                            "admin",
+                            "grant-a-" + UUID.randomUUID()));
+                },
+                () -> {
+                    start.await(10, TimeUnit.SECONDS);
+                    return quota.grant(new QuotaService.GrantRequest(
+                            "USER",
+                            subject,
+                            "TOTAL",
+                            200,
+                            null,
+                            policyKey,
+                            "test",
+                            "admin",
+                            "grant-b-" + UUID.randomUUID()));
+                });
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            List<Future<Map<String, Object>>> futures =
+                    tasks.stream().map(executor::submit).toList();
+            start.countDown();
+            for (Future<Map<String, Object>> future : futures) {
+                future.get(20, TimeUnit.SECONDS);
+            }
+        }
+
+        assertThat(jdbc.queryForList(
+                        "select revision from pep_metering.quota_policy_version where policy_key = ? order by revision",
+                        Long.class,
+                        policyKey))
+                .containsExactly(1L, 2L);
+        assertThat(jdbc.queryForObject(
+                        "select active_revision from pep_metering.quota_account where policy_key = ?",
+                        Long.class,
+                        policyKey))
+                .isEqualTo(2L);
+    }
+
+    @Test
+    void concurrentGrantWithSameIdempotencyKeyReplaysOnce() throws Exception {
+        var request = new QuotaService.GrantRequest(
+                "USER", subject, "TOTAL", 100, null, "idem-" + subject, "test", "admin", "same-key");
+        CountDownLatch start = new CountDownLatch(1);
+        List<Callable<Map<String, Object>>> tasks = List.of(
+                () -> {
+                    start.await(10, TimeUnit.SECONDS);
+                    return quota.grant(request);
+                },
+                () -> {
+                    start.await(10, TimeUnit.SECONDS);
+                    return quota.grant(request);
+                });
+        try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
+            List<Future<Map<String, Object>>> futures =
+                    tasks.stream().map(executor::submit).toList();
+            start.countDown();
+            for (Future<Map<String, Object>> future : futures) {
+                future.get(20, TimeUnit.SECONDS);
+            }
+        }
+
+        assertThat(jdbc.queryForObject(
+                        "select count(*) from pep_metering.quota_policy_version where policy_key = ?",
+                        Long.class,
+                        "idem-" + subject))
+                .isEqualTo(1L);
+        assertThat(jdbc.queryForObject("select count(*) from pep_metering.quota_change_request", Long.class))
                 .isEqualTo(1L);
     }
 

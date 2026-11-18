@@ -73,11 +73,20 @@ public class PolicyService {
     public List<Rule> rulesFor(UserIdentity identity) {
         List<Rule> matched = new ArrayList<>();
         for (Rule rule : current().rules()) {
-            if (identity.hasRole(rule.role())) {
+            if (identity.hasRole(rule.role()) || identity.hasRole(currentRole(rule.role()))) {
                 matched.add(rule);
             }
         }
         return matched;
+    }
+
+    /** 旧策略沿用 ADMIN/OPS，账号角色已由 IAM 统一为当前名称；权限范围仍使用原策略。 */
+    private static String currentRole(String role) {
+        return switch (role) {
+            case "ADMIN" -> "PLATFORM_ADMIN";
+            case "OPS" -> "OPERATOR";
+            default -> role;
+        };
     }
 
     public Decision canUseAgent(UserIdentity identity, String agentKey) {

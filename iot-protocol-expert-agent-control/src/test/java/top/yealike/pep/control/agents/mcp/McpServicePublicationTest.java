@@ -41,10 +41,11 @@ class McpServicePublicationTest {
         UUID reportId = UUID.randomUUID();
         UUID releaseId = UUID.randomUUID();
         UUID publicationId = UUID.randomUUID();
-        Map<String, Object> draft = Map.of("endpoint", "https://mcp.example.com/mcp", "timeoutMs", 20000);
+        Map<String, Object> draft =
+                Map.of("endpoint", "https://mcp.example.com/mcp", "timeoutMs", 20000, "contextMode", "OPS");
         McpComponent component = new McpComponent(
                 mcpId,
-                "ops",
+                "custom-ops",
                 "运维 MCP",
                 "",
                 "REMOTE",
@@ -76,7 +77,7 @@ class McpServicePublicationTest {
         when(store.findTestReport(reportId))
                 .thenReturn(Optional.of(new McpTestReport(
                         reportId, mcpId, 5L, configDigest, Map.of("tools", List.of(tool)), true, Instant.now())));
-        when(store.findRelease("ops", "1.0.0")).thenReturn(Optional.empty());
+        when(store.findRelease("custom-ops", "1.0.0")).thenReturn(Optional.empty());
         when(publications.nextGeneration("MCP", mcpId)).thenReturn(7L);
         when(store.insertRelease(
                         eq(mcpId),
@@ -105,13 +106,14 @@ class McpServicePublicationTest {
         service.publish(ACTOR, mcpId, "1.0.0", reportId, 5L, "key");
 
         ArgumentCaptor<Long> releaseGeneration = ArgumentCaptor.forClass(Long.class);
+        ArgumentCaptor<String> endpointPolicy = ArgumentCaptor.forClass(String.class);
         verify(store)
                 .insertRelease(
                         eq(mcpId),
                         eq("1.0.0"),
                         releaseGeneration.capture(),
                         anyString(),
-                        anyString(),
+                        endpointPolicy.capture(),
                         isNull(),
                         any(),
                         anyString(),
@@ -122,6 +124,7 @@ class McpServicePublicationTest {
                 .insert(eq("MCP"), eq(mcpId), eq("1.0.0"), eq(5L), publicationGeneration.capture(), eq("key"), any());
         assertThat(releaseGeneration.getValue()).isEqualTo(7L);
         assertThat(publicationGeneration.getValue()).isEqualTo(7L);
+        assertThat(endpointPolicy.getValue()).contains("\"contextMode\":\"OPS\"");
     }
 
     @Test

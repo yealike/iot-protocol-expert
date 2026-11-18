@@ -20,6 +20,10 @@ public class QuotaRepository {
         return jdbc.queryForObject("select now()", OffsetDateTime.class);
     }
 
+    public void lockAdvisory(String value) {
+        jdbc.queryForObject("select pg_advisory_xact_lock(hashtextextended(?, 0))", Object.class, value);
+    }
+
     public List<QuotaRecords.Account> lockAccounts(String scopeKind, String subjectId) {
         return jdbc.query("""
                 select id, scope_kind, subject_id, policy_key, active_revision, current_bucket_id,
@@ -143,8 +147,12 @@ public class QuotaRepository {
         jdbc.update("update pep_metering.quota_bucket set activation_state = ? where id = ?", state, bucketId);
     }
 
-    public void updateBucketLimit(UUID bucketId, long limitUnits) {
-        jdbc.update("update pep_metering.quota_bucket set limit_units = ? where id = ?", limitUnits, bucketId);
+    public void updateBucketPolicy(UUID bucketId, long limitUnits, long policyRevision) {
+        jdbc.update("""
+                update pep_metering.quota_bucket
+                   set limit_units = ?, policy_revision = ?
+                 where id = ?
+                """, limitUnits, policyRevision, bucketId);
     }
 
     public void addHeld(UUID bucketId, long delta) {
@@ -158,6 +166,13 @@ public class QuotaRepository {
                        used_units = used_units + ?
                  where id = ?
                 """, releasedHeld, settledUnits, bucketId);
+    }
+
+    public void settleReleasedBucket(UUID bucketId, long settledUnits) {
+        jdbc.update(
+                "update pep_metering.quota_bucket set used_units = used_units + ? where id = ?",
+                settledUnits,
+                bucketId);
     }
 
     public Optional<QuotaRecords.Reservation> findReservationByCall(UUID modelCallId) {
@@ -389,6 +404,25 @@ public class QuotaRepository {
                 limit);
     }
 
+    public List<QuotaRecords.Reservation> expiredDispatchedReservations(OffsetDateTime cutoff, int limit) {
+        return jdbc.query(
+                """
+                select id, model_call_id, reserved_units, state
+                  from pep_metering.quota_reservation
+                 where state = 'DISPATCHED' and created_at < ?
+                 order by created_at
+                 limit ?
+                   for update skip locked
+                """,
+                (rs, rowNum) -> new QuotaRecords.Reservation(
+                        rs.getObject("id", UUID.class),
+                        rs.getObject("model_call_id", UUID.class),
+                        rs.getLong("reserved_units"),
+                        rs.getString("state")),
+                cutoff,
+                limit);
+    }
+
     public long pendingReconciliation(String scopeKind, String subjectId) {
         Long value = jdbc.queryForObject("""
                 select count(*)
@@ -552,7 +586,7 @@ public class QuotaRepository {
         return jdbc
                 .query(
                         """
-                        select account_id, new_revision, action, effective_mode
+                        select account_id, new_revision, action, effective_mode, reason
                           from pep_metering.quota_change_request
                          where actor_id = ? and idempotency_key = ?
                         """,
@@ -560,7 +594,8 @@ public class QuotaRepository {
                                 rs.getObject("account_id", UUID.class),
                                 (Long) rs.getObject("new_revision"),
                                 rs.getString("action"),
-                                rs.getString("effective_mode")),
+                                rs.getString("effective_mode"),
+                                rs.getString("reason")),
                         actorId,
                         idempotencyKey)
                 .stream()

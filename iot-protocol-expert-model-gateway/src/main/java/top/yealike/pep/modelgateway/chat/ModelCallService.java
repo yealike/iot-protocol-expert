@@ -96,7 +96,12 @@ public class ModelCallService {
                 model.provider().code(),
                 model.profile().upstreamModel(),
                 reserve));
-        quota.markDispatched(reservation.reservationId());
+        if (reservation.replayed()) {
+            throw ApiException.conflict(ModelErrorCodes.CALL_CONFLICT, "同一逻辑调用已完成预占，不能重复派发；请使用新的调用 ID 或递增 attempt");
+        }
+        if (!quota.markDispatched(reservation.reservationId())) {
+            throw ApiException.conflict(ModelErrorCodes.QUOTA_PENDING_RECONCILIATION, "模型调用预占已失效，已阻止向供应商派发");
+        }
         return new PreparedCall(model, reservation, json.writeValueAsString(upstream), stream, maxOutput);
     }
 

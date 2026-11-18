@@ -599,6 +599,13 @@ public class AgentExecutionService {
             return new Outcome(RunTerminalStatus.FAILED, controlException.code(), controlException.getMessage());
         }
         if (failure != null) {
+            var quotaFailure = ModelQuotaFailure.from(failure);
+            if (quotaFailure.isPresent()) {
+                return new Outcome(
+                        RunTerminalStatus.FAILED,
+                        quotaFailure.get().code(),
+                        quotaFailure.get().message());
+            }
             return new Outcome(RunTerminalStatus.FAILED, "RUN_FAILED", "Agent 执行失败");
         }
         if (answer == null || answer.isBlank()) {
