@@ -103,7 +103,7 @@ ipe:
     simulator-token: ${IPE_OPS_SIMULATOR_TOKEN:}
     simulator-base-url: ${IPE_SIMULATOR_BASE_URL:http://127.0.0.1:19081}
     protocol-base-url: ${IPE_PROTOCOL_BASE_URL:http://127.0.0.1:19080}
-    protocol-timeout-ms: ${IPE_PROTOCOL_TIMEOUT_MS:5000}
+    protocol-timeout-ms: ${IPE_PROTOCOL_TIMEOUT_MS:20000}
     model:
       enabled: ${IPE_MODEL_ENABLED:false}
       base-url: ${IPE_MODEL_BASE_URL:}

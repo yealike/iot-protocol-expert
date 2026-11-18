@@ -4,12 +4,14 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
+import java.time.Duration;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import top.yealike.pep.codec.Frame;
 import top.yealike.pep.codec.FrameType;
 import top.yealike.pep.codec.frames.OperationFrames;
+import top.yealike.pep.gateway.config.ProtocolProperties;
 import top.yealike.pep.gateway.netty.SessionRegistry;
 import top.yealike.pep.gateway.ocpp16.OcppCommandFacade;
 import top.yealike.pep.gateway.ocpp16.OcppSessionRegistry;
@@ -20,7 +22,11 @@ class ChannelCommandServiceTest {
     void remoteStartEncodesLogicalAndPhysicalCardsSeparately() {
         var sessions = mock(SessionRegistry.class);
         var service = new ChannelCommandService(
-                sessions, mock(OcppSessionRegistry.class), mock(CommandFacade.class), mock(OcppCommandFacade.class));
+                sessions,
+                mock(OcppSessionRegistry.class),
+                mock(CommandFacade.class),
+                mock(OcppCommandFacade.class),
+                new ProtocolProperties());
         String pile = "32010600000001";
         String order = "12345678901234567890123456789012";
         var ack = new OperationFrames.RemoteStartAck(order, pile, "01", true, 0);
@@ -47,5 +53,40 @@ class ChannelCommandServiceTest {
         var command = OperationFrames.decodeRemoteStart(body.getValue());
         assertEquals("0000000010000001", command.logicalCard());
         assertEquals("00000000D14B0A54", command.physicalCard());
+    }
+
+    @Test
+    void usesConfiguredPendingTimeoutWithoutAnImplicitFloor() {
+        var sessions = mock(SessionRegistry.class);
+        ProtocolProperties properties = new ProtocolProperties();
+        properties.setPendingTimeoutSeconds(3);
+        var service = new ChannelCommandService(
+                sessions,
+                mock(OcppSessionRegistry.class),
+                mock(CommandFacade.class),
+                mock(OcppCommandFacade.class),
+                properties);
+        String pile = "32010600000001";
+        String order = "12345678901234567890123456789012";
+        var ack = new OperationFrames.RemoteStartAck(order, pile, "01", true, 0);
+        when(sessions.request(
+                        anyString(),
+                        eq(FrameType.REMOTE_START),
+                        eq(FrameType.REMOTE_START_ACK),
+                        any(byte[].class),
+                        any()))
+                .thenReturn(new Frame(
+                        1, false, FrameType.REMOTE_START_ACK.code(), OperationFrames.encodeRemoteStartAck(ack)));
+
+        service.execute(new OpsDtos.CommandRequest(
+                "YKC16", pile, "remote-start", Map.of("orderNo", order, "gunNo", "01"), "test"));
+
+        verify(sessions)
+                .request(
+                        eq(pile),
+                        eq(FrameType.REMOTE_START),
+                        eq(FrameType.REMOTE_START_ACK),
+                        any(byte[].class),
+                        eq(Duration.ofSeconds(3)));
     }
 }

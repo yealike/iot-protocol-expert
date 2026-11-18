@@ -8,8 +8,12 @@ import io.agentscope.core.event.AllToolsDeniedEvent;
 import io.agentscope.core.event.ExceedMaxItersEvent;
 import io.agentscope.core.event.ModelCallEndEvent;
 import io.agentscope.core.event.TextBlockDeltaEvent;
+import io.agentscope.core.event.ToolCallDeltaEvent;
+import io.agentscope.core.event.ToolCallEndEvent;
 import io.agentscope.core.event.ToolCallStartEvent;
+import io.agentscope.core.event.ToolResultDataDeltaEvent;
 import io.agentscope.core.event.ToolResultEndEvent;
+import io.agentscope.core.event.ToolResultTextDeltaEvent;
 import io.agentscope.core.message.Msg;
 import io.agentscope.core.message.ToolResultState;
 import io.agentscope.core.model.ChatUsage;
@@ -75,6 +79,7 @@ public class AgentExecutionService {
     private static final Logger log = LoggerFactory.getLogger(AgentExecutionService.class);
     private static final int MAX_FINAL_ANSWER_CHARS = 60_000;
     private static final int DELTA_CHUNK_CHARS = 4_000;
+    private static final int MAX_TOOL_EVIDENCE_CHARS = 8_000;
 
     private final RuntimeProperties properties;
     private final ControlClient control;
@@ -307,6 +312,7 @@ public class AgentExecutionService {
         AtomicBoolean timedOut = new AtomicBoolean();
         AtomicReference<Throwable> failure = new AtomicReference<>();
         Map<String, ToolTiming> toolTimings = new ConcurrentHashMap<>();
+        Map<String, ToolInvocationEvidence> toolEvidence = new ConcurrentHashMap<>();
         long startedNanos = System.nanoTime();
         try {
             if (guard.cancelled()) {
@@ -346,8 +352,8 @@ public class AgentExecutionService {
             Flux<AgentEvent> stream = agent.streamEvents(messages, runtimeContext)
                     .timeout(remaining)
                     .doFinally(signal -> completed.countDown());
-            Disposable disposable =
-                    stream.subscribe(event -> handleEvent(execution, event, answer, toolTimings), failure::set, () -> {
+            Disposable disposable = stream.subscribe(
+                    event -> handleEvent(execution, event, answer, toolTimings, toolEvidence), failure::set, () -> {
                         // 由 doFinally 统一唤醒工作线程
                     });
             execution.subscription(disposable);
@@ -380,12 +386,17 @@ public class AgentExecutionService {
                 heartbeat.cancel(false);
             }
             Outcome outcome = outcome(execution, failure.get(), timedOut.get(), answer.toString());
+            failOpenToolCalls(execution, toolTimings, toolEvidence, outcome);
             finish(execution, outcome, answer.toString(), startedNanos);
         }
     }
 
     private void handleEvent(
-            RunExecution execution, AgentEvent event, StringBuilder answer, Map<String, ToolTiming> timings) {
+            RunExecution execution,
+            AgentEvent event,
+            StringBuilder answer,
+            Map<String, ToolTiming> timings,
+            Map<String, ToolInvocationEvidence> evidenceByCall) {
         if (event instanceof TextBlockDeltaEvent deltaEvent) {
             String delta = deltaEvent.getDelta();
             if (delta == null || delta.isEmpty()) {
@@ -433,24 +444,57 @@ public class AgentExecutionService {
                 put(payload, "originalName", tool.originalName());
             }
             timings.put(startEvent.getToolCallId(), new ToolTiming(alias, System.nanoTime()));
+            evidenceByCall.putIfAbsent(
+                    evidenceKey(startEvent.getToolCallId()), new ToolInvocationEvidence(MAX_TOOL_EVIDENCE_CHARS));
             execution.publisher().emit("tool.started", payload);
+            return;
+        }
+        if (event instanceof ToolCallDeltaEvent callEvent) {
+            evidence(callEvent.getToolCallId(), evidenceByCall).appendArguments(callEvent.getDelta());
+            return;
+        }
+        if (event instanceof ToolCallEndEvent callEvent) {
+            ToolInvocationEvidence evidence = evidenceByCall.get(evidenceKey(callEvent.getToolCallId()));
+            if (evidence == null || !evidence.hasArguments()) {
+                return;
+            }
+            ToolTiming timing = timings.get(callEvent.getToolCallId());
+            Map<String, Object> payload = new LinkedHashMap<>();
+            put(payload, "toolAlias", timing == null ? callEvent.getToolCallName() : timing.alias());
+            put(payload, "toolCallId", callEvent.getToolCallId());
+            payload.put("arguments", evidence.argumentsEvidence());
+            execution.publisher().emit("tool.arguments", payload);
+            return;
+        }
+        if (event instanceof ToolResultTextDeltaEvent resultEvent) {
+            evidence(resultEvent.getToolCallId(), evidenceByCall).appendResult(resultEvent.getDelta());
+            return;
+        }
+        if (event instanceof ToolResultDataDeltaEvent resultEvent) {
+            evidence(resultEvent.getToolCallId(), evidenceByCall).appendData(resultEvent.getData());
             return;
         }
         if (event instanceof ToolResultEndEvent resultEvent) {
             ToolTiming timing = timings.remove(resultEvent.getToolCallId());
             String alias = timing == null ? resultEvent.getToolCallName() : timing.alias();
             ToolResultState state = resultEvent.getState();
+            ToolInvocationEvidence evidence = evidenceByCall.remove(evidenceKey(resultEvent.getToolCallId()));
             Map<String, Object> payload = new LinkedHashMap<>();
             put(payload, "toolAlias", alias);
             put(payload, "toolCallId", resultEvent.getToolCallId());
             if (timing != null) {
                 payload.put("durationMs", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - timing.startedNanos()));
             }
+            if (evidence != null && evidence.hasResult()) {
+                payload.put("resultSummary", evidence.resultEvidence());
+            }
             boolean success = state == ToolResultState.SUCCESS || state == null;
             if (success) {
+                payload.put("decision", ToolAuditMetadata.ALLOW);
                 execution.publisher().emit("tool.completed", payload);
             } else {
-                put(payload, "errorCode", errorCode(state));
+                put(payload, "errorCode", auditErrorCode(resultEvent, state));
+                put(payload, "decision", auditDecision(resultEvent, state));
                 execution.publisher().emit("tool.failed", payload);
                 execution.warning("工具 " + alias + " 调用未成功");
             }
@@ -466,6 +510,55 @@ public class AgentExecutionService {
             String message = "模型请求的工具均被当前权限拒绝";
             execution.warning(message);
             execution.publisher().emit("run.warning", Map.of("code", ErrorCodes.TOOL_DENIED, "message", message));
+        }
+    }
+
+    private static ToolInvocationEvidence evidence(
+            String toolCallId, Map<String, ToolInvocationEvidence> evidenceByCall) {
+        return evidenceByCall.computeIfAbsent(
+                evidenceKey(toolCallId), ignored -> new ToolInvocationEvidence(MAX_TOOL_EVIDENCE_CHARS));
+    }
+
+    private static String evidenceKey(String toolCallId) {
+        return toolCallId == null ? "" : toolCallId;
+    }
+
+    private void failOpenToolCalls(
+            RunExecution execution,
+            Map<String, ToolTiming> timings,
+            Map<String, ToolInvocationEvidence> evidenceByCall,
+            Outcome outcome) {
+        if (timings.isEmpty()) {
+            return;
+        }
+        String errorCode = switch (outcome.status()) {
+            case TIMED_OUT -> "TIMED_OUT";
+            case CANCELLED -> "CANCELLED";
+            default -> outcome.errorCode() == null ? "RUN_INTERRUPTED" : outcome.errorCode();
+        };
+        for (String toolCallId : List.copyOf(timings.keySet())) {
+            ToolTiming timing = timings.remove(toolCallId);
+            if (timing == null) {
+                continue;
+            }
+            ToolInvocationEvidence evidence = evidenceByCall.remove(evidenceKey(toolCallId));
+            Map<String, Object> payload = new LinkedHashMap<>();
+            put(payload, "toolAlias", timing.alias());
+            put(payload, "toolCallId", toolCallId);
+            put(payload, "errorCode", errorCode);
+            payload.put("durationMs", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - timing.startedNanos()));
+            if (evidence != null && evidence.hasArguments()) {
+                payload.put("arguments", evidence.argumentsEvidence());
+            }
+            try {
+                execution.publisher().emit("tool.failed", payload);
+            } catch (RuntimeException exception) {
+                log.warn(
+                        "failed to close unfinished tool audit: run={} toolCallId={} errorCode={}",
+                        execution.runId(),
+                        toolCallId,
+                        errorCode);
+            }
         }
     }
 
@@ -834,6 +927,27 @@ public class AgentExecutionService {
             return "CANCELLED";
         }
         return ErrorCodes.MCP_TOOL_ERROR;
+    }
+
+    private static String metadataString(Map<String, Object> metadata, String key) {
+        if (metadata == null) {
+            return null;
+        }
+        Object value = metadata.get(key);
+        return value == null ? null : String.valueOf(value);
+    }
+
+    static String auditErrorCode(ToolResultEndEvent event, ToolResultState state) {
+        String auditErrorCode = metadataString(event.getMetadata(), ToolAuditMetadata.ERROR_CODE);
+        return auditErrorCode == null ? errorCode(state) : auditErrorCode;
+    }
+
+    static String auditDecision(ToolResultEndEvent event, ToolResultState state) {
+        String decision = metadataString(event.getMetadata(), ToolAuditMetadata.DECISION);
+        if (decision != null) {
+            return decision;
+        }
+        return state == ToolResultState.DENIED ? ToolAuditMetadata.DENIED : ToolAuditMetadata.PENDING;
     }
 
     private static boolean isTimeout(Throwable failure) {

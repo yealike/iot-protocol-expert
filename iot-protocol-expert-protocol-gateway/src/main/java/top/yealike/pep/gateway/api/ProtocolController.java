@@ -83,10 +83,13 @@ public class ProtocolController {
     @PostMapping("/decode")
     @Operation(summary = "解码协议报文", description = "支持完整线上报文解码，或按帧类型解码帧体")
     public Object decode(@RequestBody DecodeRequest r) {
-        if (r.wireHex() != null) {
+        if (r.wireHex() != null && !r.wireHex().isBlank()) {
             Frame f = FrameCodec.decode(
                     FrameCodec.parseHex(r.wireHex()), TripleDes.keyFromHex(properties.getCryptoKeyHex()));
             return Map.of("frame", f, "decoded", FramePayloads.decode(FrameType.of(f.frameType()), f.body()));
+        }
+        if (r.frameType() == null || r.bodyHex() == null || r.bodyHex().isBlank()) {
+            throw new IllegalArgumentException("wireHex 或 frameType + bodyHex 至少提供一组");
         }
         return FramePayloads.decode(FrameType.of(r.frameType()), FrameCodec.parseHex(r.bodyHex()));
     }

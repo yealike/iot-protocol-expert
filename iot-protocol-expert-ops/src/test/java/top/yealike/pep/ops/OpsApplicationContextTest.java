@@ -44,5 +44,6 @@ class OpsApplicationContextTest {
         assertThat(context.containsBean("agentService")).isFalse();
         assertThat(context.getBeansOfType(org.springframework.security.web.SecurityFilterChain.class))
                 .hasSize(1);
+        assertThat(context.containsBean("telemetryEndpoint")).isTrue();
     }
 }

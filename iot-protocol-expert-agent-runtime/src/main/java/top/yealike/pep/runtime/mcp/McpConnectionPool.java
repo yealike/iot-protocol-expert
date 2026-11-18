@@ -30,6 +30,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
+import top.yealike.pep.observability.SensitiveDataSanitizer;
 import top.yealike.pep.runtime.config.RuntimeProperties;
 import top.yealike.pep.runtime.contract.ComponentDigests;
 import top.yealike.pep.runtime.contract.ComponentEndpoint;
@@ -178,32 +179,30 @@ public class McpConnectionPool {
     }
 
     public McpToolEnvelope call(McpConnection connection, String originalToolName, Map<String, Object> arguments) {
-        io.opentelemetry.api.trace.Span.current()
-                .addEvent(
-                        "mcp.request",
-                        io.opentelemetry.api.common.Attributes.builder()
-                                .put("gen_ai.tool.name", originalToolName)
-                                .put("gen_ai.tool.call.arguments", render(arguments, "{}"))
-                                .put(
-                                        "mcp.component.key",
-                                        connection.descriptor().key())
-                                .build());
+        var requestAttributes = io.opentelemetry.api.common.Attributes.builder()
+                .put("gen_ai.tool.name", originalToolName)
+                .put("mcp.component.key", connection.descriptor().key());
+        if (traceContentEnabled()) {
+            requestAttributes.put(
+                    "gen_ai.tool.call.arguments",
+                    SensitiveDataSanitizer.sanitize(render(arguments, "{}"), traceMaxContentChars()));
+        }
+        io.opentelemetry.api.trace.Span.current().addEvent("mcp.request", requestAttributes.build());
         long started = System.nanoTime();
         Future<McpSchema.CallToolResult> future = null;
         try {
             future = mcpExecutor.submit(
                     () -> connection.client().callTool(new McpSchema.CallToolRequest(originalToolName, arguments)));
             McpSchema.CallToolResult result = future.get(properties.mcp().callTimeoutMs(), TimeUnit.MILLISECONDS);
-            io.opentelemetry.api.trace.Span.current()
-                    .addEvent(
-                            "mcp.response",
-                            io.opentelemetry.api.common.Attributes.builder()
-                                    .put("gen_ai.tool.name", originalToolName)
-                                    .put("gen_ai.tool.call.result", render(result, "{}"))
-                                    .put(
-                                            "mcp.component.key",
-                                            connection.descriptor().key())
-                                    .build());
+            var responseAttributes = io.opentelemetry.api.common.Attributes.builder()
+                    .put("gen_ai.tool.name", originalToolName)
+                    .put("mcp.component.key", connection.descriptor().key());
+            if (traceContentEnabled()) {
+                responseAttributes.put(
+                        "gen_ai.tool.call.result",
+                        SensitiveDataSanitizer.sanitize(render(result, "{}"), traceMaxContentChars()));
+            }
+            io.opentelemetry.api.trace.Span.current().addEvent("mcp.response", responseAttributes.build());
             return envelope(connection.descriptor().key(), result);
         } catch (TimeoutException exception) {
             if (future != null) {
@@ -233,6 +232,20 @@ public class McpConnectionPool {
                     .register(metrics)
                     .record(System.nanoTime() - started, TimeUnit.NANOSECONDS);
         }
+    }
+
+    private boolean traceContentEnabled() {
+        var observability = properties.observability();
+        return observability != null
+                && observability.otel() != null
+                && observability.otel().contentEnabled();
+    }
+
+    private int traceMaxContentChars() {
+        var observability = properties.observability();
+        return observability == null || observability.otel() == null
+                ? 0
+                : observability.otel().maxContentChars();
     }
 
     private McpToolEnvelope envelope(String source, McpSchema.CallToolResult result) {

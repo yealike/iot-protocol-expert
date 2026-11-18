@@ -11,6 +11,7 @@ import top.yealike.pep.codec.FrameType;
 import top.yealike.pep.codec.frames.MaintenanceFrames;
 import top.yealike.pep.codec.frames.OperationFrames;
 import top.yealike.pep.codec.ocpp16.OcppConstants;
+import top.yealike.pep.gateway.config.ProtocolProperties;
 import top.yealike.pep.gateway.netty.SessionRegistry;
 import top.yealike.pep.gateway.ocpp16.OcppCommandFacade;
 import top.yealike.pep.gateway.ocpp16.OcppSessionRegistry;
@@ -24,16 +25,19 @@ public class ChannelCommandService {
     private final OcppSessionRegistry ocppSessions;
     private final CommandFacade ykcCommands;
     private final OcppCommandFacade ocppCommands;
+    private final java.time.Duration commandTimeout;
 
     public ChannelCommandService(
             SessionRegistry ykcSessions,
             OcppSessionRegistry ocppSessions,
             CommandFacade ykcCommands,
-            OcppCommandFacade ocppCommands) {
+            OcppCommandFacade ocppCommands,
+            ProtocolProperties properties) {
         this.ykcSessions = ykcSessions;
         this.ocppSessions = ocppSessions;
         this.ykcCommands = ykcCommands;
         this.ocppCommands = ocppCommands;
+        this.commandTimeout = java.time.Duration.ofSeconds(Math.max(properties.getPendingTimeoutSeconds(), 1));
     }
 
     public OpsDtos.CommandResult execute(OpsDtos.CommandRequest request) {
@@ -68,7 +72,7 @@ public class ChannelCommandService {
                         FrameType.REMOTE_START,
                         FrameType.REMOTE_START_ACK,
                         OperationFrames.encodeRemoteStart(command),
-                        java.time.Duration.ofSeconds(15));
+                        commandTimeout);
                 OperationFrames.RemoteStartAck result = OperationFrames.decodeRemoteStartAck(ack.body());
                 Map<String, Object> data = new LinkedHashMap<>();
                 data.put("transactionNo", result.transactionNo());
@@ -88,7 +92,7 @@ public class ChannelCommandService {
                         FrameType.REMOTE_STOP,
                         FrameType.STOP_ACK,
                         OperationFrames.encodeRemoteStop(new OperationFrames.RemoteStop(pileCode, gunNo)),
-                        java.time.Duration.ofSeconds(15));
+                        commandTimeout);
                 OperationFrames.StopAck result = OperationFrames.decodeStopAck(ack.body());
                 yield new OpsDtos.CommandResult(
                         result.success(),

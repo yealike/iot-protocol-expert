@@ -4,12 +4,16 @@ import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
+import org.springframework.context.annotation.Import;
 import org.springframework.scheduling.annotation.EnableScheduling;
+import top.yealike.pep.observability.protocol.HttpTelemetryConfiguration;
+import top.yealike.pep.observability.protocol.LocalTelemetryConfiguration;
 
 /** 运营服务入口；持有用户会话、设备业务和历史数据库迁移。 */
 @SpringBootApplication
 @EnableScheduling
 @ConfigurationPropertiesScan
+@Import({HttpTelemetryConfiguration.class, LocalTelemetryConfiguration.class})
 @MapperScan({
     "top.yealike.pep.ops.access.mapper",
     "top.yealike.pep.ops.alarms.mapper",

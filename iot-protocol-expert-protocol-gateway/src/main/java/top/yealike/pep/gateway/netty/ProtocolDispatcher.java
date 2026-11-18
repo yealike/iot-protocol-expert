@@ -13,6 +13,7 @@ import top.yealike.pep.codec.InboundFrame;
 import top.yealike.pep.codec.frames.BmsFrames;
 import top.yealike.pep.codec.frames.MaintenanceFrames;
 import top.yealike.pep.codec.frames.OperationFrames;
+import top.yealike.pep.codec.frames.ParallelFrames;
 import top.yealike.pep.codec.frames.RealtimeFrames;
 import top.yealike.pep.codec.frames.RegistrationFrames;
 import top.yealike.pep.gateway.ops.OpsClient;
@@ -190,6 +191,43 @@ public class ProtocolDispatcher {
                         ops.charging(ack.transactionNo(), LocalDateTime.now());
                     } else if (ack.failReason() != 5) {
                         ops.fail(ack.transactionNo(), "桩拒绝启动: " + ack.failReason());
+                    }
+                }
+                case PARALLEL_START_REQUEST -> {
+                    ParallelFrames.ParallelStartRequest request =
+                            ParallelFrames.decodeParallelStartRequest(frame.body());
+                    OpsDtos.StartResult result = ops.start(new OpsDtos.StartRequest(
+                            "YKC16",
+                            pileCode,
+                            request.gunNo(),
+                            request.startType(),
+                            request.account(),
+                            "00000000",
+                            request.account()));
+                    if (result.accepted()) {
+                        ops.charging(result.orderNo(), LocalDateTime.now());
+                    }
+                    ParallelFrames.ParallelStartAck ack = new ParallelFrames.ParallelStartAck(
+                            result.accepted() ? result.orderNo() : "0".repeat(32),
+                            pileCode,
+                            request.gunNo(),
+                            "00000000",
+                            result.accepted() ? new BigDecimal("1000.00") : BigDecimal.ZERO,
+                            result.accepted(),
+                            result.failReason() == null ? 0x05 : result.failReason(),
+                            request.parallelNo());
+                    sessions.send(
+                            pileCode,
+                            FrameType.PARALLEL_START_ACK,
+                            ParallelFrames.encodeParallelStartAck(ack),
+                            frame.sequence());
+                }
+                case PARALLEL_START_RESULT -> {
+                    ParallelFrames.ParallelStartResult result = ParallelFrames.decodeParallelStartResult(frame.body());
+                    if (result.success()) {
+                        ops.charging(result.transactionNo(), LocalDateTime.now());
+                    } else {
+                        ops.fail(result.transactionNo(), "桩拒绝并充启动: " + result.failReason());
                     }
                 }
                 case STOP_ACK -> {

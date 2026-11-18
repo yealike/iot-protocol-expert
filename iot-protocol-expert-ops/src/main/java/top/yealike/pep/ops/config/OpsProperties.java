@@ -10,7 +10,7 @@ public class OpsProperties {
     private String serviceToken = "local-service-token";
     private String simulatorToken = "local-simulator-token";
     private String protocolBaseUrl = "http://127.0.0.1:19080";
-    private int protocolTimeoutMs = 5000;
+    private int protocolTimeoutMs = 20000;
     private boolean autoRegister = true;
     private String defaultStationCode = "ST-DEMO";
     private String defaultStationName = "演示充电站";

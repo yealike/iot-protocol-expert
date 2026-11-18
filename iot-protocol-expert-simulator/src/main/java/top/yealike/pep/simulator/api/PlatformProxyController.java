@@ -33,7 +33,7 @@ public class PlatformProxyController {
         this.json = json;
         var factory = new JdkClientHttpRequestFactory(
                 HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build());
-        factory.setReadTimeout(Duration.ofSeconds(20));
+        factory.setReadTimeout(Duration.ofSeconds(Math.max(properties.getPlatformProxyTimeoutSeconds(), 1)));
         this.client = builder.requestFactory(factory).build();
     }
 

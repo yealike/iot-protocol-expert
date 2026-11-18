@@ -85,7 +85,7 @@ OCPP 模式下费率模型没有对应的标准下发帧：模拟器禁用「保
 | `ocpp-path` | `/ocpp` | 路径前缀 |
 | `ocpp-default-connector-count` | 2 | BootNotification 未提供枪数时的默认值 |
 | `ocpp-idle-timeout-seconds` | 300 | 读空闲断开 |
-| `pending-timeout-seconds` | 10 | 下行 CALL 等应答 |
+| `pending-timeout-seconds` | 15 | 下行 CALL 等应答，可由 `IPE_PROTOCOL_PENDING_TIMEOUT_SECONDS` 覆盖 |
 
 模拟器 `ipe.simulator.*`：
 
@@ -94,6 +94,11 @@ OCPP 模式下费率模型没有对应的标准下发帧：模拟器禁用「保
 | `protocol` | `ykc16` | `ykc16` / `ocpp16j` |
 | `ocpp-port` / `ocpp-path` | 8769 / `/ocpp` | OCPP 目标地址 |
 | `platform-host` | 127.0.0.1 | 两种协议共用 |
+| `platform-proxy-timeout-seconds` | 60 | 模拟器页面转发平台命令时等待 OPS/Gateway 的最长时间 |
+
+OPS 到 Gateway 的 `ipe.ops.protocol-timeout-ms` 默认 20000，Gateway 等设备应答默认 15000。部署配置应保持
+`Simulator 平台代理超时 > OPS 协议 HTTP 超时 > Gateway 设备应答超时 > 设备正常 ACK 时间`，避免调用方先失败、
+而设备随后实际执行成功。验证环境使用 90 秒 / 70 秒 / 45 秒，以覆盖真实 TCP 交互耗时。
 
 ## 边界
 

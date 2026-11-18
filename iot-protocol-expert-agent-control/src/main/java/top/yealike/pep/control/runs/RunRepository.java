@@ -325,6 +325,8 @@ public class RunRepository {
             UUID id,
             UUID runId,
             String status,
+            String decision,
+            String denyReason,
             Map<String, Object> resultSummary,
             Integer durationMs,
             Instant finishedAt) {
@@ -332,9 +334,15 @@ public class RunRepository {
                 id,
                 runId,
                 status,
+                decision,
+                denyReason,
                 JsonSupport.write(resultSummary == null ? Map.of() : resultSummary),
                 durationMs,
                 finishedAt);
+    }
+
+    public void updateRuntimeToolArguments(UUID id, UUID runId, Map<String, Object> argsSummary) {
+        mapper.updateRuntimeToolArguments(id, runId, JsonSupport.write(argsSummary == null ? Map.of() : argsSummary));
     }
 
     public List<ToolCall> listToolCalls(UUID runId) {

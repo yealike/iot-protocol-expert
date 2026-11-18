@@ -67,7 +67,7 @@ Higress 提供 REST-to-MCP 和路由；Control 管理组件、发布版本及权
 7. 人工评分范围为 0～1。同一结果、同一指标、同一 Span 再次评分，会保留历史并替换当前有效评分。
 8. 对比版本时，在实验列表勾选两条实验。优先比较断言、精确匹配、工具成功率和质量分，不能只比较执行成功率。
 
-浏览器路径已实际验证：服务重启后旧会话失效，可重新登录独立验收管理员；实验、结果和“链路与评分”抽屉可重新加载，并成功提交 `human_quality=0.86`。当前页面启动实验时固定使用所选 Agent 的当前发布版本；需要评估历史版本时使用实验 API 的 `agentVersion` 字段。
+浏览器路径已复验：可重新登录独立验收管理员，查看当前实验、结果、144 Span 链路和“链路与评分”抽屉；较早的专项复验中曾为 `execute_tool/read_skill_resource`（Span `e9059e2b796da845`）提交 `human_quality=0.92`，当前全流程人工评分最终为 0.9，刷新后均可见。当前页面启动实验时固定使用所选 Agent 的当前发布版本；需要评估历史版本时使用实验 API 的 `agentVersion` 字段。
 
 | 指标 | 含义 |
 | --- | --- |
@@ -78,9 +78,19 @@ Higress 提供 REST-to-MCP 和路由；Control 管理组件、发布版本及权
 | `answer_quality` | LLM Judge 的 0～1 评分，受提供的证据和模型判断影响 |
 | `manual_quality` / `human_quality` | 人工定义的指标；机器评分不会被人工分数覆盖 |
 
-Judge 返回 ERROR 时，该结果没有有效质量分，不能当作 0 分或满分。本次工具问答的 Judge 得分为 0.55，理由是评分输入缺少足够的工具结果内容，虽有成功状态，仍不足以核实答案。规则断言通过和 Judge 分数偏低可以同时成立。
+Judge 返回 ERROR 时，该结果没有有效质量分，不能当作 0 分或满分。最终复验实验 `12fae36d-5c71-4206-a890-8784feff3950` 的 2/2 结果均为 `answer_quality=1.0`。当前工具题结果 `1a7dc3e3-7644-4d10-9ed6-64809461b71e` 的 Judge 输入包含持久化的工具参数与结果，证据中出现 `data=[]`、`partial=false`、`warnings=[]` 和 `FLOW_OK`。规则断言与 Judge 是两类独立信号，仍应分别查看。
 
-“加载链路”依赖 Control 的 `IPE_TEMPO_QUERY_BASE_URL` 和可查询的 Tempo。本机当前未配置，Trace/Span 展开未验收通过；基础结果和整条结果的人工评分可独立使用。
+打开结果详情后点击“加载链路”，请求由 Control 服务端代理到 Tempo；部署侧通过 `IPE_TEMPO_QUERY_BASE_URL` 指定查询地址。当前已实测结果 `1a7dc3e3-7644-4d10-9ed6-64809461b71e` 对应 Trace `89efd4447cc7ea7f95d54b5dd0f9ed6e`，共 144 个 Span，链路为 `agent.run -> invoke_agent -> chat/execute_tool`。查询失败或超过保留期时，页面应明确显示不可用，Run 结果和已有评分仍可查看。
+
+### 评估审计证据与 Trace 内容开关
+
+评估审计证据和 Trace 内容采集是两条独立策略：
+
+- Runtime 从工具调用事件中收集参数与结果，Control 将其写入 `ai_tool_call.args_summary` 和 `result_summary`。Judge 与人工复核读取这份持久化证据，不依赖 Tempo 中的正文属性。
+- 每次工具调用的参数整体和结果整体分别最多保留 8000 字符，结构为 `{"text":"...","truncated":true|false}`。达到上限时保留前 8000 字符并标记 `truncated=true`。
+- 授权决策由 Runtime 的结构化元数据显式传递：成功为 `ALLOW`，明确拒绝为 `DENIED`，授权未决或执行前中断保持 `PENDING`；Control 不再根据通用工具错误码推断授权结果。`deny_reason` 单独脱敏并限制在数据库列宽 128 字符内，完整证据保留在 `result_summary`。
+- 写入前会脱敏常见凭据字段和格式，包括 password、secret、API key、access/refresh token、authorization、cookie、Bearer 值、`sk-*`、URL 内嵌凭据和私钥块。这是常见凭据防护，不保证清除所有业务敏感内容；8000 字符是审计容量边界，也不是安全边界。
+- `IPE_RUNTIME_OTEL_ENABLED` 控制 AgentScope 元数据 Span 是否启用，未设置时跟随 `IPE_OTLP_ENABLED`；`IPE_RUNTIME_OTEL_CONTENT_ENABLED` 控制消息和工具正文是否进入 Trace。即使 Trace 内容开关关闭，评估审计证据仍由工具事件独立写入 Control 数据库；开启 Trace 正文也不会把审计证据上限提高。
 
 ## 用户额度怎么分配
 
@@ -132,6 +142,6 @@ await fetch('/api/control/v1/admin/quota-grants', {
 | 新提示词没有生效 | 是否只保存了草稿、是否发布成功、是否仍使用旧会话 |
 | 评估列表没有别人的实验 | 评估对象按用户隔离，切换到创建者账号 |
 | Run 完成但质量不理想 | 分别查看工具状态、断言和 Judge 理由 |
-| 完整链路不可用 | Tempo 查询地址、网络可达性和 Trace 是否已入库 |
+| “加载链路”失败 | Tempo 查询配置、网络可达性、查询时间范围、Trace 保留期和 `trace_id`；正常 Agent 链路应至少包含 `agent.run -> invoke_agent -> chat/execute_tool` |
 
-本轮没有验证长时间窗口的自然续窗、供应商断流/进程崩溃的完整恢复矩阵，也没有执行设备协议和模拟器业务的全量回归。额度页返回的是跨多次查询的当前快照，不是数据库可重复读快照；并发结算期间应结合用量记录判断，不能把单次快照当作时点账本。
+Trace 正文默认不进入 Tempo，需要排障时单独开启并评估数据治理；评估审计证据本身受“每次工具调用的参数整体、结果整体各 8000 字符”和常见凭据脱敏边界约束。本轮没有验证长时间窗口的自然续窗、供应商断流/进程崩溃的完整恢复矩阵，也没有执行设备协议和模拟器业务的全量回归。额度页返回的是跨多次查询的当前快照，不是数据库可重复读快照；并发结算期间应结合用量记录判断，不能把单次快照当作时点账本。

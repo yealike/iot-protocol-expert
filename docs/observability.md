@@ -24,6 +24,8 @@ mvn -B package
 
 启动脚本读取 `IPE_OTLP_ENDPOINT`（未设置时为 `http://127.0.0.1:4318`）；`IPE_OTLP_ENABLED=true` 时自动开启三类 OTLP 导出。
 
+Runtime 的 AgentScope 元数据埋点另有服务级开关 `IPE_RUNTIME_OTEL_ENABLED`。未显式设置时，它跟随 `IPE_OTLP_ENABLED`；两者都未设置时默认为 `true`。本地公共脚本不再写入 `IPE_RUNTIME_OTEL_ENABLED=false`，因此 `start-local.ps1 -EnableOtlp` 或环境中的 `IPE_OTLP_ENABLED=true` 会同时启用 Runtime Trace。需要单独关闭或强制开启时，仍可显式设置该变量。
+
 | 入口 | 协议通道 | 运维平台 | 模拟器 |
 |---|---|---|---|
 | 业务控制台 | — | <http://localhost:5173>（前端）；<http://localhost:19082>（API） | <http://localhost:19081> |
@@ -37,15 +39,18 @@ AI 助手（`19083`）的 `health` / `prometheus` 入口遵循同一规则；AI 
 
 ## IDEA 启动
 
-两个 Run Configuration 都挂载同一份 `.env-local` 即可：
+运维平台、协议通道和模拟器的 Run Configuration 挂载同一份 `.env.local` 即可：
 
 ```text
 IPE_OTLP_ENABLED=true
 IPE_OTLP_ENDPOINT=http://127.0.0.1:4318
 IPE_ENVIRONMENT=local
+# 可选：不设置时跟随 IPE_OTLP_ENABLED
+# IPE_RUNTIME_OTEL_ENABLED=true
 ```
 
-服务名由 `spring.application.name` 自动区分（`iot-protocol-expert-protocol-gateway` / `iot-protocol-expert-simulator`），不需要 Agent 参数或单独的服务名变量。`.env-local` 已被 `.gitignore` 忽略。
+服务名由 `spring.application.name` 自动区分（`iot-protocol-expert-ops` / `iot-protocol-expert-protocol-gateway` /
+`iot-protocol-expert-simulator`），不需要 Agent 参数或单独的服务名变量。`.env.local` 已被 `.gitignore` 忽略。
 
 ## Grafana
 
@@ -74,7 +79,7 @@ access_token / api_key / secret 等凭据键；移除 `db.statement`、`db.query
 
 ## AI 对话链路
 
-Runtime 服务注册 AgentScope 官方 `TelemetryTracer`，Span 使用 GenAI 语义约定，并复用 Spring Boot 的 OTLP 管道：
+当 `IPE_RUNTIME_OTEL_ENABLED` 解析为 `true` 时，Runtime 服务注册 AgentScope 官方 `TelemetryTracer`，Span 使用 GenAI 语义约定，并复用 Spring Boot 的 OTLP 管道：
 
 > AgentScope 2.0.4 中带内容的 `TelemetryTracer` 仍通过已标记待删除的 `TracerRegistry` 挂载；升级 2.1+
 > 时需复核官方 middleware 是否已支持内容属性，再调整 `AgentRuntimeTelemetry`。
@@ -93,16 +98,19 @@ ai run execute                     # Run 队列恢复的父 Span
     └── execute_tool search_protocol_knowledge
 ```
 
+最终全流程实测：结果 `1a7dc3e3-7644-4d10-9ed6-64809461b71e` 的 Trace `89efd4447cc7ea7f95d54b5dd0f9ed6e` 包含 144 个 Span，实际链路为 `agent.run -> invoke_agent -> chat/execute_tool`，其中 `execute_tool` 为 `read_skill_resource`。较早专项复验的结果 `f676acdf-4d48-4938-8894-8fe710eac522` 对应 146 Span 的 Trace `4ee37cd161c4148f38e6c07a7cadb9f8`，作为历史证据保留。
+
 默认只导出元数据与 token；`gen_ai.input.messages`、`gen_ai.output.messages`、`gen_ai.tool.call.arguments/result`、
-`gen_ai.tool.definitions`、`agentscope.function.*` 不写入 Trace。需要在本地查看完整对话时显式开启：
+`gen_ai.tool.definitions`、`agentscope.function.*` 不写入 Span 属性、Event、异常附加属性或 Link。需要在本地查看消息或工具正文时显式开启：
 
 ```powershell
 $env:IPE_RUNTIME_OTEL_CONTENT_ENABLED='true'
 $env:IPE_RUNTIME_OTEL_MAX_CONTENT_CHARS='8192'
 ```
 
-开启后仍会按长度截断，并对常见凭据 JSON 字段、Bearer Token、`sk-*` 密钥做脱敏。完整 prompt/response 属于业务数据，
-不应在生产默认开启；Tempo / Doris 的保留期和访问权限需要同步评估。
+开启后仍会对常见凭据 JSON 字段、Bearer Token、`sk-*` 密钥、URL 内嵌凭据和私钥块做脱敏；`IPE_RUNTIME_OTEL_MAX_CONTENT_CHARS` 大于 0 时再按配置长度截断，示例中的 8192 表示 8192 字符上限，设置为 0 表示不设应用层字符上限。prompt/response 属于业务数据，不应在生产默认开启；Tempo / Doris 的保留期和访问权限需要同步评估。
+
+`IPE_RUNTIME_OTEL_CONTENT_ENABLED` 只控制 Tempo 中的消息和工具正文属性。评估所需的工具参数/结果审计证据由 Runtime 事件写入 Control 数据库，每次调用的参数整体或结果整体最多 8000 字符并在写入前脱敏；它与 Trace 内容开关独立，详见 [Agent 能力评估](agent-evaluation.md) 和 [Agent 使用说明](agent-operation-guide.md)。
 
 Grafana 查询：
 
@@ -145,7 +153,20 @@ mvn -B package
 python scripts/verify-spring-local.py
 ```
 
-验收脚本用独立目录、29080/29081 HTTP、28768 TCP 启动两端实例，并启动一个本地 OTLP 接收器，验证充电计费/断网补传/并充、同 Trace 的 HTTP 桥接、真实 TCP 命令与 ACK 父子关系、JDBC Span、JSON 日志关联、Prometheus 直方图，以及链路/指标/日志三类 OTLP 请求。结束后只清理测试进程，保留用户调试实例。
+验收脚本会先在 PostgreSQL 中创建一次性数据库，使用独立目录和固定隔离端口启动 OPS（29082）、Gateway（29080）、
+Simulator（29081，TCP 28768、OCPP 28769）三个实例，再启动本地 OTLP 接收器，验证充电计费、断网补传、并充、
+同 Trace 的 HTTP 桥接、真实 TCP 命令与 ACK 父子关系、JDBC Span、JSON 日志关联、Prometheus 直方图，以及链路、
+指标、日志三类 OTLP 请求。结束后停止测试进程并删除临时数据库，不接触业务库或用户调试实例。
+
+这些端口用于隔离本地调试实例；运行前需确认端口未被其他进程占用。`IPE_OTLP_ENDPOINT` 只填写 Collector 基础地址，
+应用会追加 `/v1/traces`、`/v1/logs`、`/v1/metrics`，不要填写具体导出路径。
+
+脚本需要 `psycopg2`；数据库账号需能连接 `postgres` 管理库并创建、终止连接和删除临时数据库。连接配置优先读取
+`PEP_CONTROL_DB_*`，兼容 `IPE_OPS_DB_*`；URL、用户名和密码从同一组配置读取，原 URL 的 TLS query 参数会保留。
+
+Tempo 查询地址和 Loki 地址必须从 Control/OPS 所在网络可达；Collector 写入地址不能替代 Tempo 查询地址。若服务端
+只监听本机，应部署受控的反向代理后再配置 `IPE_TEMPO_QUERY_BASE_URL` 和 `IPE_LOKI_URL`，否则结果页的“加载链路”
+和服务侧日志诊断会明确不可用。
 
 服务端健康检查：
 

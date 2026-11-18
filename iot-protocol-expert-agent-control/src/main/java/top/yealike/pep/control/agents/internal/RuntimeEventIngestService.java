@@ -19,6 +19,7 @@ import top.yealike.pep.control.runs.RunRecords;
 import top.yealike.pep.control.runs.RunRepository;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.control.support.JsonSupport;
+import top.yealike.pep.observability.SensitiveDataSanitizer;
 import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.runtime.contract.RunEvent;
 import top.yealike.pep.runtime.contract.RunEventAck;
@@ -31,6 +32,8 @@ public class RuntimeEventIngestService {
     private static final Logger log = LoggerFactory.getLogger(RuntimeEventIngestService.class);
     private static final int MAX_EVENTS = 32;
     private static final int MAX_EVENT_BYTES = 64 * 1024;
+    private static final int MAX_TOOL_EVIDENCE_CHARS = 8_000;
+    private static final int MAX_DENY_REASON_CHARS = 128;
 
     private final RunRepository runs;
     private final ConversationChannels channels;
@@ -159,18 +162,56 @@ public class RuntimeEventIngestService {
                         toolCallId,
                         batch.executionToken(),
                         event.createdAt());
-            case "tool.completed", "tool.failed" ->
+            case "tool.arguments" ->
+                runs.updateRuntimeToolArguments(
+                        id, batch.runId(), boundedEvidence(event.payload().get("arguments")));
+            case "tool.completed", "tool.failed" -> {
+                String errorCode = string(event.payload().get("errorCode"));
+                String decision = decision(event.type(), string(event.payload().get("decision")));
+                boolean denied = "DENIED".equals(decision);
+                Map<String, Object> resultSummary =
+                        boundedEvidence(event.payload().get("resultSummary"));
                 runs.finishRuntimeToolCall(
                         id,
                         batch.runId(),
                         "tool.completed".equals(event.type()) ? "SUCCEEDED" : "FAILED",
-                        event.payload(),
+                        decision,
+                        denied ? denyReason(resultSummary) : null,
+                        resultSummary,
                         integer(event.payload().get("durationMs")),
                         event.createdAt());
+            }
             default -> {
                 // 非工具事件无需更新审计表
             }
         }
+    }
+
+    private static String decision(String eventType, String runtimeDecision) {
+        if ("tool.completed".equals(eventType)) {
+            return "ALLOW";
+        }
+        return "ALLOW".equals(runtimeDecision) || "DENIED".equals(runtimeDecision) ? runtimeDecision : null;
+    }
+
+    private static String denyReason(Map<String, Object> resultSummary) {
+        String text = string(resultSummary.get("text"));
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        return SensitiveDataSanitizer.sanitize(text, MAX_DENY_REASON_CHARS);
+    }
+
+    private Map<String, Object> boundedEvidence(Object raw) {
+        Map<String, Object> value = JsonSupport.objectMap(raw);
+        if (value.isEmpty()) {
+            return Map.of();
+        }
+        Object rawText = value.get("text");
+        String text = rawText instanceof String string ? string : JsonSupport.write(value);
+        boolean truncated = Boolean.TRUE.equals(value.get("truncated"))
+                || text.codePointCount(0, text.length()) > MAX_TOOL_EVIDENCE_CHARS;
+        return Map.of("text", SensitiveDataSanitizer.sanitize(text, MAX_TOOL_EVIDENCE_CHARS), "truncated", truncated);
     }
 
     private static String string(Object value) {

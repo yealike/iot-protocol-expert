@@ -16,6 +16,7 @@ import top.yealike.pep.control.evaluations.EvaluationRecords.Score;
 import top.yealike.pep.control.runs.RunRecords.Run;
 import top.yealike.pep.control.runs.RunRecords.ToolCall;
 import top.yealike.pep.control.support.JsonSupport;
+import top.yealike.pep.observability.SensitiveDataSanitizer;
 
 /** Built-in deterministic evaluators and the optional LLM-as-a-Judge evaluator. */
 @Component
@@ -23,6 +24,8 @@ public class EvaluationScorer {
 
     private static final org.slf4j.Logger LOG = org.slf4j.LoggerFactory.getLogger(EvaluationScorer.class);
     private static final Pattern TRACEPARENT = Pattern.compile("^00-([0-9a-f]{32})-([0-9a-f]{16})-[0-9a-f]{2}$");
+    private static final int MAX_JUDGE_TOOL_CONTEXT_CHARS = 24_000;
+    private static final int MAX_JUDGE_TOOL_FIELD_CHARS = 8_000;
     private final EvaluationRepository evaluations;
     private final ModelProfileService models;
 
@@ -42,8 +45,10 @@ public class EvaluationScorer {
         long successfulCalls = tools.stream()
                 .filter(tool -> "SUCCEEDED".equals(tool.status()) && "ALLOW".equals(tool.decision()))
                 .count();
-        long deniedCalls = tools.stream()
-                .filter(tool -> "ALLOW".equals(tool.decision()) == false)
+        long deniedCalls =
+                tools.stream().filter(tool -> "DENIED".equals(tool.decision())).count();
+        long unknownAuthorizationCalls = tools.stream()
+                .filter(tool -> !"ALLOW".equals(tool.decision()) && !"DENIED".equals(tool.decision()))
                 .count();
         BigDecimal successRatio = tools.isEmpty()
                 ? BigDecimal.ONE
@@ -56,13 +61,17 @@ public class EvaluationScorer {
                 successRatio,
                 traceId,
                 Map.of("successfulCalls", successfulCalls, "totalCalls", tools.size())));
-        scores.add(bool(
-                result,
-                "tool_authorization_compliant",
-                "工具调用是否均获准",
-                deniedCalls == 0,
-                traceId,
-                Map.of("deniedCalls", deniedCalls)));
+        Map<String, Object> authorizationEvidence =
+                Map.of("deniedCalls", deniedCalls, "unknownCalls", unknownAuthorizationCalls);
+        if (deniedCalls > 0) {
+            scores.add(
+                    bool(result, "tool_authorization_compliant", "工具调用是否均获准", false, traceId, authorizationEvidence));
+        } else if (unknownAuthorizationCalls == 0) {
+            scores.add(bool(result, "tool_authorization_compliant", "工具调用是否均获准", true, traceId, authorizationEvidence));
+        } else {
+            scores.add(categorical(
+                    result, "tool_authorization_compliant", "工具调用授权状态未知", "UNKNOWN", traceId, authorizationEvidence));
+        }
 
         Map<String, Object> usage = run.usage() == null ? Map.of() : run.usage();
         Long inputTokens = numberValue(usage.get("inputTokens"));
@@ -143,14 +152,7 @@ public class EvaluationScorer {
                     "answer",
                     answer,
                     "tools",
-                    tools.stream()
-                            .map(tool -> Map.of(
-                                    "name", safe(tool.toolName()),
-                                    "status", safe(tool.status()),
-                                    "decision", safe(tool.decision()),
-                                    "arguments", tool.argsSummary() == null ? Map.of() : tool.argsSummary(),
-                                    "result", tool.resultSummary() == null ? Map.of() : tool.resultSummary()))
-                            .toList()));
+                    judgeTools(tools)));
             String response = models.completeEvaluation(
                     modelId,
                     "Evaluate the agent run. Return a compact JSON object matching this schema: "
@@ -206,6 +208,32 @@ public class EvaluationScorer {
                     null,
                     null));
         }
+    }
+
+    private List<Map<String, Object>> judgeTools(List<ToolCall> tools) {
+        if (tools.isEmpty()) {
+            return List.of();
+        }
+        int fieldBudget = Math.min(
+                MAX_JUDGE_TOOL_FIELD_CHARS, Math.max(128, MAX_JUDGE_TOOL_CONTEXT_CHARS / (tools.size() * 2) - 128));
+        return tools.stream()
+                .map(tool -> Map.of(
+                        "name", safe(tool.toolName()),
+                        "status", safe(tool.status()),
+                        "decision", safe(tool.decision()),
+                        "arguments", judgeEvidence(tool.argsSummary(), fieldBudget),
+                        "result", judgeEvidence(tool.resultSummary(), fieldBudget)))
+                .toList();
+    }
+
+    private Map<String, Object> judgeEvidence(Map<String, Object> source, int maxChars) {
+        if (source == null || source.isEmpty()) {
+            return Map.of();
+        }
+        String text = source.get("text") instanceof String string ? string : JsonSupport.write(source);
+        boolean truncated =
+                Boolean.TRUE.equals(source.get("truncated")) || text.codePointCount(0, text.length()) > maxChars;
+        return Map.of("text", SensitiveDataSanitizer.sanitize(text, maxChars), "truncated", truncated);
     }
 
     private static Map<String, Object> parseJsonObject(String value) {
@@ -265,6 +293,30 @@ public class EvaluationScorer {
                 null,
                 name,
                 null,
+                null,
+                evidence,
+                "RULE",
+                "ACTIVE",
+                null,
+                null);
+    }
+
+    private static Score categorical(
+            Result result, String key, String label, String value, String traceId, Map<String, Object> evidence) {
+        return new Score(
+                UUID.randomUUID(),
+                result.id(),
+                key,
+                1,
+                "TRACE",
+                traceId,
+                null,
+                key,
+                "CATEGORICAL",
+                null,
+                null,
+                label,
+                value,
                 null,
                 evidence,
                 "RULE",

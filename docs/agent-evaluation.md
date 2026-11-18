@@ -1,8 +1,8 @@
 # Agent 能力评估体系建设
 
 > 项目：iot-protocol-expert
-> 文档状态：实施设计基线
-> 编写日期：2026-11-16
+> 文档状态：实施设计基线与验收补充
+> 编写日期：2026-11-16；验收更新：2026-11-18
 > 适用仓库：iot-protocol-expert 项目根目录
 > 参考源码：本地 Langfuse 参考仓库（HEAD b7c53d5223）、本地 Opik 参考仓库（HEAD d714cc9a3d）
 > 实施约束：保持当前项目的 Java、Spring、AgentScope 和前端技术栈；Langfuse/Opik 仅作设计参考，不作为运行时依赖或评估后端。
@@ -34,11 +34,11 @@
 ### 2.1 本次建设范围
 
 - 会话新建行为：当前选中会话尚无任何聊天请求时，用户点击“新建”不再创建另一个空会话。
-- AI Trace 内容采集：元数据、Token、完整消息正文、工具参数、工具定义和工具结果均写入 AI Agent Trace；不对这些 Trace 字段脱敏、不截断。
+- AI Trace 元数据采集默认跟随 OTLP 开关，消息和工具正文通过独立内容开关显式开启；评估所需的工具参数/结果另以有界、脱敏的审计证据持久化，供 Judge 和人工复核使用。
 - 线上评估：Run 终态后针对任务完成度、回答质量、工具执行、轨迹效率、成本等执行评估。
 - 离线评测集：创建/维护评测集和用例，指定已发布 Agent Release 执行回归实验。
 - 评分：支持确定性规则评分、Judge 模型评分和人工评分；评分可关联 Run、Trace、Span 或 Case。
-- Trace 详情：通过项目 AI API 读取 Tempo 中的 Trace，并在 OPS Web 中展现 Span 树、输入输出、耗时、Token、工具参数/结果及评分。
+- Trace 详情：通过项目 AI API 读取 Tempo 中的 Trace，并在 OPS Web 中展现 Span 树、耗时、Token、评分及已采集的输入输出；工具参数/结果审计证据可从评估结果与 Judge 输入侧复核。
 - 评估结果查询：汇总、分页、筛选、详情、评估规则版本、实验对比。
 - 复用现有 OPS Web 页面工程，新增 AI 管理下的“能力评估”导航和页面。
 
@@ -62,7 +62,7 @@
 | Control | iot-protocol-expert-agent-control 管理配置、会话、Run、事件和发布 | 在 AI 模块增加 evaluation 领域包及管理 API |
 | 数据库 | PostgreSQL；MyBatis Mapper；现有 SQL 位于 resources/mapper/ai/*.xml | 新增 Mapper 接口和 XML；新建表由 Flyway 新迁移维护 |
 | Trace | Spring Boot Micrometer/OTel 与 AgentScope TelemetryTracer 共用 OTel Provider；OTLP HTTP 经 Collector 至 Tempo | 复用 Trace ID 和 Tempo；补齐评估所需 Span 属性及查询 API |
-| Trace 安全过滤 | ContentFilteringTracer 可截断/清洗内容；Collector 当前有属性删除/脱敏规则 | 按本次要求取消 AI Trace 的内容清洗、脱敏和长度截断 |
+| Trace 安全过滤 | `ContentFilteringTracer` 默认丢弃正文，仅保留元数据与 Token；显式开启正文后复用 `SensitiveDataSanitizer` | Trace 正文与评估工具审计证据采用两条独立策略，分别配置、分别存储 |
 | Run | PostgreSQL 持久化 Run、事件、消息、工具调用、traceparent | 作为线上评估源及离线实验的执行载体 |
 | 配置发布 | Agent Release 固定模型、Prompt、Skill、MCP 及 manifest digest；Control 为主事实源，Nacos 为注册/发现投影 | 每个评分及实验绑定 agentReleaseId、manifestDigest |
 | Web | React 19、TypeScript、Vite、Ant Design、React Query；OPS 与 AI 管理共用同一个 Web 工程 | 沿用 AI 管理 Shell、API client、权限和组件 |
@@ -120,8 +120,8 @@
 4. 离线实验使用正式 Agent Run 逻辑，但显式标记为 EVALUATION 来源；会话及 Run 在用户普通会话列表中隐藏。
 5. Span Score 是可选的细粒度能力；默认评估整次 Run，并仅对有明确准则的模型调用/工具调用 Span 评分。
 6. 业务结果使用确定性校验；LLM Judge 只负责语义判断，保留理由与证据；不把 Judge 单一分数当作系统事实。
-7. 现有 OTel Trace 为事实执行证据；Evaluation DB 只持久化分数、规则版本、Run/Trace/Span ID、必要的简短证据和实验关系，不重复存储整份 Trace。
-8. 线上 Trace 完整保留内容按本需求不脱敏、不截断；Trace 查询 API 必须经过应用身份和项目授权。
+7. 现有 OTel Trace 为执行事实和链路证据；Evaluation DB 持久化分数、规则版本、Run/Trace/Span ID、实验关系，以及每次工具调用的参数整体、结果整体各最多 8000 字符的脱敏审计证据，不复制整份 Trace。
+8. Trace 正文默认不进入 Tempo；显式开启后仍执行常见凭据脱敏和配置的长度限制。Trace 查询 API 必须经过应用身份和项目授权。
 
 ## 5. 总体架构
 
@@ -318,44 +318,51 @@ Eval Run 下的单个 Case/线上 Run 结果。
 - 事件/工具调用已有关联 run_id；必要时补齐工具 span_id 与 trace_id 字段，但避免复制大块原始内容到 PostgreSQL。
 - 会话列表仅展示 USER 来源会话；EVALUATION 会话由评估 UI 通过 eval_result 访问。
 
-## 7. Trace 设计与完整内容采集
+## 7. Trace 设计与内容证据策略
 
 ### 7.1 必须关联的属性
 
-在根 Agent Run Span 与关键子 Span 上记录：
+在根 Agent Run Span 与关键子 Span 上记录元数据和关联信息：
 
 - ipe.run.id、ipe.conversation.id、ipe.eval.mode、ipe.eval.result_id（评估场景）
 - ipe.agent.key、ipe.agent.version、ipe.agent.release_id、ipe.agent.manifest_digest
 - ipe.skill.keys / version、ipe.mcp.keys / version（按实际装载内容）
 - gen_ai.operation.name、gen_ai.provider.name、gen_ai.request.model
 - gen_ai.usage.input_tokens、gen_ai.usage.output_tokens
-- tool.name、tool.call.id、tool.call.arguments、tool.call.result、tool.execution.state
+- tool.name、tool.call.id、tool.execution.state；工具参数和结果正文仅在内容采集开关开启时附加
 - span.status、error.type、错误消息和重试计数
 - 运行时间、超时、取消、权限拒绝结果
 
 业务 ID 作为 Span 属性可以用于 trace 查询；不得把高基数 Run/Trace/设备 ID 放入 Prometheus Metric 标签。
 
-### 7.2 内容采集规则
+### 7.2 Trace 内容采集规则
 
-按用户明确要求，Agent Trace 内容策略为完整原文：
+- Runtime 的 AgentScope 元数据 Span 由 `IPE_RUNTIME_OTEL_ENABLED` 控制，未设置时跟随 `IPE_OTLP_ENABLED`；两者都未设置时默认开启。
+- `gen_ai.input.messages`、`gen_ai.output.messages`、工具 Schema、工具参数和工具结果等正文键默认从 Span 属性、Span Event、异常附加属性和 Link 中丢弃，只导出 GenAI 元数据与 Token。
+- 需要正文时显式设置 `IPE_RUNTIME_OTEL_CONTENT_ENABLED=true`。应用层会先用 `SensitiveDataSanitizer` 处理常见凭据字段和格式，再按 `IPE_RUNTIME_OTEL_MAX_CONTENT_CHARS` 截断；值为 0 表示应用层不限制长度。
+- Collector、Tempo 的采样、保留期和基础设施过滤仍独立生效，启用应用开关不等于基础设施自动保存全部正文。
+- Metrics 和 Logs 不因该开关附带完整对话或工具正文。
 
-- 始终采集 user/system/developer/tool 消息正文和 Agent 输出正文。
-- 始终采集工具 Schema、工具名称、完整参数和完整结果。
-- 不进行内容脱敏、凭据替换、关键字过滤或字符截断。
-- 取消 ContentFilteringTracer 的 sanitize 和 maxContentChars 限制；AgentScope TelemetryTracer 使用原生 OpenTelemetry Tracer。
-- 修改 Collector Trace pipeline，移除会删除或重写 AI GenAI 内容属性的 redaction/filter/transform 规则；Trace 属性完整送达 Tempo。
-- 保留 OTel 标准结构，优先使用 GenAI 语义约定属性；项目自定义业务属性使用 ipe.* 前缀。
-- 对内容型 Span Attribute/Events 使用结构化字符串/JSON，避免将同一消息重复写入多个字段。
-- Metrics 和 Logs 不因本需求附带完整对话/工具正文；全量正文范围限定为 AI Trace。
+### 7.3 评估工具审计证据
 
-### 7.3 Trace 展示与查询
+Runtime 从 AgentScope 的工具调用增量事件收集参数和结果，分别形成有界证据：
+
+- 每次工具调用的参数整体和结果整体分别最多保留 8000 字符；结构化形式为 `{"text":"...","truncated":true|false}`。
+- 工具授权决策由 Runtime 显式传递，Control 只接受明确的 `ALLOW` 或 `DENIED`；未决、超时或执行前中断保持 `PENDING`，评估中记为 `CATEGORICAL / UNKNOWN`。`deny_reason` 脱敏后限制为 128 字符，完整证据继续保存在 `result_summary`。
+- 写入前脱敏常见 JSON 凭据字段、`key=value` 密钥、Bearer Token、`sk-*`、URL 内嵌凭据和 PEM 私钥块。
+- 脱敏只覆盖已知凭据模式，业务数据本身仍可能保留；8000 字符是审计容量边界，不是安全或保留策略保证。
+- Runtime 通过 `tool.arguments` 和 `tool.completed` / `tool.failed` 事件送达 Control，写入 `ai_tool_call.args_summary` 与 `result_summary`；Judge 和人工复核读取这些字段。
+- `tool.started` 只创建 `decision=PENDING` 的审计行；终态事件根据实际结果收敛为 `ALLOW` 或 `DENIED`，拒绝原因同时写入 `deny_reason`。Rule evaluator 只在 Run 完成后读取终态，避免把尚未完成的授权状态伪装成已通过。
+- 该证据链不依赖 `IPE_RUNTIME_OTEL_CONTENT_ENABLED`。Trace 正文关闭不会丢弃评估审计证据；开启 Trace 正文也不会把审计证据上限从 8000 字符提高。
+
+### 7.4 Trace 展示与查询
 
 - AI Control 新增 Tempo Query Client，使用配置项 IPE_TEMPO_QUERY_BASE_URL 查询指定 trace_id。
 - 后端通过项目 API 鉴权后代理 Trace，浏览器不直接访问内部 Tempo 服务。
 - Tempo Trace 查询失败或已过保留期时，评分和 Run 摘要仍可查看；Trace 面板显示明确不可用状态。
-- 展示 Span 树、父子关系、时间线、状态、输入输出、工具参数/返回、模型及 Token。
+- 展示 Span 树、父子关系、时间线、状态、模型及 Token；正文、工具参数和结果仅在 Trace 内容采集开启且已写入 Tempo 时显示。
 - Span 详情中展示直接关联的 Score；Run 详情展示聚合分数和各指标分数。
-- 线上 Eval 结果保留 trace_id、run_id 和评分证据；原始完整 Trace 由 Tempo 按现有 Trace 保留策略保存。
+- 线上 Eval 结果保留 trace_id、run_id 和评分证据；Tempo 中原始 Trace 记录及其可用正文遵循内容采集与保留策略。
 
 ## 8. 评分体系
 
@@ -376,7 +383,7 @@ Eval Run 下的单个 Case/线上 Run 结果。
 2. 安全违规、未授权写操作、关键业务状态错误为硬失败，不以其他高分抵消。
 3. 通过率、平均分、加权分数、置信度、样本数分别展示。
 4. Judge 输出结构化 JSON：score、label、reason、evidence；格式校验失败可重试一次，之后记为 evaluator failure。
-5. Judge 不得参与同一 Agent Run 的工具执行，只读取已完成 Trace。
+5. Judge 不得参与同一 Agent Run 的工具执行，只读取已完成 Run 的回答、Trace 关联和持久化工具审计证据。
 6. Judge Model 使用单独配置；价格、token、延迟计入 Evaluation Run 成本。
 7. Judge Prompt 和算法每次修改产生新 definition_version；不同版本结果不混合做直接趋势对比。
 8. 对低置信度、规则冲突、Judge disagreement 的结果进入人工复核队列。
@@ -389,7 +396,7 @@ Eval Run 下的单个 Case/线上 Run 结果。
 - tool_execution_success：没有工具失败，或者错误恢复后任务仍满足最终断言。
 - answer_relevance：Judge 对齐用户请求与最终回答。
 - protocol_correctness：Judge 对协议字段、交互顺序、错误码和参考知识进行核验。
-- groundedness：回答事实须有 Trace 中检索/工具证据支持。
+- groundedness：回答事实须有 Run 的最终答案、检索结果或持久化工具审计证据支持。
 - trajectory_efficiency：重复调用、无效调用、明显偏离任务步骤分别评分。
 - token_usage、duration_ms、estimated_cost：确定性聚合指标。
 - human_quality：OPS Web 人工复核量表。
@@ -475,7 +482,7 @@ QUEUED -> EXECUTING -> EVALUATING -> COMPLETED
 3. 评估器：内置指标说明、作用域、评分类型、版本；展示 Judge Prompt 和模型 profile，但密钥不回显。
 4. 实验列表：状态、数据集版本、Agent Release/manifest digest、评估器版本、总体指标、耗时、操作人。
 5. 实验详情：各指标 aggregate、逐 Case 结果、失败类别、与基准实验对比。
-6. Trace 详情：可展开 Span 树，展示正文/工具输入输出；每个 Span 的 Score 与理由；跳转 Grafana Tempo。
+6. Trace 详情：可展开 Span 树；Trace 内容开关开启时展示已采集正文，工具参数/结果审计证据从评估记录读取；展示每个 Span 的 Score 与理由，并可跳转 Grafana Tempo。
 7. 人工复核：原评分、判据、Trace 证据、复核结果、评论；人工 Score 新增版本记录，不覆盖机器评分。
 8. 线上记录：生产 Run 按评估分数、失败、Judge disagreement、成本、时延过滤；可创建 Case。
 
@@ -555,8 +562,9 @@ evaluation/
 | ipe.ai.evaluation.max-judge-cost | 按项目值配置 | Judge 总预算上限 |
 | ipe.ai.evaluation.judge-model-profile | 空 | Judge Model Profile；为空时语义评分标记未配置 |
 | ipe.tempo.query-base-url | 空 | Tempo HTTP 查询地址；未设置时 Trace 面板显示不可用 |
-| ipe.ai.otel.content-enabled | false | 默认只采集元数据；仅在隔离排障环境显式开启正文 |
-| ipe.ai.otel.max-content-chars | 0 / unlimited | 按需求禁用内容截断；实现需避免将其误解释为默认长度 |
+| IPE_RUNTIME_OTEL_ENABLED | 跟随 IPE_OTLP_ENABLED | Runtime AgentScope 元数据 Span；两者均未设置时默认 true |
+| IPE_RUNTIME_OTEL_CONTENT_ENABLED | false | 是否将消息和工具正文写入 Trace；默认仅元数据 |
+| IPE_RUNTIME_OTEL_MAX_CONTENT_CHARS | 0 | Trace 内容应用层长度上限；0 表示不设应用层字符上限 |
 
 最终配置键命名以现有 RuntimeProperties/AiProperties 结构为准，不复制已有 IPE_OTLP_ENDPOINT 等配置。
 
@@ -572,9 +580,9 @@ evaluation/
 ### 阶段二：会话与 Trace 完整性
 
 - “新建会话”空会话保护。
-- 完整消息、工具参数和结果 Trace 属性。
+- 由内容开关控制的 Trace 正文属性，以及独立的工具参数/结果审计证据。
 - 业务 Run/Release/Conversation ID 与 OTel Trace 关联。
-- 只将 AI Trace 内容清洗规则关闭；不要把业务数据复制到 Metric labels。
+- Trace 正文遵循显式内容开关、应用层脱敏和配置长度限制；审计证据使用独立的 8000 字符有界脱敏持久化；不要把业务数据复制到 Metric labels。
 
 ### 阶段三：线上评分
 
@@ -612,10 +620,11 @@ evaluation/
 ### 15.2 Trace
 
 - 同一次 Run 中 HTTP/Run execute/Agent invoke/chat/tool spans trace_id 连续且父子关系正确。
-- Trace 可查看完整消息正文、完整工具参数、完整返回结果和 Agent 元数据。
-- 不发生内容脱敏、凭据替换或字符截断。
+- 默认可查看 GenAI 元数据、Token 和 Span 关系；正文与工具内容仅在 `IPE_RUNTIME_OTEL_CONTENT_ENABLED=true` 时写入 Tempo。
+- 开启正文后必须经过常见凭据脱敏，并遵循配置的长度上限；基础设施采样与保留期仍可能截短可用历史。
 - Run、Agent Release、manifest digest、评估 Case 均可从 Trace 或 Result 互相定位。
 - Tempo unavailable 不影响 Run 完成、Score 持久化和历史结果查询。
+- 评估工具参数/结果必须同时可由 `ai_tool_call` 审计证据复核；每次调用的参数整体、结果整体各最多 8000 字符且带截断标记。
 
 ### 15.3 Evaluate
 
@@ -642,14 +651,14 @@ evaluation/
 
 - AgentScope Java 2.0.4 对消息、工具 Schema、参数、结果及异常事件实际导出的 GenAI 属性键。
 - Micrometer Tracing 与 OTel 原生 Span 在 Runtime 的 context propagation、异步队列和 Scope 生命周期。
-- 当前 Collector 配置中具体的 attributes/redaction/filter/transform processors，确认不再改写完整 AI 内容。
+- 当前 Collector 配置中具体的 attributes/redaction/filter/transform processors，确认其与应用层内容开关、脱敏和长度策略的组合符合部署要求。
 - Tempo query API 版本、响应格式、鉴权、最大 Trace 响应体限制和保留期限。
 - LLM Judge 使用的 Provider/Model Profile 是否支持 JSON/结构化输出；Token 价格来源和价格表版本化方式。
 - Run 完成状态和 ToolCall/Event 表之间的数据一致性及重试语义。
 - OPS 当前菜单权限策略和用户角色对评估管理/人工复核的分权需求。
 
 
-## 17. 本次代码落地说明（2026-11-16）
+## 17. 实施与验收状态（2026-11-16；2026-11-18 复验）
 
 本节描述当前交付代码的实际行为；前文的目标指标与扩展规划不等同于已上线能力。
 
@@ -684,14 +693,15 @@ evaluation/
 
 ### 17.4 Trace 内容与界面
 
-- AgentScope 使用原生 OTel Tracer，不再包装内容过滤器；消息和工具参数不经过原有脱敏及字符截断。
-- Runtime MCP 调用在结果给模型截断之前记录 `mcp.request` / `mcp.response` 事件，包含完整原始参数和结果；模型上下文的长度限制仍按执行配置生效。
+- Runtime 的 AgentScope 元数据埋点默认跟随 `IPE_OTLP_ENABLED`；本地公共脚本不再强制关闭 `IPE_RUNTIME_OTEL_ENABLED`。
+- AgentScope 通过 `ContentFilteringTracer` 执行正文策略：默认丢弃消息、工具参数和结果正文；显式开启后复用 `SensitiveDataSanitizer` 脱敏并按配置截断。
+- Runtime 从工具调用增量事件生成 `tool.arguments`、`tool.completed` / `tool.failed`，Control 将其中的参数和结果分别限制为最多 8000 字符后写入 `ai_tool_call.args_summary/result_summary`。Judge 使用这份证据，不要求 Tempo 保存正文。
 - Runtime 增加 Run/Release 元数据和 Token 事件。异步链路沿用项目现有 Micrometer/OTel 上下文传播。
-- Trace 查询由 AI 服务端代理 Tempo；Web 解析 Span 父子关系，显示属性和事件，并支持选中节点人工打分。
-- 完整采集依赖实际部署的 OTel 采样、导出、Collector 与 Tempo 接收/保留配置；本次没有操作外部 Collector 或 Tempo 实例。应用配置不等同于基础设施无限容量。
+- Trace 查询由 AI 服务端代理 Tempo；Web 解析 Span 父子关系，显示属性和事件，并支持选中节点人工打分。最终复验 Trace `89efd4447cc7ea7f95d54b5dd0f9ed6e` 包含 144 个 Span，链路为 `agent.run -> invoke_agent -> chat/execute_tool`。
+- Trace 正文是否可查仍依赖实际部署的 OTel 采样、导出、Collector 与 Tempo 接收/保留配置；应用配置不等同于基础设施无限容量。
 
 ### 17.5 实施边界与验收方式
 
 - 成本字段预留；没有价格表时保持空值，不填入估算零成本。货币预算、任意自定义 Evaluator 插件、多轮仿真、分布式高并发评测、在线 Judge 采样策略、专用标注队列属于后续扩展。
 - 当前界面查询前 100 个实验/数据集，结果 API 支持分页；实验指标对比基于各自数据集快照，跨不同快照不能认定是严格回归结论。
-- 本次 Java 编译、前端 TypeScript 类型检查、前端生产构建、Mapper XML 语法检查和代码规范静态扫描均通过；不新增或运行测试，不向共享数据库执行迁移。数据库迁移、Runtime 实际模型调用、Tempo 联调和浏览器交互验收需要在部署环境完成。
+- 2026-11-17 至 2026-11-18 的全流程已执行 Runtime 实际模型调用、Tempo 查询和浏览器交互。最终实验 `12fae36d-5c71-4206-a890-8784feff3950` 的 2/2 结果均为 `answer_quality=1.0`；工具题结果 `1a7dc3e3-7644-4d10-9ed6-64809461b71e` 的 Judge 引用 `data=[]`、`partial=false`、`warnings=[]` 与 `FLOW_OK`。本次人工评分最终为 0.9，浏览器刷新后仍可见；较早专项复验的 `e9059e2b796da845` Span 人工评分为 0.92，作为历史证据保留。

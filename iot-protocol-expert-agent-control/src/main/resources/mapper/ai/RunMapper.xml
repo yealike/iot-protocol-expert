@@ -445,7 +445,7 @@
             (id, run_id, conversation_id, tool_name, status, decision, args_summary, created_at,
              component_key, component_version, original_tool_name, tool_alias, idempotency_key, execution_token)
         values
-            (#{id}, #{runId}, #{conversationId}, #{toolName}, 'SENT', 'ALLOW', '{}'::jsonb, #{createdAt},
+            (#{id}, #{runId}, #{conversationId}, #{toolName}, 'SENT', 'PENDING', '{}'::jsonb, #{createdAt},
              #{componentKey}, #{componentVersion}, #{originalToolName}, #{toolAlias}, #{idempotencyKey},
              #{executionToken})
         on conflict (id) do nothing
@@ -456,7 +456,20 @@
            set status = #{status},
                result_summary = cast(#{resultSummaryJson} as jsonb),
                duration_ms = #{durationMs},
-               finished_at = #{finishedAt}
+               finished_at = #{finishedAt},
+               decision = case when ai_tool_call.decision = 'PENDING'
+                               then coalesce(#{decision,jdbcType=VARCHAR}, ai_tool_call.decision)
+                               else ai_tool_call.decision end,
+               deny_reason = case when ai_tool_call.decision = 'PENDING'
+                                       and #{decision,jdbcType=VARCHAR} is not null
+                                  then #{denyReason,jdbcType=VARCHAR}
+                                  else ai_tool_call.deny_reason end
+         where id = #{id} and run_id = #{runId}
+    </update>
+
+    <update id="updateRuntimeToolArguments">
+        update ai_tool_call
+           set args_summary = cast(#{argsSummaryJson} as jsonb)
          where id = #{id} and run_id = #{runId}
     </update>
 

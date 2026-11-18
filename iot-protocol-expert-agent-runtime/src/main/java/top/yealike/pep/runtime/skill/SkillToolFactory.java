@@ -1,6 +1,8 @@
 package top.yealike.pep.runtime.skill;
 
+import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
+import io.agentscope.core.message.ToolResultState;
 import io.agentscope.core.tool.AgentTool;
 import io.agentscope.core.tool.ToolCallParam;
 import java.util.LinkedHashMap;
@@ -15,6 +17,7 @@ import top.yealike.pep.runtime.contract.SkillBundle;
 import top.yealike.pep.runtime.contract.SkillFile;
 import top.yealike.pep.runtime.execution.RunEventSink;
 import top.yealike.pep.runtime.execution.RunGuard;
+import top.yealike.pep.runtime.execution.ToolAuditMetadata;
 import top.yealike.pep.runtime.prepare.PreparedRelease;
 
 /** 文本 Skill 的两个只读工具；不物化文件、不执行脚本、不访问任意路径。 */
@@ -215,6 +218,17 @@ public class SkillToolFactory {
     }
 
     private static ToolResultBlock error(String message) {
+        if (message != null && message.startsWith("SKILL_PATH_DENIED")) {
+            return ToolResultBlock.builder()
+                    .state(ToolResultState.DENIED)
+                    .output(TextBlock.builder().text("Error: " + message).build())
+                    .metadata(Map.of(
+                            ToolAuditMetadata.ERROR_CODE,
+                            "SKILL_PATH_DENIED",
+                            ToolAuditMetadata.DECISION,
+                            ToolAuditMetadata.DENIED))
+                    .build();
+        }
         return ToolResultBlock.error(message);
     }
 

@@ -11,7 +11,6 @@ import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Pattern;
 
 /**
  * 在 AgentScope 官方 TelemetryTracer 与 OTel SDK 之间做内容策略。
@@ -31,12 +30,6 @@ public final class ContentFilteringTracer implements Tracer {
             "agentscope.function.input",
             "agentscope.function.output",
             "agentscope.format.output");
-
-    private static final Pattern JSON_SECRET = Pattern.compile(
-            "(?i)(\"(?:api[_-]?key|password|passwd|secret|access[_-]?token|refresh[_-]?token|authorization|cookie)\""
-                    + "\\s*:\\s*\")([^\"]*)(\")");
-    private static final Pattern BEARER = Pattern.compile("(?i)(Bearer\\s+)[A-Za-z0-9._~+/=-]+");
-    private static final Pattern API_KEY = Pattern.compile("(?i)\\bsk-[A-Za-z0-9_-]{8,}\\b");
 
     private final Tracer delegate;
     private final boolean contentEnabled;
@@ -58,13 +51,22 @@ public final class ContentFilteringTracer implements Tracer {
     }
 
     private String sanitize(String value) {
-        String result = JSON_SECRET.matcher(value).replaceAll("$1***$3");
-        result = BEARER.matcher(result).replaceAll("$1***");
-        result = API_KEY.matcher(result).replaceAll("sk-***");
-        if (maxContentChars > 0 && result.length() > maxContentChars) {
-            result = result.substring(0, maxContentChars) + "...[truncated]";
+        return SensitiveDataSanitizer.sanitize(value, maxContentChars);
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private Attributes filterAttributes(Attributes attributes) {
+        if (attributes == null || attributes.isEmpty()) {
+            return attributes;
         }
-        return result;
+        var filtered = Attributes.builder();
+        attributes.forEach((key, value) -> {
+            Object safe = filterValue((AttributeKey) key, value);
+            if (safe != null) {
+                filtered.put((AttributeKey<Object>) key, safe);
+            }
+        });
+        return filtered.build();
     }
 
     @SuppressWarnings("unchecked")
@@ -109,7 +111,7 @@ public final class ContentFilteringTracer implements Tracer {
 
         @Override
         public SpanBuilder addLink(SpanContext spanContext, Attributes attributes) {
-            delegate.addLink(spanContext, attributes);
+            delegate.addLink(spanContext, filterAttributes(attributes));
             return this;
         }
 
@@ -219,13 +221,25 @@ public final class ContentFilteringTracer implements Tracer {
 
         @Override
         public Span addEvent(String name, Attributes attributes) {
-            delegate.addEvent(name, attributes);
+            delegate.addEvent(name, filterAttributes(attributes));
             return this;
         }
 
         @Override
         public Span addEvent(String name, Attributes attributes, long timestamp, TimeUnit unit) {
-            delegate.addEvent(name, attributes, timestamp, unit);
+            delegate.addEvent(name, filterAttributes(attributes), timestamp, unit);
+            return this;
+        }
+
+        @Override
+        public Span addLink(SpanContext spanContext) {
+            delegate.addLink(spanContext);
+            return this;
+        }
+
+        @Override
+        public Span addLink(SpanContext spanContext, Attributes attributes) {
+            delegate.addLink(spanContext, filterAttributes(attributes));
             return this;
         }
 
@@ -237,7 +251,7 @@ public final class ContentFilteringTracer implements Tracer {
 
         @Override
         public Span recordException(Throwable exception, Attributes additionalAttributes) {
-            delegate.recordException(exception, additionalAttributes);
+            delegate.recordException(exception, filterAttributes(additionalAttributes));
             return this;
         }
 

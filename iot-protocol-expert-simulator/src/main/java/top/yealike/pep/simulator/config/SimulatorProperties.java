@@ -33,6 +33,9 @@ public class SimulatorProperties {
 
     private int opsTimeoutMs = 5000;
 
+    /** 模拟器转发设备命令时等待运维平台完成协议交互的最长时间。 */
+    private int platformProxyTimeoutSeconds = 60;
+
     public int getPlatformHttpPort() {
         return platformHttpPort;
     }
@@ -71,6 +74,14 @@ public class SimulatorProperties {
 
     public void setOpsTimeoutMs(int opsTimeoutMs) {
         this.opsTimeoutMs = opsTimeoutMs;
+    }
+
+    public int getPlatformProxyTimeoutSeconds() {
+        return platformProxyTimeoutSeconds;
+    }
+
+    public void setPlatformProxyTimeoutSeconds(int platformProxyTimeoutSeconds) {
+        this.platformProxyTimeoutSeconds = platformProxyTimeoutSeconds;
     }
 
     /** 桩编号：14 位数字（7 字节 BCD）。 */

@@ -86,16 +86,19 @@ Runtime 的模型调用中间件写入 `X-PEP-Logical-Call-Id`、`X-PEP-Attempt-
 
 ## 4. 验收结果
 
-2026-11-17 至 2026-11-18 本机实测：
+2026-11-18 本机最终复验：
 
-- `mvn -o test`：10 个模块全部通过；Control 74 个测试、Runtime 46 个、Simulator 27 个、Device Gateway 7 个。
-- JDK 21 下最终 `-Pcoding-guidelines verify`：8 个 reactor 模块全部通过；Control 77 项（3 项环境门控跳过）、Runtime 48 项、模型网关 23 项（18 项环境门控跳过），编码规范扫描 453 个文件、0 项违规。
+- JDK 21 下 `-Pcoding-guidelines clean verify`：11 个 reactor 模块全部 `SUCCESS`，总耗时 1 分 38 秒；244 项测试、0 失败、0 错误、27 项按环境条件跳过。编码规范扫描 455 个文件、0 项违规。
+- 模块级结果：Device Codec 19、Runtime Contract 12、OPS 9（3 项跳过）、Control 84（3 项跳过）、Protocol Gateway 9、Simulator 27（3 项跳过）、Model Gateway 23（18 项跳过）、Runtime 52。
 - 真实 PostgreSQL：`ControlMigrationPostgresTest`、`InvestigationPostgresTest`、`MeteringMigrationPostgresTest` 通过。
 - 配额并发：`QuotaServicePostgresTest` 最新一轮 17/17 通过，覆盖懒启动、70/40 并发、总量+窗口原子回滚、重复结算、释放、跨窗迟到结算、100 并发建窗、授予重放与内容冲突、WINDOW/TOTAL 切换、补齐当前桶的 `limit_units`/`policy_revision`、过期 `DISPATCHED` 转 `UNCERTAIN`、管理员对账释放、释放后 `LATE_SETTLED`、并发授予 revision 分配及同一幂等键并发重放。
 - Control 启动：Flyway 识别 4 个迁移，健康检查 UP；`admin` 登录后可读租户、项目、成员和调查任务。
 - Runtime 启动：readiness UP，`desired-releases` 对账成功。
 - Gateway 联调：登记本地 mock provider 与逻辑模型，签发 Run 凭据调用 `/v1/chat/completions`，上游 usage 12+5 归一化为 17 并结算；Control 代理读取结果一致。
-- 前端：`npm run typecheck` 通过；Vite 代理下 `/login`、`/api/control/v1/tenants`、`/me/quota` 正常。
+- 协议全流程：`scripts/verify-spring-local.py` 通过真实 TCP 验证计费、补传、并充、非法帧、请求/ACK 父子 Span；OPS 48 Span、Gateway 7 Span、Simulator 2 Span、JDBC 25 Span，OTLP 收到 traces 495、metrics 289、logs 148 批次。
+- Agent 全流程：真实模型执行、Skill + Higress MCP 工具、规则评分、LLM Judge、人工评分和用户级额度均通过；最终实验 `12fae36d-5c71-4206-a890-8784feff3950` 为 2/2 完成、0 失败，两条 `answer_quality` 均为 1.0。
+- 前端：`npm run typecheck` 与生产构建通过；Vite 代理下登录、额度页面和评估页面可用，“加载链路”可通过 Tempo 展示实际 Span 树。
+- Nacos：验收期间经 Nacos 3 管理 API 曾观察到 OPS、Control、Runtime 和四个 Agent 发布投影；临时服务停止后注册项已消失。Tempo/Loki 健康并已有数据，但只监听服务器回环端口，本机验收通过 SSH 端口转发访问。
 
 ## 5. 尚未落地
 

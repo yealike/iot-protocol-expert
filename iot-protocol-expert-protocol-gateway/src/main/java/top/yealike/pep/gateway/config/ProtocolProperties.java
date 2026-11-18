@@ -43,7 +43,7 @@ public class ProtocolProperties {
     private int heartbeatTimeoutSeconds = 45;
 
     /** 下行业务命令等待应答秒数。 */
-    private int pendingTimeoutSeconds = 10;
+    private int pendingTimeoutSeconds = 15;
 
     /** 默认计费模型编号。 */
     private String defaultRateModelNo = "0001";

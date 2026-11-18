@@ -7,6 +7,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import top.yealike.pep.codec.ProtocolException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
@@ -28,6 +29,11 @@ public class ApiExceptionHandler {
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, Object>> badRequest(IllegalArgumentException e) {
         return ResponseEntity.badRequest().body(Map.of("error", "BAD_REQUEST", "message", message(e)));
+    }
+
+    @ExceptionHandler(ProtocolException.class)
+    public ResponseEntity<Map<String, Object>> malformedProtocol(ProtocolException e) {
+        return ResponseEntity.badRequest().body(Map.of("error", "INVALID_PROTOCOL_FRAME", "message", message(e)));
     }
 
     @ExceptionHandler(IllegalStateException.class)

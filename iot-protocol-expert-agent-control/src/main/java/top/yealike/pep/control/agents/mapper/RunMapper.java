@@ -204,9 +204,14 @@ public interface RunMapper {
             @Param("id") UUID id,
             @Param("runId") UUID runId,
             @Param("status") String status,
+            @Param("decision") String decision,
+            @Param("denyReason") String denyReason,
             @Param("resultSummaryJson") String resultSummaryJson,
             @Param("durationMs") Integer durationMs,
             @Param("finishedAt") Instant finishedAt);
+
+    int updateRuntimeToolArguments(
+            @Param("id") UUID id, @Param("runId") UUID runId, @Param("argsSummaryJson") String argsSummaryJson);
 
     List<ToolCall> listToolCalls(@Param("runId") UUID runId);
 

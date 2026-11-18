@@ -1,6 +1,8 @@
 package top.yealike.pep.runtime.mcp;
 
+import io.agentscope.core.message.TextBlock;
 import io.agentscope.core.message.ToolResultBlock;
+import io.agentscope.core.message.ToolResultState;
 import io.agentscope.core.tool.AgentTool;
 import io.agentscope.core.tool.ToolCallParam;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -19,6 +21,7 @@ import top.yealike.pep.runtime.contract.ToolAuthorizeResponse;
 import top.yealike.pep.runtime.control.ControlClient;
 import top.yealike.pep.runtime.control.ControlException;
 import top.yealike.pep.runtime.execution.RunGuard;
+import top.yealike.pep.runtime.execution.ToolAuditMetadata;
 import top.yealike.pep.runtime.observability.RuntimeObservability;
 import top.yealike.pep.runtime.prepare.PreparedTool;
 
@@ -96,13 +99,14 @@ public final class McpAgentTool implements AgentTool {
         try {
             guard.ensureActive();
         } catch (RunGuard.RunAbortedException exception) {
-            return failure(exception.code(), exception.getMessage(), "run");
+            return failure(exception.code(), exception.getMessage(), "run", ToolAuditMetadata.PENDING);
         }
         if (input != null && input.containsKey(OpsMcpInvocationAdapter.CONTEXT_FIELD)) {
-            return failure(ErrorCodes.TOOL_DENIED, "模型不得提交保留字段 _ipe_context", descriptor.key());
+            return failure(
+                    ErrorCodes.TOOL_DENIED, "模型不得提交保留字段 _ipe_context", descriptor.key(), ToolAuditMetadata.DENIED);
         }
         if (!tool.descriptor().readOnly()) {
-            return failure(ErrorCodes.TOOL_DENIED, "一期仅允许调用只读工具", descriptor.key());
+            return failure(ErrorCodes.TOOL_DENIED, "一期仅允许调用只读工具", descriptor.key(), ToolAuditMetadata.DENIED);
         }
         String requestId = UUID.randomUUID().toString();
         String actor = null;
@@ -124,7 +128,7 @@ public final class McpAgentTool implements AgentTool {
             try {
                 authorization = control.authorize(authorizeRequest);
             } catch (ControlException exception) {
-                return failure(ErrorCodes.TOOL_DENIED, "工具授权校验失败", descriptor.key());
+                return failure(ErrorCodes.TOOL_DENIED, "工具授权校验失败", descriptor.key(), ToolAuditMetadata.PENDING);
             }
             if (authorization == null || !authorization.allowed()) {
                 metrics.counter("mcp_error_total", "mcp", descriptor.key(), "code", "DENIED")
@@ -134,7 +138,8 @@ public final class McpAgentTool implements AgentTool {
                         authorization == null || authorization.reason() == null
                                 ? "当前账号无权调用该工具"
                                 : authorization.reason(),
-                        descriptor.key());
+                        descriptor.key(),
+                        ToolAuditMetadata.DENIED);
             }
             actor = authorization.actorId();
             stationScope = authorization.stationScope();
@@ -151,7 +156,8 @@ public final class McpAgentTool implements AgentTool {
                             null));
                     secret = credential == null ? null : credential.secret();
                 } catch (ControlException exception) {
-                    return failure(ErrorCodes.CREDENTIAL_UNAVAILABLE, "工具凭据不可用", descriptor.key());
+                    return failure(
+                            ErrorCodes.CREDENTIAL_UNAVAILABLE, "工具凭据不可用", descriptor.key(), ToolAuditMetadata.ALLOW);
                 }
             }
             McpDescriptor resolvedDescriptor = endpoints.resolve(descriptor);
@@ -164,7 +170,11 @@ public final class McpAgentTool implements AgentTool {
                             descriptor.key(),
                             getName(),
                             descriptor.credentialRef());
-                    return failure(ErrorCodes.CREDENTIAL_UNAVAILABLE, "OPS 调用上下文密钥不可用", descriptor.key());
+                    return failure(
+                            ErrorCodes.CREDENTIAL_UNAVAILABLE,
+                            "OPS 调用上下文密钥不可用",
+                            descriptor.key(),
+                            ToolAuditMetadata.ALLOW);
                 }
                 arguments.put(
                         OpsMcpInvocationAdapter.CONTEXT_FIELD,
@@ -177,7 +187,7 @@ public final class McpAgentTool implements AgentTool {
             try {
                 recheck = control.authorize(authorizeRequest);
             } catch (ControlException exception) {
-                return failure(ErrorCodes.TOOL_DENIED, "工具授权复核失败，未发送调用", descriptor.key());
+                return failure(ErrorCodes.TOOL_DENIED, "工具授权复核失败，未发送调用", descriptor.key(), ToolAuditMetadata.PENDING);
             }
             if (recheck == null || !recheck.allowed()) {
                 metrics.counter("mcp_error_total", "mcp", descriptor.key(), "code", "DENIED")
@@ -185,14 +195,17 @@ public final class McpAgentTool implements AgentTool {
                 return failure(
                         ErrorCodes.TOOL_DENIED,
                         recheck == null || recheck.reason() == null ? "Run 已取消或失去执行权，未发送工具调用" : recheck.reason(),
-                        descriptor.key());
+                        descriptor.key(),
+                        ToolAuditMetadata.DENIED);
             }
             guard.ensureActive();
             McpToolEnvelope envelope = pool.call(connection, tool.originalName(), arguments);
             String json = render(envelope);
-            return envelope.ok() ? ToolResultBlock.text(json) : ToolResultBlock.error(json);
+            return envelope.ok()
+                    ? success(json)
+                    : errorResult(ErrorCodes.MCP_TOOL_ERROR, json, ToolAuditMetadata.ALLOW);
         } catch (RunGuard.RunAbortedException exception) {
-            return failure(exception.code(), exception.getMessage(), descriptor.key());
+            return failure(exception.code(), exception.getMessage(), descriptor.key(), ToolAuditMetadata.PENDING);
         } catch (RuntimeException exception) {
             metrics.counter("mcp_error_total", "mcp", descriptor.key(), "code", "UNAVAILABLE")
                     .increment();
@@ -202,7 +215,7 @@ public final class McpAgentTool implements AgentTool {
                     getName(),
                     safeMessage(exception),
                     exception);
-            return failure(ErrorCodes.MCP_TOOL_ERROR, "MCP 工具暂不可用", descriptor.key());
+            return failure(ErrorCodes.MCP_TOOL_ERROR, "MCP 工具暂不可用", descriptor.key(), ToolAuditMetadata.ALLOW);
         } finally {
             if (slot) {
                 guard.releaseToolSlot();
@@ -213,7 +226,15 @@ public final class McpAgentTool implements AgentTool {
         }
     }
 
-    private ToolResultBlock failure(String code, String message, String source) {
+    private ToolResultBlock success(String text) {
+        return ToolResultBlock.builder()
+                .state(ToolResultState.SUCCESS)
+                .output(TextBlock.builder().text(text).build())
+                .metadata(Map.of(ToolAuditMetadata.DECISION, ToolAuditMetadata.ALLOW))
+                .build();
+    }
+
+    private ToolResultBlock failure(String code, String message, String source, String decision) {
         Map<String, Object> error = new LinkedHashMap<>();
         error.put("code", code);
         error.put("message", message);
@@ -223,7 +244,21 @@ public final class McpAgentTool implements AgentTool {
         body.put("error", error);
         body.put("warnings", java.util.List.of(message));
         body.put("source", source);
-        return ToolResultBlock.error(render(body));
+        return errorResult(code, render(body), decision);
+    }
+
+    private ToolResultBlock errorResult(String code, String text, String decision) {
+        ToolResultState state =
+                ToolAuditMetadata.DENIED.equals(decision) ? ToolResultState.DENIED : ToolResultState.ERROR;
+        return ToolResultBlock.builder()
+                .state(state)
+                .output(TextBlock.builder().text("Error: " + text).build())
+                .metadata(Map.of(
+                        ToolAuditMetadata.ERROR_CODE,
+                        code,
+                        ToolAuditMetadata.DECISION,
+                        decision == null ? ToolAuditMetadata.PENDING : decision))
+                .build();
     }
 
     private String render(Object value) {
