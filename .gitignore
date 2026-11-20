@@ -28,6 +28,12 @@ tmp/
 temp/
 backups/
 .backups/
+
+# 服务器部署：本地密钥与上传产物
+deploy/.env
+deploy/.env.langfuse
+deploy/jars/
+deploy/dist/
 .staging*/
 *.log
 *.log.*

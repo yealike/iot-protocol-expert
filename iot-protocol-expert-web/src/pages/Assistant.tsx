@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Alert, App, Button, Input, Select, Space, Tag, Typography } from 'antd'
+import { Alert, App, Button, Drawer, Grid, Input, Select, Space, Tag, Typography } from 'antd'
 import {
+  ArrowRightOutlined,
+  HistoryOutlined,
   PlusOutlined,
   ReloadOutlined,
   RobotOutlined,
@@ -29,6 +31,20 @@ const STATUS_LABEL: Record<string, string> = {
 const ACTIVE_RUN_STATUSES = new Set(['QUEUED', 'DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED'])
 const TERMINAL_RUN_STATUSES = new Set(['COMPLETED', 'FAILED', 'CANCELLED'])
 const LAST_AGENT_STORAGE_KEY = 'ipe-ai-last-agent'
+const EXAMPLE_PROMPTS = [
+  {
+    title: '分析设备离线原因',
+    prompt: '请结合设备状态、最近上报和协议知识，分析设备离线的可能原因，并给出排查顺序。'
+  },
+  {
+    title: '解读充电停止原因',
+    prompt: '请结合订单与设备事实，解读这次充电停止的原因，并区分平台、设备和车辆侧因素。'
+  },
+  {
+    title: '查询协议字段含义',
+    prompt: '请解释这个协议字段的含义、取值范围和常见异常情况，并标注对应的协议依据。'
+  }
+]
 
 interface ProgressStep {
   id: string
@@ -39,6 +55,9 @@ interface ProgressStep {
 export default function Assistant() {
   const { message, modal } = App.useApp()
   const queryClient = useQueryClient()
+  const screens = Grid.useBreakpoint()
+  const compact = screens.md === false
+  const [historyOpen, setHistoryOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [targetAgentKey, setTargetAgentKey] = useState<string | null>(readLastAgent)
   const [input, setInput] = useState('')
@@ -405,102 +424,114 @@ export default function Assistant() {
     if (element) element.scrollTop = element.scrollHeight
   }, [messages, streamText, progress, selectedId])
 
+  const sidebar = (
+    <aside className="assistant-sidebar">
+      <div className="assistant-panel-head">
+        <h2>会话历史</h2>
+        <Button
+          size="small"
+          type="primary"
+          icon={<PlusOutlined />}
+          disabled={!targetAgent?.healthy}
+          onClick={() => {
+            const hasChatRequest = Boolean(
+              detail.data?.messages.some((item) => item.role === 'user') ||
+              detail.data?.conversation.lastMessageAt ||
+              detail.data?.currentRun
+            )
+            if (selectedId) {
+              if (!detail.data) {
+                message.info('正在读取当前会话，请稍后再试')
+                return
+              }
+              if (!hasChatRequest) {
+                message.info('当前会话尚未发起聊天请求，已保留当前会话')
+                return
+              }
+            }
+            if (targetAgentKey) void createConversation(targetAgentKey)
+          }}
+        >
+          新建
+        </Button>
+      </div>
+      <div className="assistant-agent-bar">
+        <Select
+          value={targetAgentKey ?? undefined}
+          style={{ width: '100%' }}
+          placeholder="选择已发布 Agent"
+          loading={agents.isLoading}
+          options={currentAgentOptions}
+          popupMatchSelectWidth={380}
+          onChange={handleAgentChange}
+        />
+        {targetAgent ? (
+          <div className="assistant-agent-meta">
+            <Tag color="blue" bordered={false}>
+              v{targetAgent.version}
+            </Tag>
+            <Tag color={targetAgent.healthy ? 'green' : 'red'} bordered={false}>
+              {targetAgent.healthy ? '健康' : '无健康实例'}
+            </Tag>
+            <Text type="secondary">
+              {targetAgent.healthy
+                ? `${targetAgent.toolCount} 工具 · ${targetAgent.skillCount} 技能`
+                : '注册中心未发现该版本健康实例'}
+            </Text>
+          </div>
+        ) : null}
+        {agents.error ? (
+          <Alert type="error" showIcon message={(agents.error as Error).message} />
+        ) : null}
+      </div>
+      <div className="assistant-history">
+        {conversations.isLoading ? (
+          <div className="assistant-empty">正在加载会话…</div>
+        ) : conversations.data?.content?.length ? (
+          conversations.data.content.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`assistant-history-item${item.id === selectedId ? ' active' : ''}`}
+              onClick={() => {
+                setTargetAgentKey(item.agentKey)
+                setSelectedId(item.id)
+                setHistoryOpen(false)
+              }}
+            >
+              <span className="title">{item.title}</span>
+              <span className="meta">
+                <span className="agent">
+                  {item.agentKey} · v{item.agentVersion}
+                </span>
+                <span>{formatDateTime(item.updatedAt)}</span>
+              </span>
+            </button>
+          ))
+        ) : (
+          <div className="assistant-empty">
+            <RobotOutlined style={{ fontSize: 34, color: '#9bb0c5' }} />
+            <strong>开始你的第一次对话</strong>
+            <span>选择目录中的 Agent 后点击“新建”。会话会固定所选 Agent 的发布版本。</span>
+          </div>
+        )}
+      </div>
+    </aside>
+  )
+
   return (
     <div className="assistant-shell">
-      <aside className="assistant-sidebar">
-        <div className="assistant-panel-head">
-          <h2>会话历史</h2>
-          <Button
-            size="small"
-            type="primary"
-            icon={<PlusOutlined />}
-            disabled={!targetAgent?.healthy}
-            onClick={() => {
-              const hasChatRequest = Boolean(
-                detail.data?.messages.some((item) => item.role === 'user') ||
-                detail.data?.conversation.lastMessageAt ||
-                detail.data?.currentRun
-              )
-              if (selectedId) {
-                if (!detail.data) {
-                  message.info('正在读取当前会话，请稍后再试')
-                  return
-                }
-                if (!hasChatRequest) {
-                  message.info('当前会话尚未发起聊天请求，已保留当前会话')
-                  return
-                }
-              }
-              if (targetAgentKey) void createConversation(targetAgentKey)
-            }}
-          >
-            新建
-          </Button>
-        </div>
-        <div className="assistant-agent-bar">
-          <Select
-            value={targetAgentKey ?? undefined}
-            style={{ width: '100%' }}
-            placeholder="选择已发布 Agent"
-            loading={agents.isLoading}
-            options={currentAgentOptions}
-            popupMatchSelectWidth={380}
-            onChange={handleAgentChange}
-          />
-          {targetAgent ? (
-            <div className="assistant-agent-meta">
-              <Tag color="blue" bordered={false}>
-                v{targetAgent.version}
-              </Tag>
-              <Tag color={targetAgent.healthy ? 'green' : 'red'} bordered={false}>
-                {targetAgent.healthy ? '健康' : '无健康实例'}
-              </Tag>
-              <Text type="secondary">
-                {targetAgent.healthy
-                  ? `${targetAgent.toolCount} 工具 · ${targetAgent.skillCount} 技能`
-                  : '注册中心未发现该版本健康实例'}
-              </Text>
-            </div>
-          ) : null}
-          {agents.error ? (
-            <Alert type="error" showIcon message={(agents.error as Error).message} />
-          ) : null}
-        </div>
-        <div className="assistant-history">
-          {conversations.isLoading ? (
-            <div className="assistant-empty">正在加载会话…</div>
-          ) : conversations.data?.content?.length ? (
-            conversations.data.content.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`assistant-history-item${item.id === selectedId ? ' active' : ''}`}
-                onClick={() => {
-                  setTargetAgentKey(item.agentKey)
-                  setSelectedId(item.id)
-                }}
-              >
-                <span className="title">{item.title}</span>
-                <span className="meta">
-                  <span className="agent">
-                    {item.agentKey} · v{item.agentVersion}
-                  </span>
-                  <span>{formatDateTime(item.updatedAt)}</span>
-                </span>
-              </button>
-            ))
-          ) : (
-            <div className="assistant-empty">
-              <RobotOutlined style={{ fontSize: 34, color: '#9bb0c5' }} />
-              <strong>开始你的第一次对话</strong>
-              <span>选择目录中的 Agent 后点击“新建”。会话会固定所选 Agent 的发布版本。</span>
-            </div>
-          )}
-        </div>
-      </aside>
-
+      {!compact ? sidebar : null}
       <section className="assistant-main">
         <div className="assistant-panel-head">
+          {compact ? (
+            <Button
+              type="text"
+              icon={<HistoryOutlined />}
+              aria-label="打开会话历史"
+              onClick={() => setHistoryOpen(true)}
+            />
+          ) : null}
           <div className="assistant-heading">
             <h3>{conversation?.title ?? 'AI 助手'}</h3>
             {conversation ? (
@@ -573,10 +604,28 @@ export default function Assistant() {
 
           <div className="assistant-messages" ref={messagesRef}>
             {messages.length === 0 ? (
-              <div className="assistant-empty">
-                <RobotOutlined style={{ fontSize: 42, color: '#9bb0c5' }} />
-                <strong>{conversation ? '开始新的任务' : '选择或新建会话'}</strong>
-                <span>助手只使用该发布版本已授权的工具与 Skill；缺失事实会明确标注。</span>
+              <div className="assistant-empty assistant-welcome">
+                <span className="assistant-welcome-icon">
+                  <RobotOutlined />
+                </span>
+                <strong>{conversation ? '今天需要排查什么？' : '从一次智能诊断开始'}</strong>
+                <span>
+                  {conversation
+                    ? '描述你遇到的问题，助手会结合协议知识与设备事实进行分析。'
+                    : '选择 Agent，或直接输入问题创建会话。助手只使用当前发布版本授权的工具与 Skill。'}
+                </span>
+                <div className="assistant-suggestions">
+                  {EXAMPLE_PROMPTS.map((example) => (
+                    <button
+                      type="button"
+                      key={example.title}
+                      onClick={() => setInput(example.prompt)}
+                    >
+                      <span>{example.title}</span>
+                      <ArrowRightOutlined />
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : (
               messages.map((item) => <MessageBubble key={item.id} message={item} />)
@@ -628,6 +677,19 @@ export default function Assistant() {
           </div>
         </div>
       </section>
+      {compact ? (
+        <Drawer
+          className="assistant-history-drawer"
+          title="会话与 Agent"
+          placement="left"
+          width={320}
+          open={historyOpen}
+          onClose={() => setHistoryOpen(false)}
+          styles={{ body: { padding: 0 } }}
+        >
+          {sidebar}
+        </Drawer>
+      ) : null}
     </div>
   )
 }

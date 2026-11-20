@@ -27,7 +27,6 @@ public class ModelProfileService {
     private final ModelGatewayClient gateway;
     private final top.yealike.pep.control.config.ModelGatewayProperties gatewayProperties;
     private final RestClient http;
-    private final RestClient evaluationHttp;
 
     public ModelProfileService(
             ModelStore models,
@@ -44,12 +43,6 @@ public class ModelProfileService {
         this.gateway = gateway;
         this.gatewayProperties = gatewayProperties;
         this.http = builder.build();
-        var factory =
-                new org.springframework.http.client.JdkClientHttpRequestFactory(java.net.http.HttpClient.newBuilder()
-                        .connectTimeout(Duration.ofSeconds(10))
-                        .build());
-        factory.setReadTimeout(Duration.ofSeconds(30));
-        this.evaluationHttp = builder.clone().requestFactory(factory).build();
     }
 
     public List<ModelProfile> list() {
@@ -142,40 +135,6 @@ public class ModelProfileService {
             throw exception;
         } catch (RuntimeException exception) {
             throw new AiExceptions.AiException(502, "MODEL_TEST_FAILED", "模型服务暂不可用");
-        }
-    }
-
-    /** Run a bounded JSON-style completion for evaluator use without exposing provider credentials. */
-    public String completeEvaluation(UUID id, String systemPrompt, String userPrompt) {
-        ModelProfile profile = require(id);
-        if (!profile.enabled()) {
-            throw AiExceptions.unprocessable("EVALUATOR_MODEL_UNAVAILABLE", "Judge 模型未启用");
-        }
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("model", profile.key());
-        body.put(
-                "messages",
-                List.of(
-                        Map.of("role", "system", "content", systemPrompt),
-                        Map.of("role", "user", "content", userPrompt)));
-        body.put("max_tokens", 512);
-        body.put("temperature", 0);
-        body.put("response_format", Map.of("type", "json_object"));
-        try {
-            Map<String, Object> envelope = gateway.chat(gatewayTokens.issueForEvaluator(profile.key()), body);
-            Object rawChoices = envelope.get("choices");
-            if (!(rawChoices instanceof List<?> choices)
-                    || choices.isEmpty()
-                    || !(choices.get(0) instanceof Map<?, ?> choice)
-                    || !(choice.get("message") instanceof Map<?, ?> message)
-                    || !(message.get("content") instanceof String content)) {
-                throw AiExceptions.unavailable("Judge 模型没有返回有效内容");
-            }
-            return content;
-        } catch (AiExceptions.AiException exception) {
-            throw exception;
-        } catch (RuntimeException exception) {
-            throw AiExceptions.unavailable("Judge 模型暂不可用");
         }
     }
 

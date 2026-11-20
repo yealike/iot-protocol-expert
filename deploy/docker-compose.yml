@@ -1,0 +1,122 @@
+name: ipe
+
+x-java: &java
+  restart: unless-stopped
+  env_file: [.env]
+  extra_hosts:
+    - "host.docker.internal:host-gateway"
+  networks: [ipe]
+  stop_grace_period: 30s
+
+services:
+  ipe-ops:
+    <<: *java
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { JAR_FILE: jars/iot-protocol-expert-ops-1.0.0.jar }
+    image: ipe/ops:1.0.0
+    environment:
+      IPE_OPS_PORT: "19082"
+      IPE_NACOS_DISCOVERY_ENABLED: "true"
+      IPE_OPS_ADVERTISE_IP: "${HOST_BIND_IP:-0.0.0.0}"
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx768m"
+    ports:
+      - "${HOST_BIND_IP:-0.0.0.0}:19082:19082"
+    volumes:
+      - ./data/logs:/app/logs
+      - ./data/protocol-documents:/app/data/protocol-documents
+
+  ipe-control:
+    <<: *java
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { JAR_FILE: jars/iot-protocol-expert-agent-control-1.0.0.jar }
+    image: ipe/control:1.0.0
+    environment:
+      PEP_CONTROL_PORT: "19083"
+      IPE_CONTROL_BASE_URL: "http://ipe-control:19083"
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx768m"
+    ports:
+      - "127.0.0.1:19083:19083"
+    depends_on: [ipe-ops]
+
+  ipe-model-gateway:
+    <<: *java
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { JAR_FILE: jars/iot-protocol-expert-model-gateway-1.0.0.jar }
+    image: ipe/model-gateway:1.0.0
+    environment:
+      PEP_MODEL_GATEWAY_PORT: "19085"
+      PEP_MODEL_GATEWAY_BASE_URL: "http://ipe-model-gateway:19085"
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx512m"
+    ports:
+      - "127.0.0.1:19085:19085"
+    depends_on: [ipe-ops]
+
+  ipe-runtime:
+    <<: *java
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { JAR_FILE: jars/iot-protocol-expert-agent-runtime-1.0.0.jar }
+    image: ipe/runtime:1.0.0
+    environment:
+      IPE_RUNTIME_PORT: "19084"
+      IPE_CONTROL_BASE_URL: "http://ipe-control:19083"
+      IPE_RUNTIME_OTEL_CONTENT_ENABLED: "true"
+      IPE_RUNTIME_OTEL_MAX_CONTENT_CHARS: "0"
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx1024m"
+    ports:
+      - "127.0.0.1:19084:19084"
+    depends_on: [ipe-control, ipe-model-gateway]
+
+  ipe-device-gateway:
+    <<: *java
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { JAR_FILE: jars/iot-protocol-expert-protocol-gateway-1.0.0.jar }
+    image: ipe/device-gateway:1.0.0
+    environment:
+      IPE_OPS_BASE_URL: "http://ipe-ops:19082"
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx512m"
+    ports:
+      - "8768:8768"
+      - "8769:8769"
+      - "127.0.0.1:19080:19080"
+    depends_on: [ipe-ops]
+
+  ipe-simulator:
+    <<: *java
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.service
+      args: { JAR_FILE: jars/iot-protocol-expert-simulator-1.0.0.jar }
+    image: ipe/simulator:1.0.0
+    command: ["--ipe.simulator.platform-host=ipe-device-gateway"]
+    environment:
+      IPE_SIMULATOR_BASE_URL: "http://ipe-simulator:19081"
+      IPE_OPS_BASE_URL: "http://ipe-ops:19082"
+      JAVA_TOOL_OPTIONS: "-Xms128m -Xmx512m"
+    ports:
+      - "127.0.0.1:19081:19081"
+    depends_on: [ipe-device-gateway]
+
+  ipe-web:
+    restart: unless-stopped
+    build:
+      context: web
+      dockerfile: Dockerfile
+    image: ipe/web:1.0.0
+    ports:
+      - "8095:80"
+    networks: [ipe]
+    depends_on: [ipe-ops, ipe-control]
+
+networks:
+  ipe:
+    driver: bridge

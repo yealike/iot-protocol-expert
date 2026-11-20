@@ -19,7 +19,7 @@ class PolicyServiceRoleCompatibilityTest {
                         new PolicyService.Rule("ADMIN", Set.of("admin-agent"), Set.of("admin-tool"), Set.of("*")),
                         new PolicyService.Rule("OPS", Set.of("ops-agent"), Set.of("read-tool"), Set.of("station-1"))));
         when(mapper.selectLatestVersion()).thenReturn(List.of("v1"));
-        var policy = new PolicyService(mapper, new AiProperties("test", null, 1000, null, null, null, null, null));
+        var policy = new PolicyService(mapper, new AiProperties("test", null, 1000, null, null, null, null));
         var admin = identity("PLATFORM_ADMIN");
         var operator = identity("OPERATOR");
 

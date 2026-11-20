@@ -19,13 +19,10 @@ public interface ConversationMapper {
             @Param("agentReleaseId") UUID agentReleaseId,
             @Param("manifestDigest") String manifestDigest,
             @Param("status") String status,
-            @Param("source") String source,
             @Param("createdAt") Instant createdAt,
             @Param("updatedAt") Instant updatedAt);
 
     List<Conversation> find(@Param("id") UUID id);
-
-    String source(@Param("id") UUID id);
 
     List<Conversation> listByUser(
             @Param("userId") String userId, @Param("limit") int limit, @Param("offset") int offset);

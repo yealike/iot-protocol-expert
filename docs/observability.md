@@ -112,7 +112,7 @@ $env:IPE_RUNTIME_OTEL_MAX_CONTENT_CHARS='8192'
 
 开启后仍会对常见凭据 JSON 字段、Bearer Token、`sk-*` 密钥、URL 内嵌凭据和私钥块做脱敏；`IPE_RUNTIME_OTEL_MAX_CONTENT_CHARS` 大于 0 时再按配置长度截断，示例中的 8192 表示 8192 字符上限，设置为 0 表示不设应用层字符上限。prompt/response 属于业务数据，不应在生产默认开启；Tempo 的保留期和访问权限需要同步评估。
 
-`IPE_RUNTIME_OTEL_CONTENT_ENABLED` 只控制 Tempo 中的消息和工具正文属性。评估所需的工具参数/结果审计证据由 Runtime 事件写入 Control 数据库，每次调用的参数整体或结果整体最多 8000 字符并在写入前脱敏；它与 Trace 内容开关独立，详见 [Agent 能力评估](agent-evaluation.md) 和 [Agent 使用说明](agent-operation-guide.md)。
+`IPE_RUNTIME_OTEL_CONTENT_ENABLED` 只控制 Trace 中的消息和工具正文属性。工具参数/结果审计证据由 Runtime 事件写入 Control 数据库，每次调用的参数整体或结果整体最多 8000 字符并在写入前脱敏；它与 Trace 内容开关独立，详见 [Agent 使用说明](agent-operation-guide.md)。Agent 的 Trace、数据集、实验和评分统一由 Langfuse 管理。
 
 Grafana 查询：
 

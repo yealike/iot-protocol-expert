@@ -268,7 +268,7 @@ Higress 使用 Nacos Naming 来源时，OPS 未注册会使调用返回 503；�
 | `IPE_MODEL_TIMEOUT_MS/MAX_TOKENS/TEMPERATURE` | 模型超时、输出上限、温度 |
 | `IPE_AI_RUN_MAX_*` | 并发、轮次、工具调用、超时、上下文消息数 |
 | `IPE_AI_CHUNK_SIZE/OVERLAP/TOP_K/MIN_SCORE` | 知识库分块与检索参数 |
-| `IPE_AI_OTEL_*` | Trace 内容导出；生产默认关闭正文 |
+| `IPE_RUNTIME_OTEL_*` | Runtime AgentScope Trace 与内容导出；生产默认关闭正文 |
 
 ## 8. 本地启动与验证
 

@@ -1,0 +1,6 @@
+data
+dist
+web/dist
+*.md
+.env
+.env.langfuse

@@ -6,6 +6,20 @@ import { api } from '../api/client'
 import { AlarmLevelTag, AlarmStateTag, MetricCard } from '../components/tags'
 import type { AlarmView } from '../api/types'
 import Chart from '../components/Chart'
+import {
+  AccountBookOutlined,
+  AlertOutlined,
+  CheckCircleOutlined,
+  ClusterOutlined,
+  DatabaseOutlined,
+  EnvironmentOutlined,
+  FileDoneOutlined,
+  InfoCircleOutlined,
+  SwapOutlined,
+  SyncOutlined,
+  ThunderboltOutlined,
+  WarningOutlined
+} from '@ant-design/icons'
 
 export default function Overview() {
   const overview = useQuery({
@@ -28,16 +42,26 @@ export default function Overview() {
   const d = overview.data
   const b = business.data
   const normal = Math.max(0, d.deviceOnline - d.deviceFault)
+  const onlinePercent = d.deviceTotal ? Math.round((d.deviceOnline / d.deviceTotal) * 100) : 0
   return (
-    <>
+    <div className="overview-page">
       <div className="overview-hero">
-        <div>
+        <div className="overview-hero-content">
           <div className="overview-eyebrow">OPERATIONS CENTER / 运营中心</div>
           <h1>充电运营总览</h1>
-          <p>掌握设备运行状态与充电业务动态</p>
+          <p>掌握设备运行状态与充电业务动态，及时发现需要关注的变化。</p>
         </div>
-        <div className="overview-live">
-          <span /> 数据每 15 秒刷新 <small>{b?.date ?? '—'} · 北京时间</small>
+        <div className="overview-hero-side">
+          <div className="overview-hero-stat">
+            <span>设备在线率</span>
+            <strong>
+              {d.deviceTotal ? onlinePercent : '—'}
+              {d.deviceTotal ? <small>%</small> : null}
+            </strong>
+          </div>
+          <div className="overview-live">
+            <span /> 数据每 15 秒刷新 <small>{b?.date ?? '—'} · 北京时间</small>
+          </div>
         </div>
       </div>
       <div className="overview-section-title">
@@ -47,37 +71,54 @@ export default function Overview() {
         </div>
         <Link to="/orders">查看订单 →</Link>
       </div>
-      <div className="metric-grid">
+      <div className="metric-grid overview-business-grid">
         <MetricCard
+          icon={<ThunderboltOutlined />}
           label="今日充电量"
           value={b ? Number(b.chargedEnergy).toFixed(2) : '—'}
           suffix="kWh"
         />
         <MetricCard
+          icon={<SwapOutlined />}
           label="今日放电量"
           value={b ? Number(b.dischargedEnergy).toFixed(2) : '—'}
           suffix="kWh"
         />
         <MetricCard
+          icon={<DatabaseOutlined />}
           label="今日结算订单充电量"
           value={b ? Number(b.settledEnergy).toFixed(2) : '—'}
           suffix="kWh"
         />
         <MetricCard
+          icon={<AccountBookOutlined />}
           label="今日已结算金额（含估算）"
           value={b ? Number(b.settledAmount).toFixed(2) : '—'}
           suffix="元"
         />
-        <MetricCard label="今日结算订单" value={b?.settledOrderCount ?? '—'} suffix="笔" />
-        <MetricCard label="进行中订单" value={b?.activeOrderCount ?? '—'} suffix="笔" />
+        <MetricCard
+          icon={<FileDoneOutlined />}
+          label="今日结算订单"
+          value={b?.settledOrderCount ?? '—'}
+          suffix="笔"
+        />
+        <MetricCard
+          icon={<SyncOutlined />}
+          label="进行中订单"
+          value={b?.activeOrderCount ?? '—'}
+          suffix="笔"
+        />
       </div>
-      <p className="overview-note">
-        今日充电量按自然日聚合当天发生充电的订单电量；当前平台仅支持充电订单，放电量为 0。今日结算订单充电量按订单结束时间汇总，跨日订单的全部电量计入结束日。已结算金额可能包含平台估算，不代表实收。
-        {business.isError ? ' 业务统计加载失败。' : ''}
-      </p>
+      <div className="overview-note">
+        <InfoCircleOutlined />
+        <span>
+          今日充电量按自然日聚合；结算电量按订单结束日汇总，跨日订单计入结束日。金额可能包含平台估算，不代表实收。
+          {business.isError ? ' 业务统计加载失败。' : ''}
+        </span>
+      </div>
       <Card
         title="近 7 日结算趋势"
-        bordered={false}
+        variant="borderless"
         className="overview-panel"
         style={{ marginTop: 20 }}
         extra={<span className="muted">按订单结束日统计 · 金额含估算</span>}
@@ -125,34 +166,39 @@ export default function Overview() {
         </div>
         <Link to="/devices">设备管理 →</Link>
       </div>
-      <div className="metric-grid">
-        <MetricCard label="设备总数" value={d.deviceTotal} suffix="台" />
-        <MetricCard label="在线正常" value={normal} suffix="台" />
+      <div className="metric-grid overview-device-grid">
+        <MetricCard icon={<ClusterOutlined />} label="设备总数" value={d.deviceTotal} suffix="台" />
+        <MetricCard icon={<CheckCircleOutlined />} label="在线正常" value={normal} suffix="台" />
         <MetricCard
+          icon={<WarningOutlined />}
           label="故障设备"
           value={d.deviceFault}
           suffix="台"
           tone={d.deviceFault ? 'danger' : undefined}
         />
         <MetricCard
+          icon={<AlertOutlined />}
           label="未关闭告警"
           value={d.alarmOpen}
           suffix="条"
           tone={d.alarmOpen ? 'warn' : undefined}
         />
-        <MetricCard label="运营站点" value={d.stationCount} suffix="个" />
+        <MetricCard
+          icon={<EnvironmentOutlined />}
+          label="运营站点"
+          value={d.stationCount}
+          suffix="个"
+        />
       </div>
       <Row gutter={[16, 16]} style={{ marginTop: 20 }}>
         <Col xs={24} xl={8}>
-          <Card title="连接状态" bordered={false} className="overview-panel">
+          <Card title="连接状态" variant="borderless" className="overview-panel">
             <div className="availability">
               <Progress
                 type="dashboard"
-                percent={d.deviceTotal ? Math.round((d.deviceOnline / d.deviceTotal) * 100) : 0}
-                format={() =>
-                  d.deviceTotal ? `${Math.round((d.deviceOnline / d.deviceTotal) * 100)}%` : '—'
-                }
-                strokeColor="#4676b8"
+                percent={onlinePercent}
+                format={() => (d.deviceTotal ? `${onlinePercent}%` : '—')}
+                strokeColor="#3563e9"
               />
               <div>
                 <strong>{d.deviceOnline}</strong>
@@ -165,7 +211,7 @@ export default function Overview() {
         <Col xs={24} xl={16}>
           <Card
             title="待处理告警"
-            bordered={false}
+            variant="borderless"
             className="overview-panel"
             extra={<Link to="/alarms">查看全部 →</Link>}
           >
@@ -195,7 +241,11 @@ export default function Overview() {
                   dataIndex: 'state',
                   render: (v: AlarmView['state']) => <AlarmStateTag state={v} />
                 },
-                { title: '最近发生', dataIndex: 'lastAt', render: (value: string | null) => formatDateTime(value) }
+                {
+                  title: '最近发生',
+                  dataIndex: 'lastAt',
+                  render: (value: string | null) => formatDateTime(value)
+                }
               ]}
             />
           </Card>
@@ -205,6 +255,6 @@ export default function Overview() {
         <Tag color="green">运行监控</Tag> 数据以设备最近上报及订单记录为准 ·{' '}
         <Link to="/products">查看产品与物模型 →</Link>
       </div>
-    </>
+    </div>
   )
 }

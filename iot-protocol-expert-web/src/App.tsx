@@ -18,7 +18,6 @@ import NotFound from './pages/NotFound'
 import Simulator from './pages/Simulator'
 import Assistant from './pages/Assistant'
 import AiKnowledge from './pages/AiKnowledge'
-import Evaluation from './pages/Evaluation'
 import Users from './pages/Users'
 import Investigations from './pages/Investigations'
 import Usage from './pages/Usage'
@@ -50,7 +49,10 @@ export default function App() {
   if (!user) {
     return (
       <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}>
-        <Spin size="large" tip="正在校验会话…" />
+        <div style={{ textAlign: 'center' }}>
+          <Spin size="large" />
+          <div style={{ marginTop: 12, color: '#718096' }}>正在校验会话…</div>
+        </div>
       </div>
     )
   }
@@ -64,7 +66,10 @@ export default function App() {
       <Suspense
         fallback={
           <div style={{ minHeight: 320, display: 'grid', placeItems: 'center' }}>
-            <Spin tip="正在加载…" />
+            <div style={{ textAlign: 'center' }}>
+              <Spin />
+              <div style={{ marginTop: 12, color: '#718096' }}>正在加载…</div>
+            </div>
           </div>
         }
       >
@@ -88,16 +93,6 @@ export default function App() {
           <Route path="/assistant" element={<Assistant />} />
           <Route path="/investigations" element={<Investigations />} />
           <Route path="/usage" element={<Usage user={user} />} />
-          <Route
-            path="/ai-evaluation"
-            element={
-              user.permissions?.includes('ai:admin') ? (
-                <Evaluation />
-              ) : (
-                <Navigate to="/assistant" replace />
-              )
-            }
-          />
           <Route path="/users" element={<Users />} />
           <Route path="/ai-knowledge" element={<AiKnowledge user={user} />} />
           <Route path="/ai-admin" element={<AiAdmin user={user} />}>

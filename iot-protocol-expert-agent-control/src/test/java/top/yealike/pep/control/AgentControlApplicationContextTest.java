@@ -35,9 +35,6 @@ class AgentControlApplicationContextTest {
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     private top.yealike.pep.control.runs.RunScheduler runs;
 
-    @org.springframework.test.context.bean.override.mockito.MockitoBean
-    private top.yealike.pep.control.evaluations.EvaluationWorker evaluations;
-
     @Test
     void startsWithItsOwnServicesAndSecurity() {
         assertThat(context.containsBean("agentService")).isTrue();

@@ -41,7 +41,6 @@ class McpEndpointResolverTest {
                 null,
                 null,
                 null,
-                null,
                 null);
     }
 }

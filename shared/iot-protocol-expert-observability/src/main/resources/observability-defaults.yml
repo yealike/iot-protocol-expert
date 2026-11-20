@@ -5,6 +5,11 @@ spring:
 ipe:
   observability:
     environment: ${IPE_ENVIRONMENT:local}
+  langfuse:
+    enabled: ${IPE_LANGFUSE_ENABLED:false}
+    server-url: ${IPE_LANGFUSE_SERVER_URL:}
+    public-key: ${IPE_LANGFUSE_PUBLIC_KEY:}
+    secret-key: ${IPE_LANGFUSE_SECRET_KEY:}
 
 management:
   tracing:

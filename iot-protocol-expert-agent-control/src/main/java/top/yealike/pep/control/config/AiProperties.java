@@ -11,8 +11,7 @@ public record AiProperties(
         Model model,
         Embedding embedding,
         Run run,
-        Knowledge knowledge,
-        Observability observability) {
+        Knowledge knowledge) {
 
     /** MCP 接入配置：地址可来自 Nacos 目录，密钥只从环境变量注入。 */
     public record Mcp(String token, String url, String gatewayBaseUrl, Registry registry) {}
@@ -52,10 +51,4 @@ public record AiProperties(
     public record Run(int maxConcurrent, int maxIters, int maxToolCalls, int timeoutMs, int maxContextMessages) {}
 
     public record Knowledge(int chunkSize, int chunkOverlap, int topK, int minScore, int maxDocumentBytes) {}
-
-    /** AI 可观测性开关：默认只导出元数据与 token，正文需要显式开启。 */
-    public record Observability(Otel otel) {
-
-        public record Otel(boolean enabled, boolean contentEnabled, int maxContentChars) {}
-    }
 }

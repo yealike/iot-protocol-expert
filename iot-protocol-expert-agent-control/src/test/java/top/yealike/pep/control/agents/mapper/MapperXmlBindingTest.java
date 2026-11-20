@@ -21,7 +21,6 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import top.yealike.pep.control.access.policy.PolicyService.Rule;
 import top.yealike.pep.control.conversations.ConversationRecords.Message;
 import top.yealike.pep.control.conversations.mapper.ConversationMapper;
-import top.yealike.pep.control.evaluations.mapper.EvaluationMapper;
 import top.yealike.pep.control.knowledge.mapper.KnowledgeMapper;
 import top.yealike.pep.control.mybatis.McpToolExecutionCategoryTypeHandler;
 import top.yealike.pep.control.mybatis.UuidTypeHandler;
@@ -40,7 +39,6 @@ class MapperXmlBindingTest {
             AiAuditLogMapper.class,
             ConversationMapper.class,
             CredentialMapper.class,
-            EvaluationMapper.class,
             InternalControlMapper.class,
             KnowledgeMapper.class,
             McpPlatformMapper.class,
@@ -265,8 +263,6 @@ class MapperXmlBindingTest {
             statementId = ConversationMapper.class.getName() + name.substring("ConversationMapper".length());
         } else if (name.startsWith("KnowledgeMapper.")) {
             statementId = KnowledgeMapper.class.getName() + name.substring("KnowledgeMapper".length());
-        } else if (name.startsWith("EvaluationMapper.")) {
-            statementId = EvaluationMapper.class.getName() + name.substring("EvaluationMapper".length());
         } else {
             statementId = "top.yealike.pep.control.agents.mapper." + name;
         }

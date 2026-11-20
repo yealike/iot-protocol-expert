@@ -1,5 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
+import './lib/random-uuid'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { App as AntApp, ConfigProvider } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
@@ -23,29 +24,36 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       locale={zhCN}
       theme={{
         token: {
-          colorPrimary: '#2858a5',
-          colorInfo: '#2858a5',
-          colorBgBase: '#f4f6fa',
+          colorPrimary: '#3563e9',
+          colorInfo: '#3563e9',
+          colorLink: '#3563e9',
+          colorTextBase: '#182230',
+          colorBgBase: '#f5f7fb',
           colorBgContainer: '#ffffff',
           colorBgElevated: '#ffffff',
-          colorBorder: '#dce3ec',
-          borderRadius: 6,
+          colorBorder: '#e2e8f0',
+          borderRadius: 10,
+          controlHeight: 38,
           fontFamily:
-            '"Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif'
+            'Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif'
         },
         components: {
           Layout: {
-            siderBg: '#14243b',
+            siderBg: '#111b2e',
             headerBg: '#ffffff',
-            bodyBg: '#f4f6fa'
+            bodyBg: '#f5f7fb'
           },
           Menu: {
             darkItemBg: 'transparent',
-            darkItemSelectedBg: '#284d7f',
-            darkItemSelectedColor: '#ffffff'
+            darkItemHoverBg: 'rgba(255, 255, 255, 0.06)',
+            darkItemSelectedBg: '#3563e9',
+            darkItemSelectedColor: '#ffffff',
+            darkItemColor: '#a8b3c7'
           },
+          Button: { fontWeight: 550 },
           Card: { colorBgContainer: '#ffffff' },
-          Table: { headerBg: '#f6f8fb' }
+          Table: { headerBg: '#f7f9fc', headerColor: '#5d6b82' },
+          Input: { activeShadow: '0 0 0 3px rgba(53, 99, 233, 0.10)' }
         }
       }}
     >

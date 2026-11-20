@@ -1,4 +1,5 @@
 import { Tag } from 'antd'
+import type { ReactNode } from 'react'
 import type { AlarmLevel, AlarmState, DeviceState } from '../api/types'
 
 const DEVICE_STATE: Record<DeviceState, { color: string; text: string }> = {
@@ -51,16 +52,21 @@ export function MetricCard({
   label,
   value,
   suffix,
-  tone
+  tone,
+  icon
 }: {
   label: string
   value: string | number
   suffix?: string
   tone?: 'warn' | 'danger'
+  icon?: ReactNode
 }) {
   return (
     <div className={`metric-card${tone ? ` ${tone}` : ''}`}>
-      <div className="label">{label}</div>
+      <div className="metric-card-top">
+        <div className="label">{label}</div>
+        {icon ? <span className="metric-icon">{icon}</span> : null}
+      </div>
       <div className="value">
         {value}
         {suffix ? <small>{suffix}</small> : null}
