@@ -14,7 +14,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.pep.ops.alarms.service.AlarmService;
 import top.yealike.pep.ops.devices.dto.DeviceDtos;
 import top.yealike.pep.ops.devices.entity.DeviceChannel;
 import top.yealike.pep.ops.devices.entity.DeviceInstance;
@@ -50,21 +49,18 @@ public class DevicePropertyService {
     private final DeviceInstanceMapper devices;
     private final DeviceChannelMapper channels;
     private final ThingModelResolver models;
-    private final AlarmService alarms;
 
     public DevicePropertyService(
             DevicePropertyLatestMapper latest,
             DevicePropertyTsMapper series,
             DeviceInstanceMapper devices,
             DeviceChannelMapper channels,
-            ThingModelResolver models,
-            AlarmService alarms) {
+            ThingModelResolver models) {
         this.latest = latest;
         this.series = series;
         this.devices = devices;
         this.channels = channels;
         this.models = models;
-        this.alarms = alarms;
     }
 
     // ------------------------------------------------------------------ 写入
@@ -202,10 +198,6 @@ public class DevicePropertyService {
         latest.save(row);
 
         appendSeries(device.id, effectiveChannel, key, value, occurredAt);
-
-        if (value.num() != null) {
-            alarms.evaluate(device, effectiveChannel, key, value.num(), occurredAt);
-        }
         return row;
     }
 

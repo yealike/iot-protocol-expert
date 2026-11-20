@@ -73,7 +73,7 @@ public class OverviewController {
         return response;
     }
 
-    /** 设备类型目录 + 在线/告警计数，供导航与筛选器使用。 */
+    /** 设备类型目录 + 在线/故障/离线计数，供导航与筛选器使用。 */
     @GetMapping("/device-types")
     @Operation(summary = "查询设备类型统计")
     public List<Map<String, Object>> deviceTypes() {

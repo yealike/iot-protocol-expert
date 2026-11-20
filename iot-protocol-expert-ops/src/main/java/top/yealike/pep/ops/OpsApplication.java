@@ -17,7 +17,6 @@ import top.yealike.pep.observability.protocol.LogbackTelemetryConfiguration;
 @Import({HttpTelemetryConfiguration.class, LocalTelemetryConfiguration.class, LogbackTelemetryConfiguration.class})
 @MapperScan({
     "top.yealike.pep.ops.access.mapper",
-    "top.yealike.pep.ops.alarms.mapper",
     "top.yealike.pep.ops.audit.mapper",
     "top.yealike.pep.ops.charging.mapper",
     "top.yealike.pep.ops.devices.mapper",

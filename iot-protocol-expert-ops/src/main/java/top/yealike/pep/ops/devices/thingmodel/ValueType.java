@@ -21,15 +21,6 @@ public sealed interface ValueType {
         return null;
     }
 
-    /** 是否可用于数值比较（告警阈值判断）。 */
-    default boolean numeric() {
-        return this instanceof IntType
-                || this instanceof LongType
-                || this instanceof FloatType
-                || this instanceof DoubleType
-                || this instanceof DecimalType;
-    }
-
     record IntType(Long min, Long max, String unit) implements ValueType {
         @Override
         public String typeId() {

@@ -13,8 +13,6 @@ import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import top.yealike.pep.ops.access.mapper.IdentityMapper;
 import top.yealike.pep.ops.access.mapper.OpsUserMapper;
-import top.yealike.pep.ops.alarms.mapper.AlarmRecordMapper;
-import top.yealike.pep.ops.alarms.mapper.AlarmRuleMapper;
 import top.yealike.pep.ops.audit.mapper.AuditLogMapper;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
 import top.yealike.pep.ops.charging.mapper.BillMapper;
@@ -105,21 +103,6 @@ class MapperSqlSmokeTest {
             DeviceEventLogMapper events = session.getMapper(DeviceEventLogMapper.class);
             events.selectTopByDevice(-1L, 10);
             events.selectTopByDevices(List.of(-1L), 10);
-
-            AlarmRuleMapper rules = session.getMapper(AlarmRuleMapper.class);
-            rules.selectAll();
-            rules.selectByRuleCode("__missing__");
-            rules.selectByProductId(-1L);
-            rules.selectEnabledByProductId(-1L);
-            rules.selectEnabledByDeviceId(-1L);
-
-            AlarmRecordMapper records = session.getMapper(AlarmRecordMapper.class);
-            records.selectById(-1L);
-            records.search(null, null, null, null, null, null, "last_at DESC", 10, 0);
-            records.countSearch(null, null, null, null, null, null);
-            records.selectByDeviceIdAndState(-1L, "OPEN");
-            records.countByState("OPEN");
-            records.countByStateAndLevel("OPEN", "WARN");
 
             ChargeOrderMapper orders = session.getMapper(ChargeOrderMapper.class);
             orders.selectById(-1L);

@@ -14,10 +14,6 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import top.yealike.pep.ops.access.domain.OpsUser;
 import top.yealike.pep.ops.access.mapper.IdentityMapper;
 import top.yealike.pep.ops.access.mapper.OpsUserMapper;
-import top.yealike.pep.ops.alarms.entity.AlarmRecord;
-import top.yealike.pep.ops.alarms.entity.AlarmRule;
-import top.yealike.pep.ops.alarms.mapper.AlarmRecordMapper;
-import top.yealike.pep.ops.alarms.mapper.AlarmRuleMapper;
 import top.yealike.pep.ops.audit.AuditLog;
 import top.yealike.pep.ops.audit.mapper.AuditLogMapper;
 import top.yealike.pep.ops.charging.domain.Bill;
@@ -154,39 +150,6 @@ class MapperWriteSmokeTest {
                 DeviceEventLog event = new DeviceEventLog(device.id, "", "testEvent", "INFO", "{}", now);
                 assertEquals(1, events.insert(event));
                 assertNotNull(event.id);
-
-                AlarmRuleMapper rules = session.getMapper(AlarmRuleMapper.class);
-                AlarmRule rule = new AlarmRule();
-                rule.ruleCode = "T-" + suffix;
-                rule.name = "test";
-                rule.productId = product.id;
-                rule.level = AlarmRule.LEVEL_WARN;
-                rule.metricProperty = "soc";
-                rule.operator = "lt";
-                rule.threshold = BigDecimal.ONE;
-                rule.createdAt = now;
-                rule.updatedAt = now;
-                assertEquals(1, rules.insert(rule));
-                assertNotNull(rule.id);
-                rule.name = "test-updated";
-                assertEquals(1, rules.update(rule));
-
-                AlarmRecordMapper records = session.getMapper(AlarmRecordMapper.class);
-                AlarmRecord record = new AlarmRecord();
-                record.ruleId = rule.id;
-                record.deviceId = device.id;
-                record.channelNo = "";
-                record.level = AlarmRule.LEVEL_WARN;
-                record.title = "test";
-                record.detail = "{}";
-                record.state = AlarmRecord.STATE_OPEN;
-                record.firstAt = now;
-                record.lastAt = now;
-                record.createdAt = now;
-                assertEquals(1, records.insert(record));
-                assertNotNull(record.id);
-                record.state = AlarmRecord.STATE_ACK;
-                assertEquals(1, records.update(record));
 
                 ChargeOrderMapper orders = session.getMapper(ChargeOrderMapper.class);
                 ChargeOrder order = new ChargeOrder();
@@ -342,7 +305,6 @@ class MapperWriteSmokeTest {
 
                 identities.deleteUserRoles(managed.id);
                 identities.deleteUserStations(managed.id);
-                assertEquals(1, rules.deleteById(rule.id));
                 assertEquals(1, stations.deleteById(station.id));
             } finally {
                 session.rollback();

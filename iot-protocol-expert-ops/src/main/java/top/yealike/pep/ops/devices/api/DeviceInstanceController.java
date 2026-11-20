@@ -66,7 +66,7 @@ public class DeviceInstanceController {
     }
 
     @GetMapping("/{id}")
-    @Operation(summary = "查询设备详情", description = "包含物模型、通道、属性、事件、告警和命令")
+    @Operation(summary = "查询设备详情", description = "包含物模型、通道、属性、事件和命令")
     public DeviceDtos.DeviceDetail detail(@Parameter(description = "设备 ID") @PathVariable Long id) {
         return devices.detail(id);
     }

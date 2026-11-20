@@ -41,7 +41,6 @@ import type {
   AiSkillUpdate,
   AiSkillValidation,
   AiStreamEvent,
-  AlarmView,
   BusinessOverview,
   CurrentUser,
   ManagedUser,
@@ -273,20 +272,6 @@ export const api = {
     request<OrderTelemetry>(`/api/ops/orders/${encodeURIComponent(orderNo)}/telemetry`),
   order: (orderNo: string) =>
     request<OrderDetail>(`/api/ops/orders/${encodeURIComponent(orderNo)}`),
-
-  // ---------------------------------------------------------------- 告警
-
-  queryAlarms: (params: Record<string, string | number | undefined> = {}) => {
-    const search = new URLSearchParams()
-    Object.entries(params).forEach(([key, value]) => {
-      if (value !== undefined && value !== '') search.set(key, String(value))
-    })
-    return request<PageResult<AlarmView>>(`/api/ops/alarms?${search.toString()}`)
-  },
-  ackAlarm: (id: number, note?: string) =>
-    request<unknown>(`/api/ops/alarms/${id}/ack`, json({ note })),
-  closeAlarm: (id: number, note?: string) =>
-    request<unknown>(`/api/ops/alarms/${id}/close`, json({ note })),
 
   // ---------------------------------------------------------------- AI 助手
 

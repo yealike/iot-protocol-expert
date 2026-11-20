@@ -55,6 +55,11 @@ class ControlMigrationPostgresTest {
                     .isNotNegative();
             assertThat(count(connection, "select count(*) from pep_agent.investigation_task"))
                     .isNotNegative();
+            assertThat(
+                            count(
+                                    connection,
+                                    "select count(*) from pg_tables where schemaname = 'pep_domain' and tablename in ('alarm_record', 'alarm_rule')"))
+                    .isZero();
             assertThat(count(connection, """
                     select count(*)
                       from pg_constraint c

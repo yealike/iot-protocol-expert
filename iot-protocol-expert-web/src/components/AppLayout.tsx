@@ -12,7 +12,6 @@ import {
   type MenuProps
 } from 'antd'
 import {
-  AlertOutlined,
   ApiOutlined,
   AppstoreOutlined,
   BuildOutlined,
@@ -76,7 +75,6 @@ const items: NavigationItem[] = [
     label: '充电模拟器',
     section: 'operations'
   },
-  { key: '/alarms', icon: <AlertOutlined />, label: '告警中心', section: 'operations' },
   { key: '/assistant', icon: <RobotOutlined />, label: 'AI 助手', section: 'intelligence' },
   {
     key: '/investigations',

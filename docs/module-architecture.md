@@ -6,7 +6,7 @@
 
 | 应用 | 端口 | 职责 |
 | --- | --- | --- |
-| iot-protocol-expert-ops | 19082 | 登录会话、用户角色权限、设备、订单、费率、告警、遥测、协议文档、业务内部接口 |
+| iot-protocol-expert-ops | 19082 | 登录会话、用户角色权限、设备、订单、费率、遥测、协议文档、业务内部接口 |
 | iot-protocol-expert-agent-control | 19083 | 租户项目与作用域授权、调查任务、会话、知识、评测、Agent/MCP/Skill 组件与版本、发布和调度 |
 | iot-protocol-expert-agent-runtime | 19084 | 装配指定发布版本、执行工具、上报事件和检查点；不访问业务数据库 |
 | iot-protocol-expert-protocol-gateway | 19080 | TCP/WebSocket/MQTT/Modbus 接入与协议处理；不保存业务事实 |

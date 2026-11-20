@@ -1,4 +1,4 @@
-/** 运维平台 API 契约。字段与后端 DeviceDtos / AlarmView 一一对应。 */
+/** 运维平台 API 契约。字段与后端 DeviceDtos 一一对应。 */
 
 export interface PageResult<T> {
   content: T[]
@@ -9,8 +9,7 @@ export interface PageResult<T> {
 }
 
 export type DeviceState = 'NOT_ACTIVE' | 'OFFLINE' | 'ONLINE' | 'FAULT'
-export type AlarmLevel = 'INFO' | 'WARN' | 'MAJOR' | 'CRITICAL'
-export type AlarmState = 'OPEN' | 'ACK' | 'CLOSED'
+export type EventLevel = 'INFO' | 'WARN' | 'MAJOR' | 'CRITICAL'
 
 export type DeviceTypeCode = 'CHARGER'
 
@@ -78,26 +77,10 @@ export interface EventView {
   id: number
   eventId: string
   eventName: string
-  level: AlarmLevel
+  level: EventLevel
   channelNo: string | null
   content: unknown
   occurredAt: string | null
-}
-
-export interface AlarmView {
-  id: number
-  deviceId: number
-  deviceCode: string | null
-  deviceName: string | null
-  channelNo: string | null
-  level: AlarmLevel
-  title: string
-  state: AlarmState
-  firstAt: string | null
-  lastAt: string | null
-  handledBy: string | null
-  handledAt: string | null
-  handlingNote: string | null
 }
 
 export interface CommandView {
@@ -118,7 +101,6 @@ export interface DeviceDetail {
   channels: ChannelView[]
   properties: PropertyValue[]
   events: EventView[]
-  alarms: AlarmView[]
   commands: CommandView[]
 }
 
@@ -158,7 +140,7 @@ export interface FunctionMetadata {
 export interface EventMetadata {
   id: string
   name: string
-  level: AlarmLevel
+  level: EventLevel
   valueType: ValueType
   description?: string
 }
@@ -235,18 +217,15 @@ export interface DeviceTypeSummary {
   online: number
   fault: number
   offline: number
-  alarmOpen: number
 }
 
 export interface Overview {
   deviceTotal: number
   deviceOnline: number
   deviceFault: number
-  alarmOpen: number
   stationCount: number
   productCount: number
   byType: DeviceTypeSummary[]
-  latestAlarms: AlarmView[]
 }
 
 export interface SeriesView {

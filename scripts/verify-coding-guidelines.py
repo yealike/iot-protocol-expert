@@ -11,7 +11,6 @@ BASELINE = json.loads((ROOT / "scripts/coding-guidelines-baseline.json").read_te
 INTERPOLATION = {
     "iot-protocol-expert-ops/src/main/resources/mapper/ops/DeviceInstanceMapper.xml": {"orderBy"},
     "iot-protocol-expert-ops/src/main/resources/mapper/ops/ProductMapper.xml": {"orderBy"},
-    "iot-protocol-expert-ops/src/main/resources/mapper/ops/AlarmRecordMapper.xml": {"orderBy"},
     "iot-protocol-expert-ops/src/main/resources/mapper/tdengine/TdengineMapper.xml": {"database", "table"},
 }
 # The metering ledger needs single-statement CTE/row-lock SQL with explicit

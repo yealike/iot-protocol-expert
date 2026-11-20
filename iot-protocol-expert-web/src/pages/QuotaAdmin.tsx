@@ -76,7 +76,7 @@ export default function QuotaAdmin({ user }: { user: CurrentUser }) {
   })
 
   return (
-    <Card title="额度分配与管理">
+    <Card title="额度分配与管理" variant="borderless" className="quota-admin-card">
       <Alert
         type="info"
         showIcon

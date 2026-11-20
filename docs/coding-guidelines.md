@@ -20,7 +20,7 @@
 | P2 | MCP 删除只清工具策略，遗留测试报告形成孤儿记录 | 删除组件前显式删除 `ai_mcp_test_report` |
 | P2 | 内部签名时间戳用 `Math.abs` 比较，极值可溢出；服务身份头无长度上限 | 改为上下界比较并限制 service/nonce/signature 长度 |
 | P1 | V5 已清理外键，V8/V9 又引入协议文档与 IAM 外键；模拟器 V1 也有外键 | 新增 OPS V10、模拟器 V2，按各自 schema 清理物理外键，保留历史迁移校验和；不使用 CASCADE |
-| P1 | 未激活设备删除只删主表，可能留下配置孤儿或破坏历史记录的关联 | 事务内检查子设备、订单、账单、告警规则/记录、属性时序、事件、命令、报文和排障记录；有引用则拒绝，允许删除时显式清理标签、通道和最新属性 |
+| P1 | 未激活设备删除只删主表，可能留下配置孤儿或破坏历史记录的关联 | 事务内检查子设备、订单、账单、属性时序、事件、命令、报文和排障记录；有引用则拒绝，允许删除时显式清理标签、通道和最新属性 |
 | P1 | 固定线程池默认无界队列，过载可能积压内存；拒绝任务后 inflight / pending 无法释放 | AI 和模拟器改显式 ThreadPoolExecutor、有界队列、命名线程与拒绝策略；拒绝时释放计数/标记，AI 恢复队列状态；AI 派发加同步保护 |
 | P1 | SSE 连接数量和生命周期无限制，取消任务可能留在延迟队列，回调与 future 赋值有竞争 | 每实例最多 256 路，超额返回 429；30 分钟超时；取消立即移除；原子释放配额并处理注册竞争。客户端需按游标重连 |
 | P1 | 统一异常处理覆盖 ResponseStatusException / AccessDeniedException，客户端错误变 500；底层异常可能返回 SQL/基础设施信息 | OPS/AI 保留状态异常和 403；协议服务保留状态异常；OPS 约束冲突返回 409；服务端异常只在日志保留详情 |
@@ -45,7 +45,7 @@ Maven profile 在根项目 verify 阶段运行扫描，继承关系不会导致�
 
 检查项：禁止 Executors 工厂隐式线程池、无 Locale 大小写转换、printStackTrace、SimpleDateFormat；生产代码禁止 `JdbcTemplate` / `NamedParameterJdbcTemplate` / `JdbcClient`、JPA/Hibernate 与 `DriverManager#getConnection`；Mapper 禁止 SELECT * 与未经审查的 ${...}；SQL 禁止新增外键和 ON DELETE 级联。已应用迁移通过统一换行后的文件内容 SHA-256 基线豁免，因此修改这些旧文件也会失败。
 
-已审查的 SQL 标识符插值：DeviceInstance / Product / AlarmRecord 排序来自 PageSupport 白名单；TDengine 数据库名为固定常量，表名为订单号 SHA-256。不能直接传入请求参数。普通值继续使用 #{...}。
+已审查的 SQL 标识符插值：DeviceInstance / Product 排序来自 PageSupport 白名单；TDengine 数据库名为固定常量，表名为订单号 SHA-256。不能直接传入请求参数。普通值继续使用 #{...}。
 
 ScheduledThreadPoolExecutor 的延迟队列仍是 JDK 无界实现：Modbus 每个配置设备仅注册一个固定周期任务，任务数等于配置设备数；SSE 由信号量限制活动任务数并启用 removeOnCancelPolicy。这需要人工检查，静态脚本不能证明上限。
 

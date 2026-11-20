@@ -1,25 +1,24 @@
-import { formatDateTime } from '../utils/dateTime'
 import { useQuery } from '@tanstack/react-query'
-import { Card, Col, Empty, Progress, Row, Skeleton, Table, Tag } from 'antd'
+import { Button, Card, Col, Empty, Progress, Row, Skeleton } from 'antd'
 import { Link } from 'react-router-dom'
-import { api } from '../api/client'
-import { AlarmLevelTag, AlarmStateTag, MetricCard } from '../components/tags'
-import type { AlarmView } from '../api/types'
-import Chart from '../components/Chart'
 import {
   AccountBookOutlined,
-  AlertOutlined,
+  AppstoreOutlined,
   CheckCircleOutlined,
   ClusterOutlined,
   DatabaseOutlined,
   EnvironmentOutlined,
   FileDoneOutlined,
   InfoCircleOutlined,
+  ReloadOutlined,
   SwapOutlined,
   SyncOutlined,
   ThunderboltOutlined,
   WarningOutlined
 } from '@ant-design/icons'
+import { api } from '../api/client'
+import Chart from '../components/Chart'
+import { MetricCard } from '../components/tags'
 
 export default function Overview() {
   const overview = useQuery({
@@ -32,46 +31,48 @@ export default function Overview() {
     queryFn: api.businessOverview,
     refetchInterval: 30000
   })
-  if (overview.isLoading) return <Skeleton active paragraph={{ rows: 8 }} />
-  if (overview.isError || !overview.data)
+
+  if (overview.isLoading) return <Skeleton active paragraph={{ rows: 10 }} />
+  if (overview.isError || !overview.data) {
     return (
       <Empty
         description={overview.error instanceof Error ? overview.error.message : '总览加载失败'}
       />
     )
+  }
+
   const d = overview.data
   const b = business.data
   const normal = Math.max(0, d.deviceOnline - d.deviceFault)
+  const offline = Math.max(0, d.deviceTotal - d.deviceOnline)
   const onlinePercent = d.deviceTotal ? Math.round((d.deviceOnline / d.deviceTotal) * 100) : 0
+  const refreshing = overview.isFetching || business.isFetching
+
   return (
     <div className="overview-page">
-      <div className="overview-hero">
-        <div className="overview-hero-content">
-          <div className="overview-eyebrow">OPERATIONS CENTER / 运营中心</div>
-          <h1>充电运营总览</h1>
-          <p>掌握设备运行状态与充电业务动态，及时发现需要关注的变化。</p>
-        </div>
-        <div className="overview-hero-side">
-          <div className="overview-hero-stat">
-            <span>设备在线率</span>
-            <strong>
-              {d.deviceTotal ? onlinePercent : '—'}
-              {d.deviceTotal ? <small>%</small> : null}
-            </strong>
-          </div>
-          <div className="overview-live">
-            <span /> 数据每 15 秒刷新 <small>{b?.date ?? '—'} · 北京时间</small>
-          </div>
-        </div>
-      </div>
-      <div className="overview-section-title">
+      <div className="page-header overview-page-header">
         <div>
-          <h2>今日业务</h2>
-          <span>按北京时间统计，数据以平台记录为准</span>
+          <div className="overview-title-line">
+            <h1>运营总览</h1>
+            <span className="overview-live-badge">
+              <i /> 实时监测
+            </span>
+          </div>
+          <p>聚合充电业务与设备运行数据，快速掌握今日运营表现。</p>
         </div>
-        <Link to="/orders">查看订单 →</Link>
+        <div className="overview-header-actions">
+          <span>{b?.date ?? '—'} · 北京时间</span>
+          <Button
+            icon={<ReloadOutlined />}
+            loading={refreshing}
+            onClick={() => Promise.all([overview.refetch(), business.refetch()])}
+          >
+            刷新数据
+          </Button>
+        </div>
       </div>
-      <div className="metric-grid overview-business-grid">
+
+      <div className="metric-grid overview-primary-grid">
         <MetricCard
           icon={<ThunderboltOutlined />}
           label="今日充电量"
@@ -79,28 +80,10 @@ export default function Overview() {
           suffix="kWh"
         />
         <MetricCard
-          icon={<SwapOutlined />}
-          label="今日放电量"
-          value={b ? Number(b.dischargedEnergy).toFixed(2) : '—'}
-          suffix="kWh"
-        />
-        <MetricCard
-          icon={<DatabaseOutlined />}
-          label="今日结算订单充电量"
-          value={b ? Number(b.settledEnergy).toFixed(2) : '—'}
-          suffix="kWh"
-        />
-        <MetricCard
           icon={<AccountBookOutlined />}
-          label="今日已结算金额（含估算）"
+          label="今日结算金额（含估算）"
           value={b ? Number(b.settledAmount).toFixed(2) : '—'}
           suffix="元"
-        />
-        <MetricCard
-          icon={<FileDoneOutlined />}
-          label="今日结算订单"
-          value={b?.settledOrderCount ?? '—'}
-          suffix="笔"
         />
         <MetricCard
           icon={<SyncOutlined />}
@@ -108,152 +91,187 @@ export default function Overview() {
           value={b?.activeOrderCount ?? '—'}
           suffix="笔"
         />
+        <MetricCard
+          icon={<CheckCircleOutlined />}
+          label="设备在线率"
+          value={d.deviceTotal ? onlinePercent : '—'}
+          suffix={d.deviceTotal ? '%' : undefined}
+        />
       </div>
+
+      <Row gutter={[20, 20]} className="overview-main-grid">
+        <Col xs={24} xl={16}>
+          <Card
+            title="近 7 日业务趋势"
+            variant="borderless"
+            className="overview-panel overview-trend-panel"
+            extra={<span className="muted">按订单结束日统计</span>}
+          >
+            {b ? (
+              <Chart
+                height={300}
+                option={{
+                  animationDuration: 500,
+                  grid: { left: 58, right: 58, top: 48, bottom: 36 },
+                  tooltip: {
+                    trigger: 'axis',
+                    backgroundColor: 'rgba(24, 34, 48, 0.94)',
+                    borderWidth: 0,
+                    textStyle: { color: '#fff' }
+                  },
+                  legend: {
+                    top: 4,
+                    right: 8,
+                    itemWidth: 10,
+                    itemHeight: 10,
+                    data: ['结算电量', '结算金额'],
+                    textStyle: { color: '#718096' }
+                  },
+                  xAxis: {
+                    type: 'category',
+                    data: b.daily.map((x) => x.date.slice(5)),
+                    axisLine: { lineStyle: { color: '#dfe6ef' } },
+                    axisTick: { show: false },
+                    axisLabel: { color: '#8491a3' }
+                  },
+                  yAxis: [
+                    {
+                      type: 'value',
+                      name: 'kWh',
+                      nameTextStyle: { color: '#96a2b2' },
+                      axisLabel: { color: '#96a2b2' },
+                      splitLine: { lineStyle: { color: '#edf1f6' } }
+                    },
+                    {
+                      type: 'value',
+                      name: '元',
+                      nameTextStyle: { color: '#96a2b2' },
+                      axisLabel: { color: '#96a2b2' },
+                      splitLine: { show: false }
+                    }
+                  ],
+                  series: [
+                    {
+                      name: '结算电量',
+                      type: 'bar',
+                      barMaxWidth: 28,
+                      data: b.daily.map((x) => x.energy),
+                      itemStyle: { color: '#6b8ef0', borderRadius: [5, 5, 0, 0] }
+                    },
+                    {
+                      name: '结算金额',
+                      type: 'line',
+                      yAxisIndex: 1,
+                      smooth: true,
+                      symbolSize: 7,
+                      showSymbol: true,
+                      data: b.daily.map((x) => x.amount),
+                      lineStyle: { color: '#22a785', width: 2.5 },
+                      itemStyle: { color: '#22a785', borderColor: '#fff', borderWidth: 2 },
+                      areaStyle: { color: 'rgba(34, 167, 133, 0.06)' }
+                    }
+                  ]
+                }}
+              />
+            ) : (
+              <Empty description={business.isError ? '统计数据暂不可用' : '加载中'} />
+            )}
+          </Card>
+        </Col>
+        <Col xs={24} xl={8}>
+          <Card
+            title="设备运行状态"
+            variant="borderless"
+            className="overview-panel overview-health-panel"
+            extra={<Link to="/devices">设备管理</Link>}
+          >
+            <div className="device-health-summary">
+              <Progress
+                type="circle"
+                size={142}
+                percent={onlinePercent}
+                format={() => (d.deviceTotal ? `${onlinePercent}%` : '—')}
+                strokeColor="#3563e9"
+                trailColor="#edf1f7"
+              />
+              <div className="device-health-copy">
+                <strong>{d.deviceOnline}</strong>
+                <span>在线设备 / 共 {d.deviceTotal} 台</span>
+                <small>设备数据每 15 秒自动更新</small>
+              </div>
+            </div>
+            <div className="device-status-list">
+              <div>
+                <span><i className="status-dot normal" />在线正常</span>
+                <strong>{normal}<small> 台</small></strong>
+              </div>
+              <div>
+                <span><i className="status-dot fault" />故障设备</span>
+                <strong className={d.deviceFault ? 'danger-text' : ''}>{d.deviceFault}<small> 台</small></strong>
+              </div>
+              <div>
+                <span><i className="status-dot offline" />离线设备</span>
+                <strong>{offline}<small> 台</small></strong>
+              </div>
+            </div>
+          </Card>
+        </Col>
+      </Row>
+
+      <Row gutter={[20, 20]}>
+        <Col xs={24} xl={16}>
+          <Card
+            title="今日业务明细"
+            variant="borderless"
+            className="overview-panel"
+            extra={<Link to="/orders">查看订单</Link>}
+          >
+            <div className="business-detail-grid">
+              <div>
+                <span className="business-detail-icon blue"><SwapOutlined /></span>
+                <div><span>今日放电量</span><strong>{b ? Number(b.dischargedEnergy).toFixed(2) : '—'}<small> kWh</small></strong></div>
+              </div>
+              <div>
+                <span className="business-detail-icon cyan"><DatabaseOutlined /></span>
+                <div><span>结算订单充电量</span><strong>{b ? Number(b.settledEnergy).toFixed(2) : '—'}<small> kWh</small></strong></div>
+              </div>
+              <div>
+                <span className="business-detail-icon green"><FileDoneOutlined /></span>
+                <div><span>今日结算订单</span><strong>{b?.settledOrderCount ?? '—'}<small> 笔</small></strong></div>
+              </div>
+            </div>
+          </Card>
+        </Col>
+        <Col xs={24} xl={8}>
+          <Card title="运营资源" variant="borderless" className="overview-panel">
+            <div className="resource-list">
+              <Link to="/products">
+                <span className="resource-icon"><AppstoreOutlined /></span>
+                <span>充电产品<small>已接入产品模板</small></span>
+                <strong>{d.productCount}<small> 个</small></strong>
+              </Link>
+              <Link to="/devices">
+                <span className="resource-icon"><EnvironmentOutlined /></span>
+                <span>运营站点<small>当前授权范围</small></span>
+                <strong>{d.stationCount}<small> 个</small></strong>
+              </Link>
+              <Link to="/devices">
+                <span className="resource-icon"><ClusterOutlined /></span>
+                <span>设备总量<small>充电桩设备档案</small></span>
+                <strong>{d.deviceTotal}<small> 台</small></strong>
+              </Link>
+            </div>
+          </Card>
+        </Col>
+      </Row>
+
       <div className="overview-note">
         <InfoCircleOutlined />
         <span>
           今日充电量按自然日聚合；结算电量按订单结束日汇总，跨日订单计入结束日。金额可能包含平台估算，不代表实收。
           {business.isError ? ' 业务统计加载失败。' : ''}
         </span>
-      </div>
-      <Card
-        title="近 7 日结算趋势"
-        variant="borderless"
-        className="overview-panel"
-        style={{ marginTop: 20 }}
-        extra={<span className="muted">按订单结束日统计 · 金额含估算</span>}
-      >
-        {b ? (
-          <Chart
-            height={230}
-            option={{
-              grid: { left: 55, right: 55, top: 35, bottom: 32 },
-              tooltip: { trigger: 'axis' },
-              legend: { data: ['结算电量', '结算金额'], textStyle: { color: '#718096' } },
-              xAxis: { type: 'category', data: b.daily.map((x) => x.date.slice(5)) },
-              yAxis: [
-                { type: 'value', name: 'kWh' },
-                { type: 'value', name: '元' }
-              ],
-              series: [
-                {
-                  name: '结算电量',
-                  type: 'bar',
-                  barMaxWidth: 26,
-                  data: b.daily.map((x) => x.energy),
-                  itemStyle: { color: '#4676b8' }
-                },
-                {
-                  name: '结算金额',
-                  type: 'line',
-                  yAxisIndex: 1,
-                  showSymbol: true,
-                  data: b.daily.map((x) => x.amount),
-                  lineStyle: { color: '#5b9b92' },
-                  itemStyle: { color: '#5b9b92' }
-                }
-              ]
-            }}
-          />
-        ) : (
-          <Empty description={business.isError ? '统计数据暂不可用' : '加载中'} />
-        )}
-      </Card>
-      <div className="overview-section-title">
-        <div>
-          <h2>设备运行</h2>
-          <span>设备数、在线状态与待处理事项</span>
-        </div>
-        <Link to="/devices">设备管理 →</Link>
-      </div>
-      <div className="metric-grid overview-device-grid">
-        <MetricCard icon={<ClusterOutlined />} label="设备总数" value={d.deviceTotal} suffix="台" />
-        <MetricCard icon={<CheckCircleOutlined />} label="在线正常" value={normal} suffix="台" />
-        <MetricCard
-          icon={<WarningOutlined />}
-          label="故障设备"
-          value={d.deviceFault}
-          suffix="台"
-          tone={d.deviceFault ? 'danger' : undefined}
-        />
-        <MetricCard
-          icon={<AlertOutlined />}
-          label="未关闭告警"
-          value={d.alarmOpen}
-          suffix="条"
-          tone={d.alarmOpen ? 'warn' : undefined}
-        />
-        <MetricCard
-          icon={<EnvironmentOutlined />}
-          label="运营站点"
-          value={d.stationCount}
-          suffix="个"
-        />
-      </div>
-      <Row gutter={[16, 16]} style={{ marginTop: 20 }}>
-        <Col xs={24} xl={8}>
-          <Card title="连接状态" variant="borderless" className="overview-panel">
-            <div className="availability">
-              <Progress
-                type="dashboard"
-                percent={onlinePercent}
-                format={() => (d.deviceTotal ? `${onlinePercent}%` : '—')}
-                strokeColor="#3563e9"
-              />
-              <div>
-                <strong>{d.deviceOnline}</strong>
-                <span>在线设备 / {d.deviceTotal} 台</span>
-                <small>含在线故障设备</small>
-              </div>
-            </div>
-          </Card>
-        </Col>
-        <Col xs={24} xl={16}>
-          <Card
-            title="待处理告警"
-            variant="borderless"
-            className="overview-panel"
-            extra={<Link to="/alarms">查看全部 →</Link>}
-          >
-            <Table<AlarmView>
-              size="small"
-              rowKey="id"
-              pagination={false}
-              dataSource={d.latestAlarms}
-              locale={{ emptyText: '暂无未关闭告警' }}
-              scroll={{ x: 500 }}
-              columns={[
-                {
-                  title: '级别',
-                  dataIndex: 'level',
-                  render: (v: AlarmView['level']) => <AlarmLevelTag level={v} />
-                },
-                { title: '告警', dataIndex: 'title' },
-                {
-                  title: '设备',
-                  dataIndex: 'deviceName',
-                  render: (v: string | null, row) => (
-                    <Link to={`/devices/${row.deviceId}`}>{v ?? row.deviceCode ?? '—'}</Link>
-                  )
-                },
-                {
-                  title: '状态',
-                  dataIndex: 'state',
-                  render: (v: AlarmView['state']) => <AlarmStateTag state={v} />
-                },
-                {
-                  title: '最近发生',
-                  dataIndex: 'lastAt',
-                  render: (value: string | null) => formatDateTime(value)
-                }
-              ]}
-            />
-          </Card>
-        </Col>
-      </Row>
-      <div className="overview-bottom">
-        <Tag color="green">运行监控</Tag> 数据以设备最近上报及订单记录为准 ·{' '}
-        <Link to="/products">查看产品与物模型 →</Link>
+        {d.deviceFault > 0 ? <WarningOutlined className="overview-note-warning" /> : null}
       </div>
     </div>
   )

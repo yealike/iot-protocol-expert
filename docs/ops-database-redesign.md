@@ -21,7 +21,7 @@ station 1 ── N device N ── 1 product
                          device/connector ── N charging_order ── N charging_bill
                                                 └── N order_event
                          device/connector ── N energy_sample ──> energy_hourly
-                         device/connector ── N alarm / command_record / protocol_message
+                         device/connector ── N command_record / protocol_message
 protocol_code ── N protocol_document ── N protocol_document_section
 station ── N tariff_plan ── N tariff_period; order 保存费率快照
 ```
@@ -34,7 +34,7 @@ station ── N tariff_plan ── N tariff_period; order 保存费率快照
 
 ### 精简原则与建表范围
 
-以下是完整候选模型，不要求首期一次性建齐。首期只实现产品与版本、站点、设备与枪口、运行状态、实时/历史属性、订单与账单、费率、告警、命令、协议文档及诊断必需的表；`energy_hourly` 是可重算的性能优化表，数据量小可先按事实数据查询，不预建。`device_event`、`order_event`、`protocol_message` 仅在对应事件时间线、协议诊断确有写入和查询需求时建立；不为假设的多租户、OSS/MinIO、支付或字典创建空表。实现前逐表确认写入方、使用页面及保留策略，没有明确用途的表不建。必要的唯一索引和数据完整性规则不能因为精简而省略。
+以下是完整候选模型，不要求首期一次性建齐。首期只实现产品与版本、站点、设备与枪口、运行状态、实时/历史属性、订单与账单、费率、命令、协议文档及诊断必需的表；`energy_hourly` 是可重算的性能优化表，数据量小可先按事实数据查询，不预建。`device_event`、`order_event`、`protocol_message` 仅在对应事件时间线、协议诊断确有写入和查询需求时建立；不为假设的多租户、OSS/MinIO、支付或字典创建空表。实现前逐表确认写入方、使用页面及保留策略，没有明确用途的表不建。必要的唯一索引和数据完整性规则不能因为精简而省略。
 ### 产品与设备
 
 | 表 | 主要字段（类型；含义） | 约束和典型索引 |
@@ -56,7 +56,6 @@ station ── N tariff_plan ── N tariff_period; order 保存费率快照
 | `property_latest` | `device_id bigint!`、`scope_key varchar(32)!`、`property_code varchar(64)!`、`value_json jsonb!`、`value_time timestamptz!`、`received_at timestamptz!`、`quality varchar(16)!` | `uk_property_latest(device_id,scope_key,property_code)`；`scope_key` 为 DEVICE 或 CONNECTOR:枪口号，避免 NULL 唯一语义；较旧补传不得覆盖较新值 |
 | `property_sample` | `device_id bigint!`、`scope_key varchar(32)!`、`property_code varchar(64)!`、`value_json jsonb!`、`sample_time timestamptz!`、`received_at timestamptz!`、`source_key varchar(192)!`、`quality varchar(16)!` | `uk_property_sample_source(device_id,source_key,scope_key,property_code)`、`idx_property_sample_query(device_id,scope_key,property_code,sample_time desc)`；source_key 由协议事件生成，重复消息稳定一致 |
 | `device_event` | `device_id bigint!`、`connector_id bigint?`、`event_code varchar(64)!`、`event_level varchar(16)!`、`event_data jsonb!`、`occurred_at timestamptz!`、`source_key varchar(192)!` | `uk_device_event_source(device_id,source_key,event_code)`、`idx_device_event_time(device_id,occurred_at desc)` |
-| `alarm` | `device_id bigint!`、`connector_id bigint?`、`scope_key varchar(32)!`、`alarm_code varchar(64)!`、`severity varchar(16)!`、`status varchar(16)!`、`first_occurred_at timestamptz!`、`last_occurred_at timestamptz!`、`cleared_at timestamptz?`、`handled_by varchar(64)?`、`handling_note varchar(512)?` | 状态 OPEN/ACK/CLOSED；`idx_alarm_status_time(status,last_occurred_at desc)`；同一设备/作用域/代码仅一条未关闭告警，以非空 scope_key + 部分唯一索引保证 |
 | `command_record` | `command_no varchar(64)!`、`device_id bigint!`、`connector_id bigint?`、`command_type varchar(32)!`、`status varchar(24)!`、`request_data jsonb!`、`response_data jsonb?`、`operator varchar(64)!`、`sent_at timestamptz?`、`completed_at timestamptz?` | `uk_command_no`、`idx_command_device_time(device_id,gmt_create desc)`；记录实际应答与超时，提交不等于成功 |
 | `protocol_message` | `device_id bigint?`、`protocol_code varchar(32)!`、`direction varchar(8)!`、`message_type varchar(64)!`、`correlation_id varchar(128)?`、`payload text!`、`occurred_at timestamptz!` | `idx_message_device_time(device_id,occurred_at desc)`、`idx_message_correlation(correlation_id)`；长度上限、脱敏及保留期限由服务控制 |
 
@@ -103,7 +102,7 @@ station ── N tariff_plan ── N tariff_period; order 保存费率快照
 2. 设备换绑只允许未激活、无订单及其他历史引用；锁设备并检查。站点迁移、新订单创建对设备使用相同锁；历史订单与计量记录使用发生时站点快照。删除与绑定必须在同事务遵守同一锁协议，单纯先查询再写不能防竞态。
 3. 新建订单锁枪口并检查设备/枪口可用，活跃订单部分唯一索引兜底；状态转换使用 `where id=? and version=? and status in (...)`，并在同事务写 order_event。协议事务号作用域根据协议确定，不能假设跨设备全局唯一；每种协议以实际唯一域建立约束和幂等键。
 4. 上报按稳定来源键去重，最新值通过带时间条件的 upsert 防止乱序覆盖；收到的原始账单先落库并判断幂等，再事务更新订单和事件。聚合来自事实表，可按时间范围重算并对账；不依赖单次内存事件。
-5. 每日/按需执行巡检：设备指向的产品/版本/站点是否存在且匹配，枪口是否有设备，订单和账单关联是否有效，状态与活跃索引是否一致；发现问题记录并告警，不自动删除历史。
+5. 每日/按需执行巡检：设备指向的产品/版本/站点是否存在且匹配，枪口是否有设备，订单和账单关联是否有效，状态与活跃索引是否一致；发现问题记录异常，不自动删除历史。
 
 ## 5. 初始化与项目改造
 
@@ -115,7 +114,7 @@ station ── N tariff_plan ── N tariff_period; order 保存费率快照
 
 ## 6. 实施范围
 
-本文是可实施的概念/逻辑设计，尚不是完整可执行 DDL：字段长度、默认值、每个 CHECK、索引名称、所有修订/告警字段和协议唯一键需在实现迁移时逐表落成并配套测试。数据库和现有服务目前未修改；实施需要同步替换旧持久层及初始化数据。
+本文是可实施的概念/逻辑设计，尚不是完整可执行 DDL：字段长度、默认值、每个 CHECK、索引名称、所有修订字段和协议唯一键需在实现迁移时逐表落成并配套测试。数据库和现有服务目前未修改；实施需要同步替换旧持久层及初始化数据。
 
 
 

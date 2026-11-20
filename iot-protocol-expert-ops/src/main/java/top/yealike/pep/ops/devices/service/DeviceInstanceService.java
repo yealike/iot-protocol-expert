@@ -16,7 +16,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.pep.ops.alarms.service.AlarmService;
 import top.yealike.pep.ops.charging.domain.CommandRecord;
 import top.yealike.pep.ops.charging.domain.Station;
 import top.yealike.pep.ops.charging.mapper.CommandRecordMapper;
@@ -47,11 +46,10 @@ import top.yealike.pep.ops.support.page.PageSupport;
  * <ul>
  *   <li>档案与状态在这里；
  *   <li>实时值在 {@link DevicePropertyService}；
- *   <li>物模型在 {@link ThingModelResolver}；
- *   <li>告警在 {@link AlarmService}。
+ *   <li>物模型在 {@link ThingModelResolver}。
  * </ul>
  *
- * 原来一个 280 行的类同时做这四件事，是「粗制滥造」的主要来源。
+ * 原来一个 280 行的类同时做这些事，是「粗制滥造」的主要来源。
  */
 @Service
 public class DeviceInstanceService {
@@ -70,7 +68,6 @@ public class DeviceInstanceService {
     private final StationMapper stations;
     private final ThingModelResolver models;
     private final DevicePropertyService properties;
-    private final AlarmService alarms;
     private final CommandRecordMapper commands;
 
     public DeviceInstanceService(
@@ -83,7 +80,6 @@ public class DeviceInstanceService {
             StationMapper stations,
             ThingModelResolver models,
             DevicePropertyService properties,
-            AlarmService alarms,
             CommandRecordMapper commands) {
         this.devices = devices;
         this.tags = tags;
@@ -94,7 +90,6 @@ public class DeviceInstanceService {
         this.stations = stations;
         this.models = models;
         this.properties = properties;
-        this.alarms = alarms;
         this.commands = commands;
     }
 
@@ -161,7 +156,6 @@ public class DeviceInstanceService {
                 properties.channelViews(device, model),
                 properties.propertyViews(device, model),
                 eventViews(device.id),
-                alarms.openFor(device.id),
                 commandViews(device.id));
     }
 
@@ -565,7 +559,7 @@ public class DeviceInstanceService {
             throw new IllegalArgumentException("只有未激活的设备可以删除，请先注销");
         }
         if (devices.hasDeletionBlockers(id)) {
-            throw new IllegalArgumentException("设备存在子设备、业务记录或告警规则，不能删除");
+            throw new IllegalArgumentException("设备存在子设备或业务记录，不能删除");
         }
         devices.deleteTags(id);
         devices.deleteChannels(id);
@@ -708,18 +702,9 @@ public class DeviceInstanceService {
                             .count(),
                     group.stream()
                             .filter(d -> DeviceInstance.STATE_OFFLINE.equals(d.state))
-                            .count(),
-                    0));
+                            .count()));
         }
-        return new DeviceDtos.Overview(
-                all.size(),
-                online,
-                fault,
-                alarms.countOpen(),
-                stations.count(),
-                products.count(),
-                byType,
-                alarms.latestOpen(8));
+        return new DeviceDtos.Overview(all.size(), online, fault, stations.count(), products.count(), byType);
     }
 
     // ------------------------------------------------------------------ 工具

@@ -151,21 +151,6 @@ public final class DeviceDtos {
             Object content,
             String occurredAt) {}
 
-    public record AlarmView(
-            Long id,
-            Long deviceId,
-            String deviceCode,
-            String deviceName,
-            String channelNo,
-            String level,
-            String title,
-            String state,
-            String firstAt,
-            String lastAt,
-            String handledBy,
-            String handledAt,
-            String handlingNote) {}
-
     public record CommandView(
             Long id,
             String commandType,
@@ -183,22 +168,19 @@ public final class DeviceDtos {
             List<ChannelView> channels,
             List<PropertyValue> properties,
             List<EventView> events,
-            List<AlarmView> alarms,
             List<CommandView> commands) {}
 
     /** 首页/大屏总览：按设备类型聚合。 */
     public record DeviceTypeSummary(
-            String deviceType, String label, long total, long online, long fault, long offline, long alarmOpen) {}
+            String deviceType, String label, long total, long online, long fault, long offline) {}
 
     public record Overview(
             long deviceTotal,
             long deviceOnline,
             long deviceFault,
-            long alarmOpen,
             long stationCount,
             long productCount,
-            List<DeviceTypeSummary> byType,
-            List<AlarmView> latestAlarms) {}
+            List<DeviceTypeSummary> byType) {}
 
     // ------------------------------------------------------------------ 数据
 

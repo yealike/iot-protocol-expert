@@ -6,7 +6,7 @@
 
 | 模块 | 职责 | 默认端口 |
 | --- | --- | --- |
-| `iot-protocol-expert-ops` | 用户身份、设备、充电交易、告警、遥测及业务内部接口 | HTTP 19082 |
+| `iot-protocol-expert-ops` | 用户身份、设备、充电交易、遥测及业务内部接口 | HTTP 19082 |
 | `iot-protocol-expert-agent-control` | 租户项目、调查任务、Agent/MCP/Skill 版本发布、会话、知识、评测和 AI 审计 | HTTP 19083 |
 | `iot-protocol-expert-model-gateway` | 唯一模型出口：供应商密钥、逻辑模型、预占结算、首次使用窗口和用量审计 | HTTP 19085 |
 | `iot-protocol-expert-agent-runtime` | 执行已发布 Agent、受控工具、心跳、事件回写和检查点，不访问业务数据库 | HTTP 19084 |

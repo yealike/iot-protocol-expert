@@ -1,6 +1,6 @@
 import { Tag } from 'antd'
 import type { ReactNode } from 'react'
-import type { AlarmLevel, AlarmState, DeviceState } from '../api/types'
+import type { DeviceState, EventLevel } from '../api/types'
 
 const DEVICE_STATE: Record<DeviceState, { color: string; text: string }> = {
   ONLINE: { color: 'green', text: '在线' },
@@ -18,32 +18,17 @@ export function DeviceStateTag({ state }: { state: DeviceState }) {
   )
 }
 
-const LEVEL_COLOR: Record<AlarmLevel, string> = {
+const LEVEL_COLOR: Record<EventLevel, string> = {
   INFO: 'blue',
   WARN: 'gold',
   MAJOR: 'orange',
   CRITICAL: 'red'
 }
 
-export function AlarmLevelTag({ level }: { level: AlarmLevel }) {
+export function EventLevelTag({ level }: { level: EventLevel }) {
   return (
     <Tag color={LEVEL_COLOR[level] ?? 'default'} bordered={false}>
       {level}
-    </Tag>
-  )
-}
-
-const ALARM_STATE: Record<AlarmState, { color: string; text: string }> = {
-  OPEN: { color: 'red', text: '待处理' },
-  ACK: { color: 'gold', text: '已确认' },
-  CLOSED: { color: 'default', text: '已关闭' }
-}
-
-export function AlarmStateTag({ state }: { state: AlarmState }) {
-  const meta = ALARM_STATE[state] ?? { color: 'default', text: state }
-  return (
-    <Tag color={meta.color} bordered={false}>
-      {meta.text}
     </Tag>
   )
 }

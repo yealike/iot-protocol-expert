@@ -4,5 +4,5 @@ import dayjs from 'dayjs'
 export function formatDateTime(value: string | number | null | undefined, empty = '—'): string {
   if (value == null || value === '') return empty
   const date = dayjs(value)
-  return date.isValid() ? date.format('YYYY-MM-DD HH:mm.ss') : String(value)
+  return date.isValid() ? date.format('YYYY-MM-DD HH:mm:ss') : String(value)
 }

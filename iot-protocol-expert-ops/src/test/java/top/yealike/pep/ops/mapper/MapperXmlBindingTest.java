@@ -12,8 +12,6 @@ import org.mybatis.spring.SqlSessionFactoryBean;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import top.yealike.pep.ops.access.mapper.IdentityMapper;
 import top.yealike.pep.ops.access.mapper.OpsUserMapper;
-import top.yealike.pep.ops.alarms.mapper.AlarmRecordMapper;
-import top.yealike.pep.ops.alarms.mapper.AlarmRuleMapper;
 import top.yealike.pep.ops.audit.mapper.AuditLogMapper;
 import top.yealike.pep.ops.charging.mapper.BillMapper;
 import top.yealike.pep.ops.charging.mapper.ChargeOrderMapper;
@@ -45,8 +43,6 @@ class MapperXmlBindingTest {
                 new PathMatchingResourcePatternResolver().getResources("classpath*:mapper/**/*.xml"));
         Configuration configuration = factory.getObject().getConfiguration();
         for (Class<?> mapper : List.of(
-                AlarmRecordMapper.class,
-                AlarmRuleMapper.class,
                 AuditLogMapper.class,
                 BillMapper.class,
                 ChargeOrderMapper.class,

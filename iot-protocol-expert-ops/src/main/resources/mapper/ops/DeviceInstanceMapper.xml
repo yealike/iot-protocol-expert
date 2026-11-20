@@ -206,8 +206,6 @@
         select exists (select 1 from pep_domain.device_instance where parent_id = #{id})
             or exists (select 1 from pep_domain.charge_order where device_id = #{id})
             or exists (select 1 from pep_domain.bill where device_id = #{id})
-            or exists (select 1 from pep_domain.alarm_rule where device_id = #{id})
-            or exists (select 1 from pep_domain.alarm_record where device_id = #{id})
             or exists (select 1 from pep_domain.device_property_ts where device_id = #{id})
             or exists (select 1 from pep_domain.device_event_log where device_id = #{id})
             or exists (select 1 from pep_domain.command_record where device_id = #{id})

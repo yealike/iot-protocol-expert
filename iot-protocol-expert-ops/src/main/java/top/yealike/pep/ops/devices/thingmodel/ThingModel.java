@@ -13,7 +13,7 @@ import java.util.Set;
  * 物模型：一个设备/产品能上报什么、能接受什么指令、会产生什么事件、有哪些静态标签。
  *
  * <p>四段结构（properties / functions / events / tags）与 jetlinks 一致，理由也一致：
- * 一份模型同时驱动表单渲染、值格式化、时序建表与告警字段选择。不要拆成多张元数据表， 否则改模型就要改 DDL。
+ * 一份模型同时驱动表单渲染、值格式化与时序建表。不要拆成多张元数据表，否则改模型就要改 DDL。
  *
  * <p>产品层是模板，设备层是覆盖。{@link #merge(ThingModel)} 的语义是「覆盖层优先」： 同名 id 的条目整体替换，新增 id 追加。
  */
@@ -193,7 +193,7 @@ public record ThingModel(
         }
     }
 
-    /** 事件。level 是默认告警级别，可被告警规则覆盖。 */
+    /** 事件。level 是事件级别。 */
     public record EventMetadata(String id, String name, String level, ValueType valueType, String description) {
         public String levelOrInfo() {
             return level == null || level.isBlank() ? "INFO" : level;

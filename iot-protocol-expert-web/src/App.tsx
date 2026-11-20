@@ -10,7 +10,6 @@ import Devices from './pages/Devices'
 import DeviceDetail from './pages/DeviceDetail'
 import Products from './pages/Products'
 import ProductDetail from './pages/ProductDetail'
-import Alarms from './pages/Alarms'
 import Orders from './pages/Orders'
 import ProtocolDocuments from './pages/ProtocolDocuments'
 import OrderDetail from './pages/OrderDetail'
@@ -89,7 +88,6 @@ export default function App() {
           <Route path="/orders" element={<Orders />} />
           <Route path="/orders/:orderNo" element={<OrderDetail />} />
           <Route path="/simulator" element={<Simulator />} />
-          <Route path="/alarms" element={<Alarms />} />
           <Route path="/assistant" element={<Assistant />} />
           <Route path="/investigations" element={<Investigations />} />
           <Route path="/usage" element={<Usage user={user} />} />

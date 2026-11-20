@@ -21,7 +21,7 @@ import {
 } from 'antd'
 import { Link, useParams } from 'react-router-dom'
 import { api } from '../api/client'
-import { AlarmLevelTag, AlarmStateTag, DeviceStateTag } from '../components/tags'
+import { DeviceStateTag, EventLevelTag } from '../components/tags'
 import Chart from '../components/Chart'
 import type { PropertyValue } from '../api/types'
 
@@ -91,7 +91,7 @@ export default function DeviceDetail() {
     )
   }
 
-  const { device, channels, properties, events, alarms, commands, thingModel } = detail.data
+  const { device, channels, properties, events, commands, thingModel } = detail.data
 
   const seriesOption = {
     grid: { left: 56, right: 24, top: 24, bottom: 40 },
@@ -399,7 +399,7 @@ export default function DeviceDetail() {
                       title: '级别',
                       dataIndex: 'level',
                       width: 100,
-                      render: (level) => <AlarmLevelTag level={level} />
+                      render: (level) => <EventLevelTag level={level} />
                     },
                     { title: '通道', dataIndex: 'channelNo', width: 90 },
                     {
@@ -411,34 +411,6 @@ export default function DeviceDetail() {
                         </span>
                       )
                     }
-                  ]}
-                />
-              )
-            },
-            {
-              key: 'alarms',
-              label: `告警（${alarms.length}）`,
-              children: (
-                <Table
-                  size="small"
-                  rowKey="id"
-                  dataSource={alarms}
-                  pagination={false}
-                  columns={[
-                    {
-                      title: '级别',
-                      dataIndex: 'level',
-                      width: 100,
-                      render: (level) => <AlarmLevelTag level={level} />
-                    },
-                    { title: '告警', dataIndex: 'title' },
-                    {
-                      title: '状态',
-                      dataIndex: 'state',
-                      width: 100,
-                      render: (state) => <AlarmStateTag state={state} />
-                    },
-                    { title: '最近发生', dataIndex: 'lastAt', width: 170, render: (value: string | null) => formatDateTime(value) }
                   ]}
                 />
               )

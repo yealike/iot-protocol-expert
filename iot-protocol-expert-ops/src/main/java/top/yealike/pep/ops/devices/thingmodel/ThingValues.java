@@ -5,7 +5,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.List;
 
 /**
  * 属性值的强制转换、范围校验与比较。
@@ -184,24 +183,7 @@ public final class ThingValues {
         }
     }
 
-    // ------------------------------------------------------------------ 比较与展示
-
-    /** 告警阈值判断。{@code actual} 为空时一律不触发。 */
-    public static boolean compare(String operator, BigDecimal actual, BigDecimal threshold) {
-        if (actual == null || threshold == null || operator == null) {
-            return false;
-        }
-        int cmp = actual.compareTo(threshold);
-        return switch (operator) {
-            case "gt" -> cmp > 0;
-            case "ge" -> cmp >= 0;
-            case "lt" -> cmp < 0;
-            case "le" -> cmp <= 0;
-            case "eq" -> cmp == 0;
-            case "ne" -> cmp != 0;
-            default -> false;
-        };
-    }
+    // ------------------------------------------------------------------ 展示
 
     /** 展示用文本：数值按 scale 定点，枚举取中文，时间格式化，布尔转中文。 */
     public static String format(ValueType type, StoredValue value) {
@@ -246,13 +228,5 @@ public final class ThingValues {
 
     private static boolean toBool(BigDecimal value) {
         return value != null && value.signum() != 0;
-    }
-
-    /** 物模型里某个属性是否为数值型，供告警规则筛选。 */
-    public static List<String> numericPropertyIds(ThingModel model) {
-        return model.properties().stream()
-                .filter(p -> p.valueType() != null && p.valueType().numeric())
-                .map(ThingModel.PropertyMetadata::id)
-                .toList();
     }
 }

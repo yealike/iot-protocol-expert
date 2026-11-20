@@ -16,7 +16,9 @@ export default function Simulator() {
     const parsed = new DOMParser().parseFromString(markup, 'text/html')
     const main = parsed.querySelector('main')!
     const twin = main.querySelector('.twin-panel')!
-    twin.after(main.querySelector('.lab-grid')!)
+    const labGrid = main.querySelector('.lab-grid')!
+    twin.after(labGrid)
+    labGrid.append(main.querySelector('.fleet-panel')!)
     main.querySelector('header')?.insertAdjacentHTML('afterend', '<nav class="simulator-section-nav" aria-label="模拟器页面导航"><a href="#lab">仿真工作台</a><a href="#billing">计费明细</a><a href="#tariff">费率模型</a><a href="#configuration">设备参数</a><a href="#messages">协议报文</a></nav>')
     main.insertAdjacentHTML('beforeend', '<span id="sideProtocol" hidden></span><span id="sideTransport" hidden></span>')
     const root = document.createElement('div')
