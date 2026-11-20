@@ -18,7 +18,6 @@ import Simulator from './pages/Simulator'
 import Assistant from './pages/Assistant'
 import AiKnowledge from './pages/AiKnowledge'
 import Users from './pages/Users'
-import Investigations from './pages/Investigations'
 import Usage from './pages/Usage'
 import AiAdmin from './pages/ai-admin/AiAdmin'
 import ModelsPage from './pages/ai-admin/ModelsPage'
@@ -89,7 +88,6 @@ export default function App() {
           <Route path="/orders/:orderNo" element={<OrderDetail />} />
           <Route path="/simulator" element={<Simulator />} />
           <Route path="/assistant" element={<Assistant />} />
-          <Route path="/investigations" element={<Investigations />} />
           <Route path="/usage" element={<Usage user={user} />} />
           <Route path="/users" element={<Users />} />
           <Route path="/ai-knowledge" element={<AiKnowledge user={user} />} />

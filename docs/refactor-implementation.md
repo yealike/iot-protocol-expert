@@ -2,6 +2,8 @@
 
 实施日期：2026-11-17。对应设计目录 `重构/README.md` 与 `01`~`06` 篇。
 
+本文记录当时的重构结果。调查任务的页面和 API 已退役，`V3__investigations.sql` 和已有记录继续保留。后续部署由 V8 移除调查任务的三项角色权限。
+
 ## 1. 已落地范围
 
 | 设计项 | 实施结果 |
@@ -107,7 +109,6 @@ Runtime 的模型调用中间件写入 `X-PEP-Logical-Call-Id`、`X-PEP-Attempt-
 - Keycloak/OIDC 真实接入与令牌撤销；当前为 Control 本地会话与 `auth_version` 在线校验。
 - TDengine 复合主键、投影与 KEEP 策略的完整重建；当前遥测链路沿用既有实现。
 - PostgreSQL RLS 纵深防御；当前授权在应用层完成。
-- 前端证据上传、假设/实验/结论编辑、SSE 断线续传的完整交互；当前提供列表、创建、状态推进、证据与事件查看。
 - 配额 TPM/并发治理、模型 fallback 与 Provider 字段级契约矩阵。
 - Testcontainers CI 与 ArchUnit 模块边界测试；当前使用真实 PG 环境变量门控测试。
 - `/me/quota` 的可重复读快照；当前响应由多次查询组合而成，并发补额或结算时可能读到跨提交字段，只用于诊断。
@@ -122,11 +123,6 @@ $env:PATH="$env:JAVA_HOME\bin;D:\develop\apache-maven-3.8.8\bin;$env:PATH"
 mvn -o clean package -DskipTests
 .\scripts\start-local.ps1
 
-# 真实库迁移与调查闭环（读取 .env.local）
-$env:PEP_TEST_DB_URL=$env:PEP_CONTROL_DB_URL
-$env:PEP_TEST_DB_USER=$env:PEP_CONTROL_DB_USER
-$env:PEP_TEST_DB_PASSWORD=$env:PEP_CONTROL_DB_PASSWORD
-$env:PEP_TEST_RESET_SCHEMAS='true'
-$env:PEP_INVESTIGATION_TEST='true'
-mvn -o -pl iot-protocol-expert-ops,iot-protocol-expert-agent-control -am test -Dtest=ControlMigrationPostgresTest,InvestigationPostgresTest -Dsurefire.failIfNoSpecifiedTests=false
+# 将 PEP_TEST_DB_URL、PEP_TEST_DB_USER、PEP_TEST_DB_PASSWORD 指向独立的测试空库
+mvn -o -pl iot-protocol-expert-ops -am test -Dtest=ControlMigrationPostgresTest -Dsurefire.failIfNoSpecifiedTests=false
 ```

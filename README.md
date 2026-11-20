@@ -1,18 +1,18 @@
 # iot-protocol-expert
 
-充电桩协议调查与验证工作台。核心闭环是「调查任务 → 证据 → 假设 → 实验 → 结论」，同时提供设备接入、订单、模型网关、配额和 Agent 发布能力。使用 Java 21、Spring Boot、PostgreSQL 和独立 React 前端。
+充电桩协议接入与运维平台，提供设备接入、订单、协议模拟、模型网关、配额和 Agent 发布能力。使用 Java 21、Spring Boot、PostgreSQL 和独立 React 前端。
 
 首次使用 Agent，先看 [配置、对话、评估与配额操作说明](docs/agent-operation-guide.md)。全流程验收、配额修复、剩余限制及可追溯对象见 [2026-11-17 全流程验收与配额修复报告](docs/agent-full-flow-report-2026-11-17.md)。
 
 | 模块 | 职责 | 默认端口 |
 | --- | --- | --- |
 | `iot-protocol-expert-ops` | 用户身份、设备、充电交易、遥测及业务内部接口 | HTTP 19082 |
-| `iot-protocol-expert-agent-control` | 租户项目、调查任务、Agent/MCP/Skill 版本发布、会话、知识、评测和 AI 审计 | HTTP 19083 |
+| `iot-protocol-expert-agent-control` | 租户项目、Agent/MCP/Skill 版本发布、会话、知识和 AI 审计 | HTTP 19083 |
 | `iot-protocol-expert-model-gateway` | 唯一模型出口：供应商密钥、逻辑模型、预占结算、首次使用窗口和用量审计 | HTTP 19085 |
 | `iot-protocol-expert-agent-runtime` | 执行已发布 Agent、受控工具、心跳、事件回写和检查点，不访问业务数据库 | HTTP 19084 |
 | `iot-protocol-expert-protocol-gateway` | 设备连接、协议编解码和上下行转发，不持久化业务数据 | HTTP 19080；云快充 TCP 8768；OCPP WS 8769 |
 | `iot-protocol-expert-simulator` | 可重复场景、虚拟时钟、设备状态机和故障注入 | HTTP 19081 |
-| `iot-protocol-expert-web` | 调查工作台、设备/订单页面和管理控制台 | 开发端口 5173 |
+| `iot-protocol-expert-web` | 设备/订单页面、AI 助手和管理控制台 | 开发端口 5173 |
 | `shared/iot-protocol-expert-device-codec` | 设备网关与模拟器共用的纯编解码库 | 无 |
 | `shared/iot-protocol-expert-runtime-contract` / `shared/iot-protocol-expert-model-contract` | Runtime 与模型网关的稳定契约，不依赖服务实现 | 无 |
 
@@ -20,7 +20,7 @@
 
 设备网关通过 `ProtocolServer` SPI 管理云快充 1.6 和 OCPP 1.6J；设备与交易事实由 `iot-protocol-expert-ops` 保存。模型调用只允许经过 `iot-protocol-expert-model-gateway`，Control 与 Runtime 都不持有上游供应商密钥。
 
-数据库保留 `pep_platform`（身份及项目授权）、`pep_domain`（OPS 业务）、`pep_agent`（Agent Control）和 `pep_metering`（模型网关）。本轮保持现有数据库和历史迁移内容，由 OPS 统一执行旧迁移，Control 关闭重复 Flyway；两者须连接同一个现有数据库并先启动 OPS。调查任务、证据、假设、实验和结论位于 `pep_agent`；配额账本以 PostgreSQL 为权威。Control 通过签名内部接口调度 Runtime；Nacos 可选，仅用于服务与 Runtime 部署实例发现；本地通过 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true` 显式允许静态直连。MCP/Skill 版本与发布由 Control 管理，Higress 承担 REST-to-MCP 和路由。
+数据库保留 `pep_platform`（身份及项目授权）、`pep_domain`（OPS 业务）、`pep_agent`（Agent Control）和 `pep_metering`（模型网关）。OPS 负责执行平台、运营和 Agent Control 的 Flyway 迁移，Control 与 OPS 须连接同一个数据库并在 OPS 之后启动。配额账本以 PostgreSQL 为权威。Control 通过签名内部接口调度 Runtime；Nacos 可选，仅用于服务与 Runtime 部署实例发现；本地通过 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true` 显式允许静态直连。MCP/Skill 版本与发布由 Control 管理，Higress 承担 REST-to-MCP 和路由。
 
 ## 本地运行
 
@@ -59,7 +59,7 @@ Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:19085/api/model-gateway/v1
 .\scripts\seed-ai.ps1
 ```
 
-脚本确保 OPS/Gateway/Runtime/Control 已启动，并以 `IPE_AI_BOOTSTRAP_ENABLED=true` 触发一次 Control 的模型/MCP/Skill/Agent 引导。清理 `pep_agent` 在线 Agent 数据时执行 `.\scripts\reset-ai.ps1 -Confirm -StopServices`（或先自行停止服务后使用 `-Confirm`）；调查任务、Flyway、权限、知识库和审计会保留。
+脚本确保 OPS/Gateway/Runtime/Control 已启动，并以 `IPE_AI_BOOTSTRAP_ENABLED=true` 触发一次 Control 的模型/MCP/Skill/Agent 引导。清理 `pep_agent` 在线 Agent 数据时执行 `.\scripts\reset-ai.ps1 -Confirm -StopServices`（或先自行停止服务后使用 `-Confirm`）。脚本保留历史调查记录、Flyway 历史、权限、知识库和审计。
 
 健康检查：OPS `GET http://127.0.0.1:19082/actuator/health`，Control `GET http://127.0.0.1:19083/actuator/health`，Gateway `19085`，Runtime `GET http://127.0.0.1:19084/actuator/health/readiness`。配置、发布、内部接口和故障排查见 [AI 助手与在线 Agent 平台](docs/ai-assistant.md) 与 [重构实施记录](docs/refactor-implementation.md)。
 

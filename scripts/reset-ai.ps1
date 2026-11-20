@@ -65,7 +65,7 @@ $sql = ($tables | ForEach-Object { "delete from pep_agent.$_;" }) -join "`n"
 if ($WhatIf) {
     Write-Host $sql
     Write-Host ""
-    Write-Host "保留：pep_agent 调查任务表、知识库、ai_permission_policy、ai_audit_log、Flyway 历史。"
+    Write-Host "保留 pep_agent 历史调查记录、知识库、ai_permission_policy、ai_audit_log 和 Flyway 历史。"
     exit 0
 }
 

@@ -47,24 +47,6 @@ public class AccessService {
         return new Scope(actor, userId, project.tenantId(), project.projectId());
     }
 
-    public Scope requireTask(UUID projectId, String ownerId, String permission) {
-        Scope scope = requireProject(projectId);
-        if (!ownerId.equals(scope.actor().id()) && !hasPermission(scope, permission)) {
-            throw AiExceptions.forbidden("TASK_FORBIDDEN", "调查任务默认私有，缺少共享授权");
-        }
-        return scope;
-    }
-
-    public boolean canReadAll(UserIdentity actor, UUID tenantId, UUID projectId) {
-        long userId = userId(actor);
-        return access.isActiveUser(userId) && access.hasPermission(userId, "investigation:read", tenantId, projectId);
-    }
-
-    public boolean hasPermission(Scope scope, String permission) {
-        return permission != null
-                && access.hasPermission(scope.userId(), permission, scope.tenantId(), scope.projectId());
-    }
-
     public boolean hasPlatformPermission(UserIdentity actor, String permission) {
         return access.isActiveUser(userId(actor)) && access.hasPlatformPermission(userId(actor), permission);
     }

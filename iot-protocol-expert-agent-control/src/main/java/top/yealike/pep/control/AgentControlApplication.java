@@ -18,7 +18,6 @@ import top.yealike.pep.observability.protocol.LogbackTelemetryConfiguration;
     "top.yealike.pep.control.access.mapper",
     "top.yealike.pep.control.agents.mapper",
     "top.yealike.pep.control.conversations.mapper",
-    "top.yealike.pep.control.investigations.mapper",
     "top.yealike.pep.control.knowledge.mapper"
 })
 public class AgentControlApplication {

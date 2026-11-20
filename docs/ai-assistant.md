@@ -326,7 +326,7 @@ Higress 使用 Nacos Naming 来源时，OPS 未注册会使调用返回 503；�
 该脚本必须先停止 Control/Runtime，仅删除 `pep_agent` 中在线 Agent 的运行、发布和配置数据：
 
 - 删除：`ai_run_event`、`ai_tool_call`、`ai_checkpoint`、`ai_context_summary`、`ai_run`、`ai_message`、`ai_conversation`、`ai_outbox`、`ai_registry_projection`、`ai_publication`、`ai_agent_skill_binding`、`ai_agent_mcp_binding`、`ai_agent_release`、`ai_agent_component`、`ai_skill_draft_file`、`ai_skill_release`、`ai_skill_component`、`ai_mcp_test_report`、`ai_mcp_release`、`ai_mcp_component`、`ai_model_profile`、`ai_credential_secret`、`ai_credential`、`ai_internal_nonce`。
-- 保留：`pep_agent` 中的调查任务表、知识库、`ai_permission_policy`、`ai_audit_log` 和 Flyway 历史。
+- 保留 `pep_agent` 中的历史调查记录、知识库、`ai_permission_policy`、`ai_audit_log` 和 Flyway 历史。
 - 环境变量或数据库 URL 含 `prod/production` 时拒绝执行。
 
 ## 9. 既有知识库与助手

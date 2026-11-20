@@ -23,7 +23,6 @@ import {
   LogoutOutlined,
   MenuOutlined,
   RobotOutlined,
-  ThunderboltOutlined,
   UserOutlined,
   WalletOutlined
 } from '@ant-design/icons'
@@ -76,12 +75,6 @@ const items: NavigationItem[] = [
     section: 'operations'
   },
   { key: '/assistant', icon: <RobotOutlined />, label: 'AI 助手', section: 'intelligence' },
-  {
-    key: '/investigations',
-    icon: <ThunderboltOutlined />,
-    label: '调查任务',
-    section: 'intelligence'
-  },
   { key: '/usage', icon: <WalletOutlined />, label: '模型额度', section: 'intelligence' },
   {
     key: '/ai-admin',
@@ -102,7 +95,6 @@ const restrictedUserItems = new Set([
   '/assistant',
   '/ai-knowledge',
   '/ai-admin',
-  '/investigations',
   '/usage'
 ])
 
@@ -260,8 +252,6 @@ function canAccess(item: NavigationItem, user: CurrentUser): boolean {
       return Boolean(user.permissions?.includes('ai:admin'))
     case '/assistant':
       return Boolean(user.permissions?.includes('ai:use'))
-    case '/investigations':
-      return Boolean(user.permissions?.includes('investigation:read'))
     case '/usage':
       return Boolean(
         user.permissions?.includes('ai:use') ||

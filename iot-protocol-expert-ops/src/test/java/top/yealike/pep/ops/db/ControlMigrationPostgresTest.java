@@ -55,6 +55,10 @@ class ControlMigrationPostgresTest {
                     .isNotNegative();
             assertThat(count(connection, "select count(*) from pep_agent.investigation_task"))
                     .isNotNegative();
+            assertThat(count(connection, """
+                    select count(*) from pep_platform.role_permission
+                     where permission_code in ('investigation:create', 'investigation:read', 'investigation:operate')
+                    """)).isZero();
             assertThat(
                             count(
                                     connection,

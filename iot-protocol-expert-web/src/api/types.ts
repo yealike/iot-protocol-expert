@@ -909,62 +909,6 @@ export interface ManagedRole {
   permissions: string[]
 }
 
-export interface TenantInfo {
-  id: string
-  code: string
-  name: string
-  state: string
-}
-
-export interface ProjectInfo {
-  id: string
-  tenantId: string
-  code: string
-  name: string
-  state: string
-}
-
-export interface InvestigationTask {
-  id: string
-  tenantId: string
-  projectId: string
-  ownerId: string
-  title: string
-  goal: string
-  scope: string
-  status: string
-  version: number
-  createdAt: string
-  updatedAt: string
-}
-
-export interface InvestigationEvidence {
-  id: string
-  tenantId: string
-  projectId: string
-  sourceType: string
-  sourceId: string
-  sourceVersion?: string | null
-  contentHash: string
-  summary: string
-  rawRef?: string | null
-  scope: string
-  collectedAt: string
-  expiresAt?: string | null
-  metadata: string
-  createdAt: string
-}
-
-export interface InvestigationEvent {
-  id: string
-  taskId: string
-  seq: number
-  type: string
-  payload: string
-  actorId?: string | null
-  createdAt: string
-}
-
 export interface QuotaPolicyState {
   accountId: string
   policyKey: string

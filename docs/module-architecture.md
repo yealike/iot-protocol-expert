@@ -7,7 +7,7 @@
 | 应用 | 端口 | 职责 |
 | --- | --- | --- |
 | iot-protocol-expert-ops | 19082 | 登录会话、用户角色权限、设备、订单、费率、遥测、协议文档、业务内部接口 |
-| iot-protocol-expert-agent-control | 19083 | 租户项目与作用域授权、调查任务、会话、知识、评测、Agent/MCP/Skill 组件与版本、发布和调度 |
+| iot-protocol-expert-agent-control | 19083 | 租户项目与作用域授权、会话、知识、Agent/MCP/Skill 组件与版本、发布和调度 |
 | iot-protocol-expert-agent-runtime | 19084 | 装配指定发布版本、执行工具、上报事件和检查点；不访问业务数据库 |
 | iot-protocol-expert-protocol-gateway | 19080 | TCP/WebSocket/MQTT/Modbus 接入与协议处理；不保存业务事实 |
 | iot-protocol-expert-simulator | 19081 | 场景复现、设备状态机、故障注入与仿真快照 |
@@ -60,7 +60,7 @@ Higress 支持直接配置 REST-to-MCP，无需把 Nacos AI Registry 作为前�
 
 ## 数据库与会话迁移
 
-本轮先拆分应用，不迁移数据库或重写已执行 SQL。历史 `V1__pep_control_baseline.sql`、`V2__platform_access.sql`、`V3__investigations.sql` 原样放在 OPS，继续使用原 `pep_platform.flyway_schema_history`。当前新增 `V4__ocpp_transaction_uniqueness.sql` 和 `V5__active_charge_order_uniqueness.sql`，OPS 按 V1–V5 执行。Control 关闭重复 Flyway，使用同一个数据库中的现有 `pep_platform` / `pep_agent` 表。租户项目管理在 Control，用户身份由 OPS 管理；数据库层仍有共享身份/授权读取。两者还不能直接配置为互不相关的独立数据库。
+OPS 通过 `pep_platform.flyway_schema_history` 管理平台、运营和 Agent Control 的迁移。V8 移除已退役调查任务的角色权限，历史 V3 迁移及调查记录仍保留。Control 关闭 Flyway，使用同一个数据库中的 `pep_platform` 和 `pep_agent`。Control 管理租户项目，OPS 管理用户身份，两者共享数据库中的身份和授权信息。
 
 后续独立拆库时，需要单独设计身份授权投影和迁移基线，不能直接移动/改名历史迁移或开启另一套 Flyway 对已有版本重复执行。模型网关和模拟器继续保留自己的数据库连接与 Flyway 历史。
 
