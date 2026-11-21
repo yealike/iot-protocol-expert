@@ -1,8 +1,8 @@
-import { formatDateTime } from '../utils/dateTime'
-import { productProtocol } from '../api/protocol'
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import {
+  Alert,
+  App,
   Button,
   Card,
   Empty,
@@ -14,13 +14,25 @@ import {
   Switch,
   Table,
   Tag,
-  message
+  Typography
 } from 'antd'
-import { PlusOutlined, ReloadOutlined } from '@ant-design/icons'
+import {
+  ApiOutlined,
+  DeleteOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SearchOutlined
+} from '@ant-design/icons'
 import { Link, useNavigate } from 'react-router-dom'
 import { api } from '../api/client'
+import { productProtocol } from '../api/protocol'
 import { DeviceStateTag } from '../components/tags'
-import type { DeviceRow, DeviceState, DeviceTypeCode } from '../api/types'
+import type {
+  DeviceRow,
+  DeviceSaveRequest,
+  DeviceState
+} from '../api/types'
+import { formatDateTime } from '../utils/dateTime'
 
 const STATE_OPTIONS: { label: string; value: DeviceState }[] = [
   { label: '在线', value: 'ONLINE' },
@@ -29,17 +41,41 @@ const STATE_OPTIONS: { label: string; value: DeviceState }[] = [
   { label: '未激活', value: 'NOT_ACTIVE' }
 ]
 
+interface DeviceFormValues {
+  sn?: string
+  name: string
+  productId: number
+  enabled: boolean
+  protocolMappings: Array<{
+    thirdPartyDeviceId?: string
+    protocolConnectorNo?: string
+  }>
+}
+
+function emptyMappings(count = 1): DeviceFormValues['protocolMappings'] {
+  return Array.from({ length: Math.max(1, count) }, () => ({
+    thirdPartyDeviceId: '',
+    protocolConnectorNo: ''
+  }))
+}
+
+function gunNoFor(index: number): string {
+  return String(index + 1).padStart(2, '0')
+}
+
 export default function Devices() {
   const navigate = useNavigate()
+  const { message } = App.useApp()
+  const [searchInput, setSearchInput] = useState('')
   const [keyword, setKeyword] = useState('')
-  const [deviceType, setDeviceType] = useState<DeviceTypeCode | undefined>()
   const [states, setStates] = useState<DeviceState[] | undefined>()
   const [page, setPage] = useState(0)
   const [size, setSize] = useState(20)
   const [creating, setCreating] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [form] = Form.useForm()
-  const [messages, messageHolder] = message.useMessage()
+  const [searching, setSearching] = useState(false)
+  const [form] = Form.useForm<DeviceFormValues>()
+  const watchedSn = Form.useWatch('sn', form)
   const me = useQuery({ queryKey: ['me'], queryFn: api.me })
 
   const products = useQuery({
@@ -48,13 +84,11 @@ export default function Devices() {
     enabled: creating
   })
 
-  const types = useQuery({ queryKey: ['device-types'], queryFn: api.deviceTypes })
   const devices = useQuery({
-    queryKey: ['devices', keyword, deviceType, states, page, size],
+    queryKey: ['devices', keyword, states, page, size],
     queryFn: () =>
       api.queryDevices({
         keyword: keyword || undefined,
-        deviceType,
         states: states?.length ? states : undefined,
         page,
         size,
@@ -65,130 +99,160 @@ export default function Devices() {
   const columns = useMemo(
     () => [
       {
-        title: '设备',
-        dataIndex: 'name',
-        render: (_: unknown, row: DeviceRow) => (
-          <Space direction="vertical" size={0}>
-            <Link to={`/devices/${row.id}`} style={{ fontWeight: 600 }}>
-              {row.name}
+        title: '设备 SN',
+        dataIndex: 'deviceSn',
+        width: 170,
+        render: (deviceSn: string, row: DeviceRow) => (
+          <Typography.Text
+            className="copyable-id"
+            copyable={{ text: deviceSn, tooltips: ['复制设备 SN', '已复制'] }}
+          >
+            <Link
+              className="mono device-sn-link"
+              to={`/devices/${row.id}`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {deviceSn}
             </Link>
-            <span className="mono" style={{ fontSize: 11, color: '#6d839b' }}>
-              {row.deviceCode} · {row.protocolDeviceId}
-            </span>
-          </Space>
+          </Typography.Text>
         )
       },
       {
-        title: '类型',
-        dataIndex: 'deviceTypeLabel',
-        width: 130,
-        render: (label: string) => (
-          <Tag bordered={false} color="cyan">
-            {label}
-          </Tag>
-        )
-      },
-      {
-        title: '协议',
+        title: '设备协议',
         dataIndex: 'protocol',
-        width: 110,
+        width: 140,
         render: (_: string, row: DeviceRow) => (
-          <span className="mono" style={{ fontSize: 12 }}>
+          <Tag className="protocol-tag" bordered={false}>
             {productProtocol(row)}
-          </span>
+          </Tag>
         )
       },
       {
         title: '状态',
         dataIndex: 'state',
-        width: 100,
+        width: 110,
         render: (state: DeviceState) => <DeviceStateTag state={state} />
       },
       {
         title: '关键指标',
-        dataIndex: 'highlights',
-        render: (highlights: Record<string, string>) => (
-          <div className="chip-row" style={{ marginTop: 0 }}>
-            {Object.entries(highlights ?? {})
-              .slice(0, 4)
-              .map(([key, value]) => (
-                <span className="chip" key={key}>
-                  {value}
-                </span>
+        dataIndex: 'keyMetrics',
+        render: (keyMetrics: Record<string, string | number> | null) => {
+          const entries = Object.entries(keyMetrics ?? {}).slice(0, 4)
+          return entries.length ? (
+            <div className="device-metric-tags">
+              {entries.map(([key, value]) => (
+                <span key={key}>{String(value)}</span>
               ))}
-          </div>
+            </div>
+          ) : (
+            <span className="muted">暂无运行数据</span>
+          )
+        }
+      },
+      {
+        title: '产品',
+        dataIndex: 'productName',
+        width: 190,
+        render: (_: string | null, row: DeviceRow) => (
+          <Link
+            to={`/products/${row.productId}`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            {row.productName ?? '—'}
+          </Link>
         )
       },
-      { title: '产品', dataIndex: 'productName', width: 160 },
-      { title: '站点', dataIndex: 'stationName', width: 160 },
-      { title: '最近上报', dataIndex: 'lastSeen', width: 170, render: (value: string | null) => formatDateTime(value) }
+      {
+        title: '最近上报',
+        dataIndex: 'lastSeen',
+        width: 180,
+        render: (value: string | null) => (
+          <span className="table-time">{formatDateTime(value, '从未上报')}</span>
+        )
+      }
     ],
     []
   )
 
+  const search = async (raw: string) => {
+    const value = raw.trim()
+    setSearchInput(value)
+    setPage(0)
+
+    if (!/^\d{10}$/.test(value)) {
+      setKeyword(value)
+      return
+    }
+
+    setSearching(true)
+    try {
+      const matched = await api.lookupDevice(value)
+      const gunNo = matched.matchedGunNo ?? value.slice(8)
+      navigate(`/devices/${matched.id}?gun=${gunNo}`)
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '设备搜索失败')
+    } finally {
+      setSearching(false)
+    }
+  }
+
   return (
     <>
-      {messageHolder}
-      <div className="page-header">
+      <div className="page-header device-list-header">
         <div>
-          <h1>设备</h1>
-          <p>充电桩设备台账</p>
+          <h1>充电桩设备</h1>
+          <p>以平台 8 位设备 SN 为唯一身份，10 位枪号用于枪口级定位与协议映射。</p>
         </div>
-        <Space>
+        <Space wrap className="device-list-actions">
           {me.data?.permissions?.includes('ops:manage') && (
             <Button type="primary" icon={<PlusOutlined />} onClick={() => setCreating(true)}>
-              创建设备
+              新建设备
             </Button>
           )}
           <Input.Search
             allowClear
-            placeholder="设备编码 / 名称 / 协议编号"
-            style={{ width: 240 }}
-            onSearch={(value) => {
-              setPage(0)
-              setKeyword(value)
-            }}
-          />
-          <Select
-            allowClear
-            placeholder="设备类型"
-            style={{ width: 150 }}
-            options={(types.data ?? []).map((type) => ({
-              label: `${type.label}（${type.total ?? 0}）`,
-              value: type.deviceType
-            }))}
-            onChange={(value) => {
-              setPage(0)
-              setDeviceType(value)
-            }}
+            value={searchInput}
+            loading={searching}
+            prefix={<SearchOutlined />}
+            placeholder="8 位设备 SN / 10 位枪号 / 名称"
+            className="device-search"
+            onChange={(event) => setSearchInput(event.target.value)}
+            onSearch={search}
           />
           <Select
             mode="multiple"
             allowClear
-            placeholder="状态"
-            style={{ minWidth: 150 }}
+            placeholder="设备状态"
+            className="device-state-filter"
             options={STATE_OPTIONS}
             onChange={(value) => {
               setPage(0)
               setStates(value.length ? value : undefined)
             }}
           />
-          <Button icon={<ReloadOutlined />} onClick={() => devices.refetch()} />
+          <Button
+            icon={<ReloadOutlined />}
+            loading={devices.isFetching}
+            onClick={() => devices.refetch()}
+          >
+            刷新
+          </Button>
         </Space>
       </div>
 
-      <Card bordered={false} styles={{ body: { padding: 0 } }}>
+      <Card variant="borderless" className="data-card" styles={{ body: { padding: 0 } }}>
         {devices.isError ? (
           <Empty
-            description={devices.error instanceof Error ? devices.error.message : '加载失败'}
+            description={devices.error instanceof Error ? devices.error.message : '设备加载失败'}
           />
         ) : (
-          <Table
+          <Table<DeviceRow>
             rowKey="id"
             size="middle"
             loading={devices.isLoading}
             columns={columns}
             dataSource={devices.data?.content ?? []}
+            locale={{ emptyText: <Empty description="暂无充电桩设备" /> }}
             onRow={(row) => ({
               onClick: () => navigate(`/devices/${row.id}`),
               style: { cursor: 'pointer' }
@@ -198,7 +262,7 @@ export default function Devices() {
               pageSize: devices.data?.size ?? size,
               total: devices.data?.total ?? 0,
               showSizeChanger: true,
-              showTotal: (total) => `共 ${total} 台设备`,
+              showTotal: (total) => `共 ${total} 台充电桩`,
               onChange: (nextPage, nextSize) => {
                 setPage(nextPage - 1)
                 setSize(nextSize)
@@ -208,78 +272,172 @@ export default function Devices() {
           />
         )}
       </Card>
+
       <Modal
-        title="创建设备档案"
+        title="新建充电桩"
+        width={820}
+        className="device-create-modal"
         open={creating}
         confirmLoading={saving}
+        okText="创建设备"
         onCancel={() => !saving && setCreating(false)}
         onOk={() => form.submit()}
         destroyOnClose
       >
-        <Form
+        <Form<DeviceFormValues>
           form={form}
           layout="vertical"
-          initialValues={{ enabled: true, allowSimulate: false, allowWork: false }}
+          className="device-create-form"
+          initialValues={{ enabled: true, protocolMappings: emptyMappings() }}
           onFinish={async (values) => {
             setSaving(true)
             try {
-              await api.saveDevice(values)
-              messages.success('设备档案已创建')
+              const body: DeviceSaveRequest = {
+                sn: values.sn?.trim() || undefined,
+                name: values.name.trim(),
+                productId: values.productId,
+                enabled: values.enabled,
+                protocolMappings: values.protocolMappings.map((mapping, index) => ({
+                  gunNo: gunNoFor(index),
+                  thirdPartyDeviceId: mapping.thirdPartyDeviceId?.trim() ?? '',
+                  protocolConnectorNo: mapping.protocolConnectorNo?.trim() || null,
+                  enabled: true
+                }))
+              }
+              await api.saveDevice(body)
+              message.success('充电桩已创建')
               setCreating(false)
               form.resetFields()
               await devices.refetch()
             } catch (error) {
-              messages.error(error instanceof Error ? error.message : '创建设备失败')
+              message.error(error instanceof Error ? error.message : '创建设备失败')
             } finally {
               setSaving(false)
             }
           }}
         >
-          <Form.Item
-            name="productId"
-            label="产品"
-            rules={[{ required: true, message: '请选择已发布产品' }]}
-          >
-            <Select
-              showSearch
-              optionFilterProp="label"
-              placeholder={products.isError ? '产品加载失败' : '选择已发布产品'}
-              loading={products.isLoading}
-              options={(products.data?.content ?? [])
-                .filter((item) => item.state === 'PUBLISHED')
-                .map((item) => ({ value: item.id, label: `${item.name} · ${productProtocol(item)}` }))}
-            />
-          </Form.Item>
-          <Form.Item
-            name="deviceCode"
-            label="设备编码"
-            rules={[{ required: true, whitespace: true, max: 64 }]}
-          >
-            <Input placeholder="平台唯一编码；模拟设备建议以 SIM- 开头" />
-          </Form.Item>
-          <Form.Item
-            name="name"
-            label="设备名称"
-            rules={[{ required: true, whitespace: true, max: 128 }]}
-          >
-            <Input />
-          </Form.Item>
-          <Form.Item
-            name="protocolDeviceId"
-            label="协议设备编号"
-            rules={[{ required: true, whitespace: true, max: 64 }]}
-          >
-            <Input placeholder="须与网关配置中的协议设备编号一致" />
-          </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
-            <Switch />
-          </Form.Item>
-          <Form.Item name="allowSimulate" label="允许模拟数据" valuePropName="checked">
-            <Switch />
-          </Form.Item>
-          <Form.Item name="allowWork" label="允许远程操作" valuePropName="checked">
-            <Switch />
-          </Form.Item>
+          <div className="device-create-grid">
+            <Form.Item
+              name="productId"
+              label="充电桩产品"
+              rules={[{ required: true, message: '请选择已发布产品' }]}
+            >
+              <Select
+                showSearch
+                optionFilterProp="label"
+                placeholder={products.isError ? '产品加载失败' : '选择已发布产品'}
+                loading={products.isLoading}
+                options={(products.data?.content ?? [])
+                  .filter((item) => item.state === 'PUBLISHED')
+                  .map((item) => ({
+                    value: item.id,
+                    label: `${item.name} · ${productProtocol(item)}`,
+                    product: item
+                  }))}
+                onChange={(_, option) => {
+                  const product = Array.isArray(option) ? undefined : option?.product
+                  const count = Math.max(1, product?.connectorCount ?? 1)
+                  form.setFieldValue('protocolMappings', emptyMappings(count))
+                }}
+              />
+            </Form.Item>
+            <Form.Item
+              name="sn"
+              label="设备 SN（可选）"
+              extra="留空由平台自动分配。填写时必须为 8 位纯数字，创建后不可修改。"
+              rules={[
+                {
+                  pattern: /^\d{8}$/,
+                  message: '设备 SN 必须为 8 位纯数字'
+                }
+              ]}
+            >
+              <Input
+                maxLength={8}
+                inputMode="numeric"
+                placeholder="例如 10000000"
+                className="mono"
+              />
+            </Form.Item>
+            <Form.Item
+              name="name"
+              label="设备名称"
+              rules={[{ required: true, whitespace: true, max: 128 }]}
+            >
+              <Input placeholder="例如 1 号充电桩" />
+            </Form.Item>
+            <Form.Item name="enabled" label="启用设备" valuePropName="checked">
+              <Switch />
+            </Form.Item>
+          </div>
+
+          <Form.List name="protocolMappings">
+            {(fields, { add, remove }) => (
+              <>
+                <div className="mapping-editor-heading">
+                  <div>
+                    <strong>协议接入映射</strong>
+                    <p>平台枪号为设备 SN 加两位枪号，第三方编号由接入协议决定。</p>
+                  </div>
+                  <Button
+                    icon={<PlusOutlined />}
+                    onClick={() =>
+                      add({ thirdPartyDeviceId: '', protocolConnectorNo: '' })
+                    }
+                  >
+                    添加枪口
+                  </Button>
+                </div>
+                <div className="mapping-editor">
+                  {fields.map((field, index) => {
+                    const gunNo = gunNoFor(index)
+                    const platformGunNo =
+                      watchedSn && /^\d{8}$/.test(watchedSn)
+                        ? `${watchedSn}${gunNo}`
+                        : '创建后生成'
+                    return (
+                      <div className="mapping-row" key={field.key}>
+                        <div className="mapping-identity">
+                          <span className="mapping-gun">枪 {gunNo}</span>
+                          <span className="mono">{platformGunNo}</span>
+                        </div>
+                        <Form.Item
+                          {...field}
+                          name={[field.name, 'thirdPartyDeviceId']}
+                          label="第三方设备号"
+                        >
+                          <Input
+                            prefix={<ApiOutlined />}
+                            placeholder="云快充桩号 / OCPP chargePointId"
+                          />
+                        </Form.Item>
+                        <Form.Item
+                          {...field}
+                          name={[field.name, 'protocolConnectorNo']}
+                          label="第三方枪号"
+                        >
+                          <Input placeholder="例如 01" />
+                        </Form.Item>
+                        <Button
+                          aria-label={`删除枪 ${gunNo} 映射`}
+                          type="text"
+                          danger
+                          icon={<DeleteOutlined />}
+                          disabled={fields.length === 1}
+                          onClick={() => remove(field.name)}
+                        />
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </Form.List>
+          <Alert
+            type="info"
+            showIcon
+            message="同一协议下，第三方设备号与第三方枪号组合必须唯一。暂时没有接入配置时可以先留空。"
+          />
         </Form>
       </Modal>
     </>

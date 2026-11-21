@@ -1,6 +1,18 @@
 import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { App, Button, Form, Input, Modal, Popconfirm, Select, Space, Table, Tabs } from 'antd'
+import {
+  App,
+  Button,
+  Form,
+  Input,
+  InputNumber,
+  Modal,
+  Popconfirm,
+  Select,
+  Space,
+  Table,
+  Tabs
+} from 'antd'
 import type { ProductDetail } from '../api/types'
 import { api } from '../api/client'
 
@@ -66,9 +78,9 @@ export default function ProductEditor({ open, detail, onClose, onSaved }: Props)
       p
         ? { ...p, configurationJson: JSON.stringify(detail.configuration ?? {}, null, 2) }
         : {
-            deviceType: 'CHARGER',
             transport: 'TCP',
             state: 'DRAFT',
+            connectorCount: 1,
             configurationJson: '{}'
           }
     )
@@ -125,7 +137,10 @@ export default function ProductEditor({ open, detail, onClose, onSaved }: Props)
         return
       }
       setSaving(true)
-      await api.saveProduct({ ...values, metadata: model, configuration }, detail?.product.id)
+      await api.saveProduct(
+        { ...values, metadata: model, configuration },
+        detail?.product.id
+      )
       message.success(detail ? '产品已更新' : '产品已创建')
       onSaved()
       onClose()
@@ -162,9 +177,6 @@ export default function ProductEditor({ open, detail, onClose, onSaved }: Props)
           >
             <Input />
           </Form.Item>
-          <Form.Item name="deviceType" label="设备类型" rules={[{ required: true }]}>
-            <Select disabled options={[{ value: 'CHARGER', label: '充电桩' }]} />
-          </Form.Item>
           <Form.Item name="protocolDocumentId" label="协议及版本" rules={[{ required: true, message: '请选择协议文档' }]} extra={detail && !detail.product.protocolDocumentId ? '原产品尚未关联文档，请选择对应协议版本。' : '引用协议文档的名称与版本，设备继承产品协议。'}>
             <Select
               showSearch
@@ -178,6 +190,14 @@ export default function ProductEditor({ open, detail, onClose, onSaved }: Props)
           </Form.Item>
           <Form.Item name="transport" label="传输方式" rules={[{ required: true }]}>
             <Select disabled options={[{ value: 'TCP', label: 'TCP' }, { value: 'WS', label: 'WebSocket' }]} />
+          </Form.Item>
+          <Form.Item
+            name="connectorCount"
+            label="标准枪数"
+            rules={[{ required: true, message: '请填写标准枪数' }]}
+            extra="用于创建该产品的充电桩枪口，设备创建后不可修改。"
+          >
+            <InputNumber min={1} max={99} precision={0} disabled={locked} />
           </Form.Item>
           <Form.Item name="state" label="产品状态">
             <Select

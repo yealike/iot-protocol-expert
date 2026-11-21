@@ -32,8 +32,12 @@ export default function ProtocolDocuments() {
       data.append('title', values.title)
       data.append('file', file)
       setSaving(true)
-      await api.uploadProtocolDocument(data)
-      message.success('文档已上传')
+      const uploaded = await api.uploadProtocolDocument(data)
+      message.success(
+        uploaded.linkedProducts
+          ? `文档已上传，并关联 ${uploaded.linkedProducts} 个产品`
+          : '文档已上传'
+      )
       setOpen(false)
       setFile(undefined)
       form.resetFields()

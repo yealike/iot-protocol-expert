@@ -17,6 +17,7 @@ import {
   BuildOutlined,
   ClusterOutlined,
   DashboardOutlined,
+  DollarOutlined,
   DownOutlined,
   ExperimentOutlined,
   FileTextOutlined,
@@ -55,14 +56,15 @@ const sections: { key: NavigationSection; label: string }[] = [
 
 const items: NavigationItem[] = [
   { key: '/overview', icon: <DashboardOutlined />, label: '运营总览', section: 'operations' },
-  { key: '/devices', icon: <ClusterOutlined />, label: '设备管理', section: 'operations' },
+  { key: '/devices', icon: <ClusterOutlined />, label: '充电桩设备', section: 'operations' },
+  { key: '/orders', icon: <FileTextOutlined />, label: '充电订单', section: 'operations' },
+  { key: '/rates', icon: <DollarOutlined />, label: '费率管理', section: 'operations' },
   {
     key: '/products',
     icon: <AppstoreOutlined />,
-    label: '产品与物模型',
+    label: '充电桩产品',
     section: 'operations'
   },
-  { key: '/orders', icon: <FileTextOutlined />, label: '订单管理', section: 'operations' },
   {
     key: '/protocol-documents',
     icon: <FileTextOutlined />,
@@ -92,14 +94,6 @@ const items: NavigationItem[] = [
   },
   { key: '/users', icon: <UserOutlined />, label: '用户管理', section: 'administration' }
 ]
-
-const restrictedUserItems = new Set([
-  '/assistant',
-  '/ai-knowledge',
-  '/ai-admin',
-  '/usage',
-  '/quota-admin'
-])
 
 export default function AppLayout({ user, children }: Props) {
   const location = useLocation()
@@ -248,7 +242,6 @@ export default function AppLayout({ user, children }: Props) {
 }
 
 function canAccess(item: NavigationItem, user: CurrentUser): boolean {
-  if (user.allStations === false && !restrictedUserItems.has(item.key)) return false
   switch (item.key) {
     case '/users':
       return Boolean(user.permissions?.includes('iam:user:manage'))

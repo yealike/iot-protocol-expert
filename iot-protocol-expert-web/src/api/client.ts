@@ -51,17 +51,19 @@ import type {
   UsageItem,
   UserChange,
   DeviceDetail,
+  DeviceSaveRequest,
   DeviceRow,
-  DeviceTypeDescriptor,
   Overview,
   OrderView,
   OrderDetail,
   OrderTelemetry,
   PageResult,
   ProductDetail,
+  ProtocolMappingInput,
   ProtocolDocument,
   ProductRow,
-  SeriesView
+  RateModelSave,
+  RateModelView
 } from './types'
 
 /**
@@ -156,7 +158,6 @@ export const api = {
       body: JSON.stringify({ permissions })
     }),
   users: () => request<ManagedUser[]>('/api/ops/users'),
-  stations: () => request<Array<{ id: number; name: string }>>('/api/ops/stations'),
   createUser: (value: UserChange) => request<ManagedUser>('/api/ops/users', json(value)),
   updateUser: (id: number, value: UserChange) =>
     request<ManagedUser>(`/api/ops/users/${id}`, { method: 'PUT', body: JSON.stringify(value) }),
@@ -188,19 +189,14 @@ export const api = {
 
   overview: () => request<Overview>('/api/ops/overview'),
   businessOverview: () => request<BusinessOverview>('/api/ops/overview/business'),
-  deviceTypes: () => request<DeviceTypeDescriptor[]>('/api/ops/overview/device-types'),
 
   // ---------------------------------------------------------------- 设备
 
   queryDevices: (query: Record<string, unknown>) =>
     request<PageResult<DeviceRow>>('/api/ops/devices/query', json(query)),
+  lookupDevice: (sn: string) =>
+    request<DeviceRow>(`/api/ops/devices/lookup?sn=${encodeURIComponent(sn)}`),
   device: (id: number) => request<DeviceDetail>(`/api/ops/devices/${id}`),
-  deviceSeries: (id: number, propertyId: string, params: Record<string, string> = {}) => {
-    const search = new URLSearchParams(params).toString()
-    return request<SeriesView>(
-      `/api/ops/devices/${id}/properties/${propertyId}/series${search ? `?${search}` : ''}`
-    )
-  },
   writeProperty: (id: number, body: { propertyId: string; channelNo?: string; value: unknown }) =>
     request<unknown>(`/api/ops/devices/${id}/properties`, json(body)),
   deployDevice: (id: number) =>
@@ -213,7 +209,12 @@ export const api = {
     request<DeviceRow>(`/api/ops/devices/${id}/work-allowance?allowWork=${value}`, {
       method: 'POST'
     }),
-  saveDevice: (body: unknown) => request<DeviceRow>('/api/ops/devices', json(body)),
+  saveDevice: (body: DeviceSaveRequest) => request<DeviceRow>('/api/ops/devices', json(body)),
+  saveProtocolMappings: (id: number, mappings: ProtocolMappingInput[]) =>
+    request<DeviceDetail>(`/api/ops/devices/${id}/protocol-mappings`, {
+      method: 'PUT',
+      body: JSON.stringify({ mappings })
+    }),
 
   // ---------------------------------------------------------------- 产品
 
@@ -250,10 +251,16 @@ export const api = {
       const error = await response.json().catch(() => ({}))
       throw new ApiError(response.status, error.message ?? `上传失败 HTTP ${response.status}`)
     }
-    return response.json() as Promise<{ id: number }>
+    return response.json() as Promise<{ id: number; linkedProducts: number }>
   },
   archiveProtocolDocument: (id: number) =>
     request<void>(`/api/ops/protocol-documents/${id}/archive`, { method: 'POST' }),
+
+  // ---------------------------------------------------------------- 费率
+
+  rateModels: () => request<RateModelView[]>('/api/ops/rate-models'),
+  saveRateModel: (body: RateModelSave) =>
+    request<RateModelView>('/api/ops/rate-models', json(body)),
 
   // ---------------------------------------------------------------- 订单
 

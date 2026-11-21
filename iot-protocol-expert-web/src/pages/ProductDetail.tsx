@@ -32,8 +32,8 @@ export default function ProductDetail() {
         <div>
           <h1>{product.name}</h1>
           <p>
-            <span className="mono">{product.productCode}</span> · {product.deviceTypeLabel} ·{' '}
-            {productProtocol(product)} / {product.transport}
+            <span className="mono">{product.productCode}</span> · {productProtocol(product)} /{' '}
+            {product.transport}
           </p>
         </div>
         {me.data?.permissions?.includes('ops:manage') && (
@@ -53,6 +53,7 @@ export default function ProductDetail() {
         <Descriptions column={3} size="small" colon={false}>
           <Descriptions.Item label="厂商">{product.vendor ?? '—'}</Descriptions.Item>
           <Descriptions.Item label="型号">{product.model ?? '—'}</Descriptions.Item>
+          <Descriptions.Item label="标准枪数">{product.connectorCount}</Descriptions.Item>
           <Descriptions.Item label="设备数">{product.deviceCount}</Descriptions.Item>
           <Descriptions.Item label="状态">{product.state}</Descriptions.Item>
           <Descriptions.Item label="描述" span={3}>

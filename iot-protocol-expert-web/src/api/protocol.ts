@@ -1,10 +1,26 @@
-/** 展示协议名称及版本，保留后端运行时编码。 */
-export function formatProtocol(code: string): string {
-  if (code === 'YKC16') return '云快充 · 1.6'
-  if (code === 'OCPP16J') return 'OCPP · 1.6j'
-  return code
-}
-
-export function productProtocol(product: { protocol: string; protocolName?: string | null; protocolNameEn?: string | null; protocolVersion?: string | null }): string {
-  return product.protocolName ? `${product.protocolName}（${product.protocolNameEn}） · ${product.protocolVersion}` : formatProtocol(product.protocol)
+/** 充电协议统一展示英文名及版本。 */
+export function productProtocol(product: {
+  protocol: string
+  protocolEnglishName?: string | null
+  protocolVersion?: string | null
+}): string {
+  const fallbackName =
+    product.protocol === 'YKC16'
+      ? 'YKC'
+      : product.protocol === 'OCPP16J'
+        ? 'OCPP'
+        : product.protocol
+  const fallbackVersion =
+    product.protocol === 'YKC16'
+      ? '1.6'
+      : product.protocol === 'OCPP16J'
+        ? '1.6J'
+        : ''
+  const name = product.protocolEnglishName?.trim() || fallbackName
+  const rawVersion = product.protocolVersion?.trim() || fallbackVersion
+  const version =
+    name.toUpperCase() === 'OCPP' && rawVersion.toLowerCase() === '1.6j'
+      ? '1.6J'
+      : rawVersion
+  return [name, version].filter(Boolean).join(' ')
 }

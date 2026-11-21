@@ -7,11 +7,9 @@ import {
   CheckCircleOutlined,
   ClusterOutlined,
   DatabaseOutlined,
-  EnvironmentOutlined,
   FileDoneOutlined,
   InfoCircleOutlined,
   ReloadOutlined,
-  SwapOutlined,
   SyncOutlined,
   ThunderboltOutlined,
   WarningOutlined
@@ -228,8 +226,8 @@ export default function Overview() {
           >
             <div className="business-detail-grid">
               <div>
-                <span className="business-detail-icon blue"><SwapOutlined /></span>
-                <div><span>今日放电量</span><strong>{b ? Number(b.dischargedEnergy).toFixed(2) : '—'}<small> kWh</small></strong></div>
+                <span className="business-detail-icon blue"><ThunderboltOutlined /></span>
+                <div><span>今日充电量</span><strong>{b ? Number(b.chargedEnergy).toFixed(2) : '—'}<small> kWh</small></strong></div>
               </div>
               <div>
                 <span className="business-detail-icon cyan"><DatabaseOutlined /></span>
@@ -247,13 +245,8 @@ export default function Overview() {
             <div className="resource-list">
               <Link to="/products">
                 <span className="resource-icon"><AppstoreOutlined /></span>
-                <span>充电产品<small>已接入产品模板</small></span>
+                <span>充电桩产品<small>已接入产品模板</small></span>
                 <strong>{d.productCount}<small> 个</small></strong>
-              </Link>
-              <Link to="/devices">
-                <span className="resource-icon"><EnvironmentOutlined /></span>
-                <span>运营站点<small>当前授权范围</small></span>
-                <strong>{d.stationCount}<small> 个</small></strong>
               </Link>
               <Link to="/devices">
                 <span className="resource-icon"><ClusterOutlined /></span>

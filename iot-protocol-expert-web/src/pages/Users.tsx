@@ -9,7 +9,6 @@ import {
   Input,
   Modal,
   Select,
-  Space,
   Switch,
   Table,
   Tag
@@ -19,8 +18,6 @@ import type { ManagedUser, UserChange } from '../api/types'
 
 const roles = [
   { value: 'PLATFORM_ADMIN', label: '平台管理员' },
-  { value: 'TENANT_OWNER', label: '租户所有者' },
-  { value: 'PROJECT_ADMIN', label: '项目管理员' },
   { value: 'OPERATOR', label: '运维人员' },
   { value: 'ANALYST', label: '分析人员' },
   { value: 'VIEWER', label: '只读人员' },
@@ -47,8 +44,6 @@ export default function Users() {
     onError: (error: Error) => message.error(error.message)
   })
   const users = useQuery({ queryKey: ['users'], queryFn: api.users })
-  const stations = useQuery({ queryKey: ['stations'], queryFn: api.stations })
-  const allStations = Form.useWatch('allStations', form)
   const save = useMutation({
     mutationFn: (value: UserChange) =>
       editing ? api.updateUser(editing.id, value) : api.createUser(value),
@@ -69,9 +64,7 @@ export default function Users() {
             username: '',
             password: '',
             enabled: true,
-            roles: ['VIEWER'],
-            allStations: true,
-            stationIds: []
+            roles: ['VIEWER']
           }
     )
     setOpen(true)
@@ -89,7 +82,7 @@ export default function Users() {
         showIcon
         type="info"
         style={{ marginBottom: 16 }}
-        message="受限站点账号仅可通过 AI 访问获授权站点；运营页面暂不支持站点级隔离。修改账号后其现有登录会话会失效。"
+        message="账号与角色权限修改后，相关用户现有登录会话将失效。"
       />
       {users.error && <Alert type="error" message={(users.error as Error).message} />}
       <Table
@@ -110,15 +103,6 @@ export default function Users() {
               user.roles.map((role) => (
                 <Tag key={role}>{roles.find((item) => item.value === role)?.label ?? role}</Tag>
               ))
-          },
-          {
-            title: '站点范围',
-            render: (_, user) =>
-              user.allStations
-                ? '全部站点'
-                : user.stationIds.length
-                  ? user.stationIds.join(', ')
-                  : '无站点'
           },
           {
             title: '操作',
@@ -176,10 +160,6 @@ export default function Users() {
           options={[
             { value: 'iam:user:manage', label: '用户与角色管理' },
             { value: 'platform:admin', label: '平台管理' },
-            { value: 'tenant:manage', label: '租户管理' },
-            { value: 'project:create', label: '创建项目' },
-            { value: 'project:manage', label: '项目管理' },
-            { value: 'member:manage', label: '成员管理' },
             { value: 'ops:read', label: '运营读取' },
             { value: 'ops:operate', label: '运营操作' },
             { value: 'ops:manage', label: '运营管理' },
@@ -206,9 +186,7 @@ export default function Users() {
         <Form
           form={form}
           layout="vertical"
-          onFinish={(value) =>
-            save.mutate({ ...value, stationIds: value.allStations ? [] : (value.stationIds ?? []) })
-          }
+          onFinish={(value) => save.mutate(value)}
         >
           <Form.Item
             name="username"
@@ -233,26 +211,9 @@ export default function Users() {
           <Form.Item name="roles" label="角色" rules={[{ required: true, message: '请选择角色' }]}>
             <Select mode="multiple" options={roles} />
           </Form.Item>
-          <Space>
-            <Form.Item name="enabled" label="启用" valuePropName="checked">
-              <Switch />
-            </Form.Item>
-            <Form.Item name="allStations" label="全部站点" valuePropName="checked">
-              <Switch />
-            </Form.Item>
-          </Space>
-          {!allStations && (
-            <Form.Item name="stationIds" label="可访问站点">
-              <Select
-                mode="multiple"
-                placeholder="不选择表示无站点权限"
-                options={(stations.data ?? []).map((station) => ({
-                  value: station.id,
-                  label: station.name
-                }))}
-              />
-            </Form.Item>
-          )}
+          <Form.Item name="enabled" label="启用" valuePropName="checked">
+            <Switch />
+          </Form.Item>
         </Form>
       </Modal>
     </Card>

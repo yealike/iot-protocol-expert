@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Button, Card, Input, Select, Table, Tag } from 'antd'
+import { Button, Card, Input, Select, Space, Table, Tag, Tooltip, Typography } from 'antd'
 import { ReloadOutlined, SearchOutlined } from '@ant-design/icons'
+import dayjs from 'dayjs'
 import { Link, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
 import type { OrderView } from '../api/types'
@@ -23,6 +24,43 @@ const statusColors: Record<string, string> = {
   FAILED: 'red'
 }
 
+const amountSourceLabels: Record<string, string> = {
+  DEVICE_BILL: '设备账单',
+  PLATFORM_ESTIMATE: '平台估算'
+}
+
+function durationSeconds(order: OrderView): number | null {
+  if (order.durationSeconds != null) return order.durationSeconds
+  if (!order.startTime) return null
+  const start = dayjs(order.startTime)
+  if (!start.isValid()) return null
+  const end = order.endTime
+    ? dayjs(order.endTime)
+    : order.status === 'CHARGING' || order.status === 'PENDING'
+      ? dayjs()
+      : null
+  if (!end?.isValid()) return null
+  return Math.max(0, end.diff(start, 'second'))
+}
+
+function formatDuration(seconds: number | null): string {
+  if (seconds == null) return '—'
+  const hours = Math.floor(seconds / 3600)
+  const minutes = Math.floor((seconds % 3600) / 60)
+  const remainder = seconds % 60
+  return [hours, minutes, remainder]
+    .map((value) => String(value).padStart(2, '0'))
+    .join(':')
+}
+
+function formatEnergy(value: number | null): string {
+  return value == null ? '—' : Number(value).toFixed(3)
+}
+
+function formatAmount(value: number | null): string {
+  return value == null ? '—' : Number(value).toFixed(2)
+}
+
 export default function Orders() {
   const [params] = useSearchParams()
   const [orderNo, setOrderNo] = useState('')
@@ -32,19 +70,36 @@ export default function Orders() {
   const deviceId = params.get('deviceId') ?? undefined
   const orders = useQuery({
     queryKey: ['orders', orderNo, status, page, size, deviceId],
-    queryFn: () => api.queryOrders({ orderNo, status, page, size, deviceId })
+    queryFn: () => api.queryOrders({ orderNo, status, page, size, deviceId }),
+    refetchInterval: (query) =>
+      query.state.data?.content.some(
+        (order) => order.status === 'CHARGING' || order.status === 'PENDING'
+      )
+        ? 15_000
+        : false
   })
 
   return (
     <div className="orders-page">
       <div className="page-header">
         <div>
-          <h1>订单管理</h1>
-          <p>查询充电订单、设备枪口与账单信息，跟踪订单全生命周期。</p>
+          <h1>充电订单</h1>
+          <p>优先查看金额、电量和充电时长，追踪每一笔充电交易。</p>
         </div>
-        <Button icon={<ReloadOutlined />} loading={orders.isFetching} onClick={() => orders.refetch()}>
-          刷新订单
-        </Button>
+        <Space wrap>
+          {deviceId ? (
+            <Tag bordered={false} color="blue">
+              已按设备筛选
+            </Tag>
+          ) : null}
+          <Button
+            icon={<ReloadOutlined />}
+            loading={orders.isFetching}
+            onClick={() => orders.refetch()}
+          >
+            刷新订单
+          </Button>
+        </Space>
       </div>
 
       <Card variant="borderless" className="order-filter-card">
@@ -78,7 +133,7 @@ export default function Orders() {
           </div>
           {deviceId ? (
             <div className="device-filter-chip">
-              <span>设备筛选中</span>
+              <span>仅显示当前设备订单</span>
               <Link to="/orders">清除筛选</Link>
             </div>
           ) : null}
@@ -87,7 +142,10 @@ export default function Orders() {
 
       <Card variant="borderless" className="order-table-card" styles={{ body: { padding: 0 } }}>
         <div className="order-table-heading">
-          <div><h2>充电订单</h2><p>订单金额保留来源标识，便于核对设备账单与平台估算</p></div>
+          <div>
+            <h2>订单明细</h2>
+            <p>订单金额保留来源标识，便于核对设备账单与平台估算。</p>
+          </div>
           <span>共 {orders.data?.total ?? 0} 笔</span>
         </div>
         {orders.isError ? (
@@ -99,7 +157,7 @@ export default function Orders() {
           rowKey="id"
           loading={orders.isLoading}
           dataSource={orders.data?.content ?? []}
-          scroll={{ x: 1320 }}
+          scroll={{ x: 1110 }}
           pagination={{
             current: page + 1,
             pageSize: size,
@@ -116,34 +174,57 @@ export default function Orders() {
             {
               title: '订单号',
               dataIndex: 'orderNo',
-              width: 230,
+              width: 290,
               fixed: 'left',
               render: (value: string) => (
-                <Link className="order-number mono" to={`/orders/${encodeURIComponent(value)}`}>
-                  {value}
-                </Link>
+                <Typography.Text
+                  className="copyable-id order-number"
+                  copyable={{ text: value, tooltips: ['复制订单号', '已复制'] }}
+                >
+                  <Link to={`/orders/${encodeURIComponent(value)}`}>{value}</Link>
+                </Typography.Text>
               )
             },
             {
-              title: '桩号',
-              dataIndex: 'protocolDeviceId',
-              width: 170,
-              render: (value: string, row) => (
-                <Link className="pile-number mono" to={`/devices/${row.deviceId}`}>
-                  {value || '—'}
-                </Link>
+              title: '充电金额',
+              dataIndex: 'amount',
+              width: 125,
+              align: 'right',
+              render: (value: number | null, row) => (
+                <div className="order-amount">
+                  <strong>¥ {formatAmount(value)}</strong>
+                  <small>
+                    {amountSourceLabels[row.amountSource] ?? row.amountSource ?? '来源未知'}
+                  </small>
+                </div>
               )
             },
             {
-              title: '枪号',
-              dataIndex: 'gunNo',
-              width: 100,
-              render: (value: string) => <span className="gun-number">{value || '—'}</span>
+              title: '充电电量',
+              dataIndex: 'energy',
+              width: 125,
+              align: 'right',
+              render: (value: number | null) => (
+                <span className="numeric-cell">
+                  {formatEnergy(value)}
+                  {value == null ? null : <small> kWh</small>}
+                </span>
+              )
+            },
+            {
+              title: '充电时长',
+              width: 115,
+              align: 'right',
+              render: (_, row) => (
+                <span className="numeric-cell mono">
+                  {formatDuration(durationSeconds(row))}
+                </span>
+              )
             },
             {
               title: '订单状态',
               dataIndex: 'status',
-              width: 120,
+              width: 105,
               render: (value: string) => (
                 <Tag color={statusColors[value] ?? 'default'} bordered={false}>
                   {labels[value] ?? value}
@@ -151,43 +232,29 @@ export default function Orders() {
               )
             },
             {
+              title: '设备 SN / 枪号',
+              width: 190,
+              render: (_, row) => (
+                <div className="order-device-cell">
+                  <Link
+                    className="mono"
+                    to={`/devices/${row.deviceId}?gun=${encodeURIComponent(row.gunNo)}`}
+                  >
+                    {row.deviceSn ?? '—'}
+                  </Link>
+                  <Tooltip title={row.platformGunNo ?? '平台枪号待生成'}>
+                    <span>枪 {row.gunNo || '—'}</span>
+                  </Tooltip>
+                </div>
+              )
+            },
+            {
               title: '开始时间',
               dataIndex: 'startTime',
-              width: 170,
-              render: (value: string | null) => formatDateTime(value)
-            },
-            {
-              title: '结束时间',
-              dataIndex: 'endTime',
-              width: 170,
-              render: (value: string | null) => formatDateTime(value)
-            },
-            {
-              title: '充电量（kWh）',
-              dataIndex: 'energy',
-              width: 140,
-              align: 'right',
-              render: (value: number | null) => <span className="energy-value">{value ?? '—'}</span>
-            },
-            {
-              title: '订单金额',
-              width: 190,
-              align: 'right',
-              render: (_, row) =>
-                row.amount == null ? (
-                  '—'
-                ) : (
-                  <div className="order-amount">
-                    <strong>¥ {row.amount}</strong>
-                    <small>
-                      {row.amountSource === 'DEVICE_BILL'
-                        ? '设备账单'
-                        : row.amountSource === 'PLATFORM_ESTIMATE'
-                          ? '平台估算'
-                          : '来源未知'}
-                    </small>
-                  </div>
-                )
+              width: 160,
+              render: (value: string | null) => (
+                <span className="table-time">{formatDateTime(value)}</span>
+              )
             }
           ]}
         />

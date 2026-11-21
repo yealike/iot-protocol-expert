@@ -11,6 +11,7 @@ import DeviceDetail from './pages/DeviceDetail'
 import Products from './pages/Products'
 import ProductDetail from './pages/ProductDetail'
 import Orders from './pages/Orders'
+import Rates from './pages/Rates'
 import ProtocolDocuments from './pages/ProtocolDocuments'
 import OrderDetail from './pages/OrderDetail'
 import NotFound from './pages/NotFound'
@@ -73,12 +74,7 @@ export default function App() {
         }
       >
         <Routes>
-          <Route
-            path="/"
-            element={
-              <Navigate to={user.allStations === false ? '/assistant' : '/overview'} replace />
-            }
-          />
+          <Route path="/" element={<Navigate to="/overview" replace />} />
           <Route path="/overview" element={<Overview />} />
           <Route path="/devices" element={<Devices />} />
           <Route path="/devices/:id" element={<DeviceDetail />} />
@@ -87,6 +83,7 @@ export default function App() {
           <Route path="/protocol-documents" element={<ProtocolDocuments />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/orders/:orderNo" element={<OrderDetail />} />
+          <Route path="/rates" element={<Rates />} />
           <Route path="/simulator/*" element={<Simulator />} />
           <Route path="/assistant" element={<Assistant />} />
           <Route path="/usage" element={<Usage view="quota" />} />

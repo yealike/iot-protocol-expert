@@ -28,7 +28,7 @@ export default function Products() {
     <div className="products-page">
       <div className="page-header">
         <div>
-          <h1>产品与物模型</h1>
+          <h1>充电桩产品与物模型</h1>
           <p>面向充电桩产品统一管理协议模板、设备属性、功能与事件。</p>
         </div>
         {me.data?.permissions?.includes('ops:manage') && (
@@ -57,7 +57,7 @@ export default function Products() {
       <Card variant="borderless" className="product-list-card" styles={{ body: { padding: 0 } }}>
         <div className="product-list-heading">
           <div><h2>产品列表</h2><p>选择产品可查看并维护完整物模型定义</p></div>
-          <Tag color="blue" bordered={false}>仅支持充电桩</Tag>
+          <Tag color="blue" bordered={false}>充电桩专用</Tag>
         </div>
         {products.isLoading ? (
           <div className="product-table-loading"><Skeleton active paragraph={{ rows: 6 }} /></div>

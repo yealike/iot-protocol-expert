@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { NavLink, useLocation } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import markup from '../../public/simulator/index.html?raw'
 import controller from '../../public/simulator/app.js?raw'
 import './simulator-legacy.css'
@@ -35,7 +35,7 @@ const pages = [
   { key: 'home', to: '/simulator', label: '3D 模拟器' },
   { key: 'workbench', to: '/simulator/workbench', label: '仿真工作台' },
   { key: 'billing', to: '/simulator/billing', label: '计费明细' },
-  { key: 'tariff', to: '/simulator/tariff', label: '费率模型' },
+  { key: 'rates', to: '/rates', label: '费率管理' },
   { key: 'configuration', to: '/simulator/configuration', label: '设备参数' },
   { key: 'messages', to: '/simulator/messages', label: '协议报文' }
 ]
@@ -44,8 +44,13 @@ const pageKeys = new Set(pages.map((page) => page.key))
 export default function Simulator() {
   const host = useRef<HTMLDivElement>(null)
   const { pathname } = useLocation()
+  const navigate = useNavigate()
   const route = pathname.split('/')[2] || 'home'
   const activePage = pageKeys.has(route) ? route : 'home'
+
+  useEffect(() => {
+    if (pathname === '/simulator/tariff') navigate('/rates', { replace: true })
+  }, [navigate, pathname])
 
   useEffect(() => {
     const container = host.current
@@ -84,7 +89,8 @@ export default function Simulator() {
       main.querySelector('#billing'),
       main.querySelector('#history')?.closest('section') ?? null
     ])
-    addPage('tariff', [main.querySelector('#tariff')])
+    // 保留原模拟器脚本需要的 DOM，但不再作为可见费率编辑入口。
+    addPage('legacy-tariff', [main.querySelector('#tariff')])
     addPage('configuration', [main.querySelector('#configuration')])
     addPage('messages', [main.querySelector('#messages')])
     const footer = main.querySelector('footer')

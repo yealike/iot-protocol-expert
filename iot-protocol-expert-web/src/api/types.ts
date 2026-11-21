@@ -11,45 +11,22 @@ export interface PageResult<T> {
 export type DeviceState = 'NOT_ACTIVE' | 'OFFLINE' | 'ONLINE' | 'FAULT'
 export type EventLevel = 'INFO' | 'WARN' | 'MAJOR' | 'CRITICAL'
 
-export type DeviceTypeCode = 'CHARGER'
-
-export interface TagValue {
-  key: string
-  value: string | null
-  valueType: string
-}
-
-export interface SceneAnchor {
-  model: string | null
-  position: number[] | null
-  scale: number | null
-}
-
 export interface DeviceRow {
   id: number
-  deviceCode: string
+  /** 平台设备 SN，同时作为 8 位桩号。 */
+  deviceSn: string
   name: string
   productId: number
   productName: string | null
-  deviceType: DeviceTypeCode
-  deviceTypeLabel: string
   protocol: string
-  protocolName: string | null
-  protocolNameEn: string | null
+  protocolEnglishName: string | null
   protocolVersion: string | null
-  protocolDeviceId: string
-  stationId: number | null
-  stationName: string | null
   state: DeviceState
   enabled: boolean
-  allowWork: boolean
-  allowSimulate: boolean
+  keyMetrics: Record<string, string | number> | null
   lastSeen: string | null
-  onlineAt: string | null
-  registryTime: string | null
-  sceneAnchor: SceneAnchor | null
-  tags: TagValue[]
-  highlights: Record<string, string>
+  gunCount: number
+  matchedGunNo: string | null
 }
 
 export interface PropertyValue {
@@ -66,11 +43,35 @@ export interface PropertyValue {
 }
 
 export interface ChannelView {
-  channelNo: string
-  channelType: string
+  gunNo: string
+  platformGunNo: string | null
+  protocolConnectorNo: string | null
   name: string
   enabled: boolean
   properties: PropertyValue[]
+}
+
+export interface ProtocolMapping {
+  gunNo: string
+  platformGunNo: string | null
+  thirdPartyDeviceId: string | null
+  protocolConnectorNo: string | null
+  enabled: boolean
+}
+
+export interface ProtocolMappingInput {
+  gunNo: string
+  thirdPartyDeviceId: string | null
+  protocolConnectorNo: string | null
+  enabled: boolean
+}
+
+export interface DeviceSaveRequest {
+  sn?: string
+  name: string
+  productId: number
+  enabled: boolean
+  protocolMappings: ProtocolMappingInput[]
 }
 
 export interface EventView {
@@ -97,11 +98,11 @@ export interface CommandView {
 
 export interface DeviceDetail {
   device: DeviceRow
-  thingModel: ThingModel
   channels: ChannelView[]
   properties: PropertyValue[]
   events: EventView[]
   commands: CommandView[]
+  protocolMappings?: ProtocolMapping[] | null
 }
 
 // ---------------------------------------------------------------- 物模型
@@ -166,17 +167,14 @@ export interface ProductRow {
   productCode: string
   name: string
   categoryCode: string
-  deviceType: DeviceTypeCode
-  deviceTypeLabel: string
   protocol: string
   protocolDocumentId: number | null
-  protocolName: string | null
-  protocolNameEn: string | null
+  protocolEnglishName: string | null
   protocolVersion: string | null
   transport: string
   vendor: string | null
   model: string | null
-  sceneModel: string | null
+  connectorCount: number
   description: string | null
   state: string
   deviceCount: number
@@ -191,56 +189,18 @@ export interface ProductDetail {
   configuration: Record<string, unknown>
 }
 
-export interface DeviceTypeDescriptor {
-  deviceType: DeviceTypeCode
-  label: string
-  categoryCode: string
-  sceneModel: string | null
-  defaultProtocol: string
-  channelType: string | null
-  icon: string
-  templateProductId: number | null
-  templateProductCode: string | null
-  templateMetadata: ThingModel | null
-  total?: number
-  online?: number
-  fault?: number
-  offline?: number
-}
-
 // ---------------------------------------------------------------- 总览
-
-export interface DeviceTypeSummary {
-  deviceType: DeviceTypeCode
-  label: string
-  total: number
-  online: number
-  fault: number
-  offline: number
-}
 
 export interface Overview {
   deviceTotal: number
   deviceOnline: number
   deviceFault: number
-  stationCount: number
   productCount: number
-  byType: DeviceTypeSummary[]
-}
-
-export interface SeriesView {
-  deviceId: number
-  propertyId: string
-  channelNo: string | null
-  name: string
-  unit: string | null
-  points: { time: string; number: number | null; text: string | null }[]
 }
 
 export interface CurrentUser {
   id?: string
   permissions?: string[]
-  allStations?: boolean
   authenticated: boolean
   username?: string
   roles?: string[]
@@ -249,19 +209,27 @@ export interface CurrentUser {
 export interface OrderView {
   id: number
   orderNo: string
+  transactionNo: string | null
   deviceId: number
-  protocolDeviceId: string
+  deviceSn: string | null
   gunNo: string
-  stationId: number | null
+  platformGunNo: string | null
   protocol: string
   status: string
+  meterStartWh: number | null
   startTime: string | null
   endTime: string | null
+  durationSeconds: number | null
   energy: number | null
+  electricityFee: number | null
+  serviceFee: number | null
   amount: number | null
+  lossEnergy: number | null
   amountSource: string
-  failReason: string | null
+  rateModelNo: string | null
+  rateSnapshot: string | null
   stopReason: number
+  failReason: string | null
   createdAt: string | null
 }
 export interface BillView {
@@ -269,16 +237,35 @@ export interface BillView {
   sourceType: string
   sourceTransactionNo: string
   energy: number | null
+  electricityFee: number | null
+  serviceFee: number | null
   amount: number | null
+  lossEnergy: number | null
+  rateModelNo: string | null
   currency: string
   amountType: string
   accepted: boolean
   rejectReason: string | null
   receivedAt: string | null
 }
+export interface OrderFeeSegment {
+  id: number
+  orderId: number
+  period: number
+  energy: number
+  lossEnergy: number
+  electricityPrice: number
+  servicePrice: number
+  electricityFee: number
+  serviceFee: number
+  totalAmount: number
+  source: string | null
+  createdAt: string | null
+}
 export interface OrderDetail {
   order: OrderView
   bills: BillView[]
+  feeSegments: OrderFeeSegment[]
 }
 
 export interface TelemetryPoint {
@@ -303,10 +290,27 @@ export interface BusinessOverview {
   settledEnergy: number
   settledAmount: number
   chargedEnergy: number
-  dischargedEnergy: number
   activeOrderCount: number
   daily: { date: string; energy: number; amount: number; orders: number }[]
 }
+
+export interface RateModelView {
+  modelNo: string
+  sharpEnergy: number
+  sharpService: number
+  peakEnergy: number
+  peakService: number
+  flatEnergy: number
+  flatService: number
+  valleyEnergy: number
+  valleyService: number
+  lossRatio: number
+  segments: number[]
+  active: boolean
+  updatedAt: string | null
+}
+
+export type RateModelSave = RateModelView
 
 export interface ProtocolDocument {
   id: number
@@ -900,18 +904,14 @@ export interface ManagedUser {
   id: number
   username: string
   enabled: boolean
-  allStations: boolean
   roles: string[]
   permissions: string[]
-  stationIds: number[]
 }
 export interface UserChange {
   username: string
   password?: string
   enabled: boolean
-  allStations: boolean
   roles: string[]
-  stationIds: number[]
 }
 
 export interface ManagedRole {

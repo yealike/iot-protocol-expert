@@ -1,58 +1,66 @@
-import { formatDateTime } from '../utils/dateTime'
-import { productProtocol } from '../api/protocol'
-import { useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
+  Alert,
   App,
   Button,
   Card,
-  Col,
-  Descriptions,
+  Dropdown,
   Empty,
-  Popconfirm,
-  Row,
-  Segmented,
-  Select,
+  Input,
+  Modal,
   Skeleton,
   Space,
-  Table,
   Tabs,
-  Tag
+  Tag,
+  Typography
 } from 'antd'
-import { Link, useParams } from 'react-router-dom'
+import {
+  ArrowLeftOutlined,
+  EditOutlined,
+  FileTextOutlined,
+  LinkOutlined,
+  MoreOutlined,
+  PoweroffOutlined,
+  ReloadOutlined,
+  ThunderboltOutlined
+} from '@ant-design/icons'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../api/client'
+import { productProtocol } from '../api/protocol'
 import { DeviceStateTag, EventLevelTag } from '../components/tags'
-import Chart from '../components/Chart'
-import type { PropertyValue } from '../api/types'
+import type {
+  ChannelView,
+  PropertyValue,
+  ProtocolMapping,
+  ProtocolMappingInput
+} from '../api/types'
+import { formatDateTime } from '../utils/dateTime'
+
+function channelProperty(channel: ChannelView, propertyId: string): PropertyValue | undefined {
+  return channel.properties.find((property) => property.propertyId === propertyId)
+}
+
+function platformGunNoFor(sn: string, gunNo: string): string {
+  return /^\d{8}$/.test(sn) ? `${sn}${gunNo}` : gunNo
+}
 
 export default function DeviceDetail() {
   const { id } = useParams()
   const deviceId = Number(id)
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { message } = App.useApp()
   const queryClient = useQueryClient()
+  const [selectedGunNo, setSelectedGunNo] = useState(searchParams.get('gun') ?? '')
+  const [mappingOpen, setMappingOpen] = useState(false)
+  const [mappingDraft, setMappingDraft] = useState<ProtocolMapping[]>([])
 
   const detail = useQuery({
     queryKey: ['device', deviceId],
     queryFn: () => api.device(deviceId),
     enabled: Number.isFinite(deviceId),
     refetchInterval: 10_000
-  })
-
-  const [channel, setChannel] = useState<string | undefined>()
-  const [trendProperty, setTrendProperty] = useState<string | undefined>()
-
-  const selectedTrend = trendProperty
-    ? (JSON.parse(trendProperty) as { propertyId: string; channelNo: string })
-    : null
-  const series = useQuery({
-    queryKey: ['series', deviceId, trendProperty],
-    queryFn: () =>
-      api.deviceSeries(
-        deviceId,
-        selectedTrend!.propertyId,
-        selectedTrend!.channelNo ? { channelNo: selectedTrend!.channelNo } : {}
-      ),
-    enabled: Boolean(selectedTrend)
   })
 
   const action = useMutation({
@@ -62,381 +70,437 @@ export default function DeviceDetail() {
       return api.setDeviceEnabled(deviceId, kind === 'enable')
     },
     onSuccess: () => {
-      message.success('操作已提交')
-      queryClient.invalidateQueries({ queryKey: ['device', deviceId] })
-      queryClient.invalidateQueries({ queryKey: ['overview'] })
+      message.success('设备状态已更新')
+      void queryClient.invalidateQueries({ queryKey: ['device', deviceId] })
+      void queryClient.invalidateQueries({ queryKey: ['devices'] })
     },
     onError: (error: Error) => message.error(error.message)
   })
 
-  const allProperties = useMemo(() => {
-    if (!detail.data) return [] as PropertyValue[]
-    const channelProps = detail.data.channels.flatMap((item) => item.properties)
-    return [...detail.data.properties, ...channelProps]
-  }, [detail.data])
+  const saveMappings = useMutation({
+    mutationFn: (mappings: ProtocolMappingInput[]) =>
+      api.saveProtocolMappings(deviceId, mappings),
+    onSuccess: () => {
+      setMappingOpen(false)
+      message.success('协议接入映射已保存，请重启 protocol-gateway 后生效')
+      void queryClient.invalidateQueries({ queryKey: ['device', deviceId] })
+    },
+    onError: (error: Error) => message.error(error.message)
+  })
 
-  const numericProperties = useMemo(
-    () =>
-      allProperties.filter(
-        (item) =>
-          item.valueType !== 'string' && item.valueType !== 'enum' && item.valueType !== 'bool'
-      ),
-    [allProperties]
-  )
+  const channels = detail.data?.channels ?? []
+  const deviceProperties = detail.data?.properties ?? []
+  const events = detail.data?.events ?? []
+  const commands = detail.data?.commands ?? []
+  const mappings = detail.data?.protocolMappings ?? []
 
-  if (detail.isLoading) return <Skeleton active paragraph={{ rows: 10 }} />
+  useEffect(() => {
+    if (!channels.length) return
+    if (!selectedGunNo || !channels.some((channel) => channel.gunNo === selectedGunNo)) {
+      setSelectedGunNo(channels[0].gunNo)
+    }
+  }, [channels, selectedGunNo])
+
+  if (detail.isLoading) return <Skeleton active paragraph={{ rows: 12 }} />
   if (detail.isError || !detail.data) {
     return (
       <Empty description={detail.error instanceof Error ? detail.error.message : '设备不存在'} />
     )
   }
 
-  const { device, channels, properties, events, commands, thingModel } = detail.data
+  const { device } = detail.data
+  const selectedChannel =
+    channels.find((channel) => channel.gunNo === selectedGunNo) ?? channels[0]
+  const selectedMapping = mappings.find(
+    (mapping) => mapping.gunNo === selectedChannel?.gunNo
+  )
+  const selectedPlatformGunNo =
+    selectedChannel?.platformGunNo ??
+    selectedMapping?.platformGunNo ??
+    (selectedChannel ? platformGunNoFor(device.deviceSn, selectedChannel.gunNo) : '—')
 
-  const seriesOption = {
-    grid: { left: 56, right: 24, top: 24, bottom: 40 },
-    tooltip: { trigger: 'axis' },
-    xAxis: {
-      type: 'category',
-      data: (series.data?.points ?? []).map((point) => formatDateTime(point.time)),
-      axisLabel: { color: '#7d93ac' }
-    },
-    yAxis: {
-      type: 'value',
-      name: series.data?.unit ?? '',
-      splitLine: { lineStyle: { color: 'rgba(38,70,102,0.5)' } },
-      axisLabel: { color: '#7d93ac' }
-    },
-    series: [
-      {
-        type: 'line',
-        smooth: true,
-        showSymbol: false,
-        areaStyle: { color: 'rgba(56,211,159,0.16)' },
-        lineStyle: { color: '#38d39f', width: 2 },
-        data: (series.data?.points ?? []).map((point) => point.number)
-      }
-    ]
+  const openMappingEditor = () => {
+    setMappingDraft(
+      channels.map((channel) => {
+        const existing = mappings.find((mapping) => mapping.gunNo === channel.gunNo)
+        return (
+          existing ?? {
+            gunNo: channel.gunNo,
+            platformGunNo:
+              channel.platformGunNo ??
+              platformGunNoFor(device.deviceSn, channel.gunNo),
+            thirdPartyDeviceId: '',
+            protocolConnectorNo: channel.protocolConnectorNo,
+            enabled: true
+          }
+        )
+      })
+    )
+    setMappingOpen(true)
   }
 
-  const renderPropertyTiles = (items: PropertyValue[]) => (
-    <div className="property-grid">
+  const renderProperties = (items: PropertyValue[]) => (
+    <div className="property-grid device-property-grid">
       {items.map((property) => (
-        <div className="property-tile" key={`${property.channelNo}-${property.propertyId}`}>
-          <div className="name">
-            {property.name}
-            {property.channelNo ? <span className="mono"> · {property.channelNo}</span> : null}
-          </div>
-          <div className="value">
+        <div
+          className="property-tile"
+          key={`${property.channelNo}-${property.propertyId}`}
+        >
+          <div className="property-name">{property.name}</div>
+          <div className="property-value">
             {property.display ?? '—'}
             {property.unit ? <small>{property.unit}</small> : null}
           </div>
-          <div className="time">{formatDateTime(property.updatedAt, '尚无数据')}</div>
+          <div className="property-time">{formatDateTime(property.updatedAt, '尚无数据')}</div>
         </div>
       ))}
     </div>
   )
 
+  const moreItems = [
+    ...(device.state === 'NOT_ACTIVE'
+      ? [
+          {
+            key: 'deploy',
+            icon: <ThunderboltOutlined />,
+            label: '激活设备',
+            onClick: () => action.mutate('deploy')
+          }
+        ]
+      : [
+          {
+            key: 'undeploy',
+            icon: <PoweroffOutlined />,
+            label: '注销设备',
+            onClick: () => action.mutate('undeploy')
+          }
+        ])
+  ]
+
   return (
     <>
-      <div className="device-hero">
-        <div>
-          <Link to="/devices" className="device-back">
-            ← 返回设备列表
+      <section className="device-detail-header">
+        <div className="device-detail-heading">
+          <Link to="/devices" className="back-link">
+            <ArrowLeftOutlined /> 返回设备列表
           </Link>
-          <h1>
-            {device.name} <DeviceStateTag state={device.state} />
-          </h1>
-          <p>
-            <span className="mono">{device.deviceCode}</span> · {device.deviceTypeLabel} ·{' '}
-            {productProtocol(device)} · {device.stationName ?? '未分配站点'}
-          </p>
+          <div className="device-title-line">
+            <Typography.Title
+              level={2}
+              className="device-sn-title mono"
+              copyable={{ text: device.deviceSn }}
+            >
+              {device.deviceSn}
+            </Typography.Title>
+            <DeviceStateTag state={device.state} />
+          </div>
+          <p>{device.name}</p>
         </div>
-        <Space>
-          <Link to={`/orders?deviceId=${deviceId}`}>查看订单</Link>
-          <Button onClick={() => action.mutate('enable')} disabled={device.enabled}>
-            启用
-          </Button>
-          <Popconfirm
-            title="停用后设备将无法正常工作，确定继续？"
-            onConfirm={() => action.mutate('disable')}
+        <Space wrap className="device-header-actions">
+          <Button
+            type="primary"
+            icon={<FileTextOutlined />}
+            onClick={() => navigate(`/orders?deviceId=${deviceId}`)}
           >
-            <Button disabled={!device.enabled} danger>
-              停用
-            </Button>
-          </Popconfirm>
-          <Button type="primary" onClick={() => action.mutate('deploy')}>
-            激活
+            查看订单
           </Button>
-          <Popconfirm title="确定注销该设备？" onConfirm={() => action.mutate('undeploy')}>
-            <Button>注销</Button>
-          </Popconfirm>
+          <Button
+            icon={<PoweroffOutlined />}
+            danger={device.enabled}
+            onClick={() => action.mutate(device.enabled ? 'disable' : 'enable')}
+          >
+            {device.enabled ? '停用设备' : '启用设备'}
+          </Button>
+          <Dropdown menu={{ items: moreItems }} trigger={['click']}>
+            <Button icon={<MoreOutlined />}>更多</Button>
+          </Dropdown>
         </Space>
+        <div className="device-header-meta">
+          <div>
+            <span>所属产品</span>
+            <Link to={`/products/${device.productId}`}>{device.productName ?? '—'}</Link>
+          </div>
+          <div>
+            <span>设备协议</span>
+            <strong>{productProtocol(device)}</strong>
+          </div>
+          <div>
+            <span>枪口数量</span>
+            <strong>{channels.length}</strong>
+          </div>
+          <div>
+            <span>最近上报</span>
+            <strong>{formatDateTime(device.lastSeen, '暂无数据')}</strong>
+          </div>
+        </div>
+      </section>
+
+      <div className="device-section-heading">
+        <div>
+          <h2>枪口实时数据</h2>
+          <p>选择枪口查看完整运行属性，枪口编号由设备 SN 和两位枪号组成。</p>
+        </div>
+        <Button
+          icon={<ReloadOutlined />}
+          loading={detail.isFetching}
+          onClick={() => detail.refetch()}
+        >
+          刷新
+        </Button>
       </div>
 
-      <div className="device-summary-grid">
-        <div>
-          <span>所属产品</span>
-          <Link to={`/products/${device.productId}`}>{device.productName ?? '—'}</Link>
-        </div>
-        <div>
-          <span>协议设备编号</span>
-          <strong className="mono">{device.protocolDeviceId}</strong>
-        </div>
-        <div>
-          <span>最近上报</span>
-          <strong>{formatDateTime(device.lastSeen, '暂无数据')}</strong>
-        </div>
-        <div>
-          <span>设备开关</span>
-          <strong>{device.enabled ? '已启用' : '已停用'}</strong>
-        </div>
-      </div>
-      <div className="overview-section-title">
-        <div>
-          <h2>枪口运行</h2>
-          <span>按枪口查看实时状态与充电数据</span>
-        </div>
-      </div>
       {channels.length ? (
-        <div className="connector-grid">
-          {channels.map((item) => (
-            <Card
-              key={item.channelNo}
-              bordered={false}
-              className="connector-card"
-              title={
-                <span>
-                  {item.name} <small>#{item.channelNo}</small>
-                </span>
-              }
-              extra={
-                <Tag color={item.enabled ? 'green' : 'default'}>
-                  {item.enabled ? '启用' : '停用'}
-                </Tag>
-              }
-            >
-              <div className="connector-values">
-                {item.properties
-                  .filter((p) =>
-                    [
-                      'gunState',
-                      'voltage',
-                      'current',
-                      'soc',
-                      'chargeEnergy',
-                      'batteryTemp',
-                      'gunLineTemp'
-                    ].includes(p.propertyId)
-                  )
-                  .map((p) => (
-                    <div key={p.propertyId}>
-                      <span>{p.name}</span>
-                      <strong>
-                        {p.display ?? '—'} <small>{p.unit ?? ''}</small>
-                      </strong>
-                    </div>
-                  ))}
-              </div>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <Card bordered={false}>
-          <Empty description="暂无枪口数据" />
-        </Card>
-      )}
-      <div className="overview-section-title">
-        <div>
-          <h2>运行数据与档案</h2>
-          <span>实时属性、历史曲线及设备信息</span>
-        </div>
-      </div>
-      <Row gutter={[16, 16]}>
-        <Col xs={24} xl={9}>
-          <Card title="档案" size="small" bordered={false}>
-            <Descriptions column={1} size="small" colon={false}>
-              <Descriptions.Item label="产品">{device.productName}</Descriptions.Item>
-              <Descriptions.Item label="协议编号">
-                <span className="mono">{device.protocolDeviceId}</span>
-              </Descriptions.Item>
-              <Descriptions.Item label="允许工作">
-                {device.allowWork ? '是' : '否'}
-              </Descriptions.Item>
-              <Descriptions.Item label="允许模拟">
-                {device.allowSimulate ? '是' : '否'}
-              </Descriptions.Item>
-              <Descriptions.Item label="最近上报">{formatDateTime(device.lastSeen)}</Descriptions.Item>
-              <Descriptions.Item label="上线时间">{formatDateTime(device.onlineAt)}</Descriptions.Item>
-              <Descriptions.Item label="激活时间">{formatDateTime(device.registryTime)}</Descriptions.Item>
-            </Descriptions>
-          </Card>
-          <Card title="标签" size="small" bordered={false} style={{ marginTop: 16 }}>
-            <div className="chip-row" style={{ marginTop: 0 }}>
-              {device.tags.length === 0 ? <span className="muted">无标签</span> : null}
-              {device.tags.map((tag) => (
-                <span className="chip" key={tag.key}>
-                  {tag.key} = {tag.value ?? '—'}
-                </span>
-              ))}
-            </div>
-          </Card>
-        </Col>
-        <Col xs={24} xl={15}>
+        <>
+          <div className="gun-switcher" role="tablist" aria-label="选择充电枪">
+            {channels.map((channel) => {
+              const gunState = channelProperty(channel, 'gunState')
+              const gunNo = channel.gunNo
+              return (
+                <button
+                  key={gunNo}
+                  type="button"
+                  role="tab"
+                  aria-selected={gunNo === selectedGunNo}
+                  className={gunNo === selectedGunNo ? 'active' : undefined}
+                  onClick={() => setSelectedGunNo(gunNo)}
+                >
+                  <span className="gun-switcher-title">枪 {gunNo}</span>
+                  <span className="mono">
+                    {channel.platformGunNo ?? platformGunNoFor(device.deviceSn, gunNo)}
+                  </span>
+                  <small>{gunState?.display ?? (channel.enabled ? '启用' : '停用')}</small>
+                </button>
+              )
+            })}
+          </div>
+
           <Card
-            title="实时数据"
-            size="small"
-            bordered={false}
-            extra={
-              <Segmented
-                size="small"
-                options={[
-                  { label: '全部', value: 'all' },
-                  ...channels.map((item) => ({ label: item.name, value: item.channelNo }))
-                ]}
-                value={channel ?? 'all'}
-                onChange={(value) => setChannel(value === 'all' ? undefined : String(value))}
-              />
+            variant="borderless"
+            className="gun-detail-card"
+            title={
+              <div className="gun-card-title">
+                <span>
+                  充电枪 {selectedChannel?.gunNo}
+                  <Tag bordered={false} color={selectedChannel?.enabled ? 'green' : 'default'}>
+                    {selectedChannel?.enabled ? '已启用' : '已停用'}
+                  </Tag>
+                </span>
+                <Typography.Text
+                  className="mono platform-gun-no"
+                  copyable={{ text: selectedPlatformGunNo }}
+                >
+                  {selectedPlatformGunNo}
+                </Typography.Text>
+              </div>
             }
           >
-            {!channel && renderPropertyTiles(properties)}
-            {channels
-              .filter((item) => !channel || item.channelNo === channel)
-              .map((item) => (
-                <div key={item.channelNo} style={{ marginTop: 16 }}>
-                  <div className="muted" style={{ fontSize: 12, marginBottom: 8 }}>
-                    {item.name}（{item.channelNo} · {item.channelType}）
-                  </div>
-                  {renderPropertyTiles(item.properties)}
-                </div>
-              ))}
-          </Card>
-
-          <Card title="趋势" size="small" bordered={false} style={{ marginTop: 16 }}>
-            <Space style={{ marginBottom: 12 }}>
-              <Select
-                placeholder="选择数值属性"
-                style={{ width: 220 }}
-                value={trendProperty}
-                options={numericProperties.map((item) => ({
-                  label: `${item.name}${item.channelNo ? ` · ${item.channelNo}` : ''}`,
-                  value: JSON.stringify({
-                    propertyId: item.propertyId,
-                    channelNo: item.channelNo ?? ''
-                  })
-                }))}
-                onChange={setTrendProperty}
-              />
-              <span className="muted" style={{ fontSize: 12 }}>
-                默认展示最近 24 小时
-              </span>
-            </Space>
-            {trendProperty ? (
-              <Chart option={seriesOption} height={260} />
+            {selectedChannel?.properties.length ? (
+              renderProperties(selectedChannel.properties)
             ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="选择一个属性查看趋势" />
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="该枪口暂无实时数据" />
             )}
           </Card>
-        </Col>
-      </Row>
 
-      <Card bordered={false} style={{ marginTop: 16 }}>
+          {deviceProperties.length > 0 ? (
+            <Card
+              variant="borderless"
+              className="device-property-card"
+              title="设备级运行数据"
+            >
+              {renderProperties(deviceProperties)}
+            </Card>
+          ) : null}
+        </>
+      ) : (
+        <Card variant="borderless">
+          <Empty description="暂无枪口" />
+        </Card>
+      )}
+
+      <Card
+        variant="borderless"
+        className="mapping-card"
+        title={
+          <Space>
+            <LinkOutlined />
+            协议接入映射
+          </Space>
+        }
+        extra={
+          <Button icon={<EditOutlined />} onClick={openMappingEditor}>
+            编辑映射
+          </Button>
+        }
+      >
+        <Alert
+          type="warning"
+          showIcon
+          className="mapping-restart-alert"
+          message="映射变更保存后，需要重启 protocol-gateway 才会重新加载。"
+        />
+        <div className="mapping-table">
+          <div className="mapping-table-head">
+            <span>枪口</span>
+            <span>平台枪号</span>
+            <span>第三方设备号</span>
+            <span>第三方枪号</span>
+            <span>状态</span>
+          </div>
+          {channels.map((channel) => {
+            const mapping = mappings.find((item) => item.gunNo === channel.gunNo)
+            return (
+              <div className="mapping-table-row" key={channel.gunNo}>
+                <strong>枪 {channel.gunNo}</strong>
+                <span className="mono">
+                  {channel.platformGunNo ??
+                    mapping?.platformGunNo ??
+                    platformGunNoFor(device.deviceSn, channel.gunNo)}
+                </span>
+                <span className="mono">{mapping?.thirdPartyDeviceId || '—'}</span>
+                <span className="mono">
+                  {channel.protocolConnectorNo ?? mapping?.protocolConnectorNo ?? '—'}
+                </span>
+                <Tag
+                  bordered={false}
+                  color={
+                    mapping?.enabled && mapping.thirdPartyDeviceId
+                      ? 'green'
+                      : mapping?.thirdPartyDeviceId
+                        ? 'gold'
+                        : 'default'
+                  }
+                >
+                  {mapping?.enabled && mapping.thirdPartyDeviceId
+                    ? '已配置'
+                    : mapping?.thirdPartyDeviceId
+                      ? '已停用'
+                      : '未配置'}
+                </Tag>
+              </div>
+            )
+          })}
+        </div>
+      </Card>
+
+      <Card variant="borderless" className="device-record-card">
         <Tabs
           items={[
             {
-              key: 'model',
-              label: `物模型（${thingModel.properties.length}）`,
-              children: (
-                <Table
-                  size="small"
-                  rowKey="id"
-                  pagination={false}
-                  dataSource={thingModel.properties}
-                  columns={[
-                    { title: '属性', dataIndex: 'name' },
-                    {
-                      title: '标识',
-                      dataIndex: 'id',
-                      render: (value: string) => <span className="mono">{value}</span>
-                    },
-                    {
-                      title: '类型',
-                      dataIndex: 'valueType',
-                      render: (type: { type: string; unit?: string }) => (
-                        <Tag bordered={false}>
-                          {type.type}
-                          {type.unit ? ` · ${type.unit}` : ''}
-                        </Tag>
-                      )
-                    },
-                    {
-                      title: '通道',
-                      dataIndex: 'channel',
-                      render: (value?: boolean) => (value ? '是' : '否')
-                    },
-                    {
-                      title: '只读',
-                      dataIndex: 'readOnly',
-                      render: (value?: boolean) => (value ? '是' : '否')
-                    }
-                  ]}
-                />
-              )
-            },
-            {
               key: 'events',
               label: `事件（${events.length}）`,
-              children: (
-                <Table
-                  size="small"
-                  rowKey="id"
-                  dataSource={events}
-                  pagination={{ pageSize: 10 }}
-                  columns={[
-                    { title: '时间', dataIndex: 'occurredAt', width: 170, render: (value: string | null) => formatDateTime(value) },
-                    { title: '事件', dataIndex: 'eventName' },
-                    {
-                      title: '级别',
-                      dataIndex: 'level',
-                      width: 100,
-                      render: (level) => <EventLevelTag level={level} />
-                    },
-                    { title: '通道', dataIndex: 'channelNo', width: 90 },
-                    {
-                      title: '载荷',
-                      dataIndex: 'content',
-                      render: (content) => (
-                        <span className="mono" style={{ fontSize: 11 }}>
-                          {content ? JSON.stringify(content) : '—'}
-                        </span>
-                      )
-                    }
-                  ]}
-                />
+              children: events.length ? (
+                <div className="device-event-list">
+                  {events.map((event) => (
+                    <div className="device-event-row" key={event.id}>
+                      <EventLevelTag level={event.level} />
+                      <div>
+                        <strong>{event.eventName}</strong>
+                        <small>
+                          {formatDateTime(event.occurredAt)}
+                          {event.channelNo ? ` · 枪 ${event.channelNo}` : ''}
+                        </small>
+                      </div>
+                      <code>{event.content ? JSON.stringify(event.content) : '—'}</code>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无设备事件" />
               )
             },
             {
               key: 'commands',
               label: `指令（${commands.length}）`,
-              children: (
-                <Table
-                  size="small"
-                  rowKey="id"
-                  dataSource={commands}
-                  pagination={false}
-                  columns={[
-                    { title: '时间', dataIndex: 'createdAt', width: 170, render: (value: string | null) => formatDateTime(value) },
-                    { title: '指令', dataIndex: 'commandType' },
-                    { title: '状态', dataIndex: 'status', width: 130 },
-                    { title: '操作人', dataIndex: 'operator', width: 110 },
-                    { title: '响应', dataIndex: 'responsePayload', ellipsis: true }
-                  ]}
-                />
+              children: commands.length ? (
+                <div className="command-list">
+                  {commands.map((command) => (
+                    <div className="command-row" key={command.id}>
+                      <div>
+                        <strong>{command.commandType}</strong>
+                        <small>{formatDateTime(command.createdAt)}</small>
+                      </div>
+                      <Tag bordered={false}>{command.status}</Tag>
+                      <span>{command.operator || '系统'}</span>
+                      <code>{command.responsePayload || command.requestPayload || '—'}</code>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无指令记录" />
               )
             }
           ]}
         />
       </Card>
+
+      <Modal
+        title="编辑协议接入映射"
+        width={760}
+        open={mappingOpen}
+        confirmLoading={saveMappings.isPending}
+        okText="保存映射"
+        onOk={() =>
+          saveMappings.mutate(
+            mappingDraft.map((mapping) => ({
+              gunNo: mapping.gunNo,
+              thirdPartyDeviceId: mapping.thirdPartyDeviceId?.trim() || null,
+              protocolConnectorNo: mapping.protocolConnectorNo?.trim() || null,
+              enabled: mapping.enabled
+            }))
+          )
+        }
+        onCancel={() => !saveMappings.isPending && setMappingOpen(false)}
+      >
+        <Alert
+          type="warning"
+          showIcon
+          className="mapping-restart-alert"
+          message="保存后请重启 protocol-gateway，运行时才会使用新的第三方设备映射。"
+        />
+        <div className="mapping-editor mapping-editor-detail">
+          {mappingDraft.map((mapping, index) => (
+            <div className="mapping-row" key={mapping.gunNo}>
+              <div className="mapping-identity">
+                <span className="mapping-gun">枪 {mapping.gunNo}</span>
+                <span className="mono">
+                  {mapping.platformGunNo ??
+                    platformGunNoFor(device.deviceSn, mapping.gunNo)}
+                </span>
+              </div>
+              <label>
+                <span>第三方设备号</span>
+                <Input
+                  value={mapping.thirdPartyDeviceId ?? ''}
+                  placeholder="云快充桩号 / OCPP chargePointId"
+                  onChange={(event) => {
+                    const next = [...mappingDraft]
+                    next[index] = {
+                      ...mapping,
+                      thirdPartyDeviceId: event.target.value
+                    }
+                    setMappingDraft(next)
+                  }}
+                />
+              </label>
+              <label>
+                <span>第三方枪号</span>
+                <Input
+                  value={mapping.protocolConnectorNo ?? ''}
+                  placeholder="例如 01"
+                  onChange={(event) => {
+                    const next = [...mappingDraft]
+                    next[index] = {
+                      ...mapping,
+                      protocolConnectorNo: event.target.value
+                    }
+                    setMappingDraft(next)
+                  }}
+                />
+              </label>
+            </div>
+          ))}
+        </div>
+      </Modal>
     </>
   )
 }
