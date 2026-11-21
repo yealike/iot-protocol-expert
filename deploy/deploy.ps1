@@ -26,13 +26,18 @@ $target = "$ServerUser@$ServerHost"
 
 function Write-Step($text) { Write-Host "`n==> $text" -ForegroundColor Cyan }
 
+if ($ServerHost -eq "SERVER_IP" -or $ServerUser -eq "SERVER_USER" -or $RemoteDir -match "SERVER_USER") {
+    throw "服务器参数仍是占位符：请显式传入 -ServerHost <内网地址> -ServerUser <账号> -RemoteDir <远端部署目录>"
+}
+
 if (-not (Test-Path "$deployDir\.env")) {
     throw "缺少 deploy\.env：请先运行 deploy\build-env.ps1 生成（或参照 .env.deploy.example 手工创建）"
 }
 
 if (-not $SkipBuild) {
-    Write-Step "Maven 打包全部模块"
-    & $mvn -B -f "$repoRoot\pom.xml" -DskipTests package
+    Write-Step "Maven 清理并打包全部模块"
+    # 必须 clean：已删除的 MyBatis 映射等资源会残留在 target/classes，被打进 JAR 导致服务启动失败
+    & $mvn -B -f "$repoRoot\pom.xml" clean package -DskipTests
     if ($LASTEXITCODE -ne 0) { throw "Maven 构建失败（exit $LASTEXITCODE）" }
 }
 
