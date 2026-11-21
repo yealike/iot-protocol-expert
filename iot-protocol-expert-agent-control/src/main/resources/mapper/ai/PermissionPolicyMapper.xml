@@ -7,12 +7,11 @@
             <arg column="role" javaType="java.lang.String"/>
             <arg column="agent_keys" javaType="java.util.Set" typeHandler="top.yealike.pep.control.mybatis.JsonStringSetTypeHandler"/>
             <arg column="tool_names" javaType="java.util.Set" typeHandler="top.yealike.pep.control.mybatis.JsonStringSetTypeHandler"/>
-            <arg column="station_scope" javaType="java.util.Set" typeHandler="top.yealike.pep.control.mybatis.JsonStringSetTypeHandler"/>
         </constructor>
     </resultMap>
 
     <select id="selectEnabled" resultMap="RuleMap">
-        select role, agent_keys, tool_names, station_scope from ai_permission_policy where enabled = true and environment in ('*', #{environment})
+        select role, agent_keys, tool_names from ai_permission_policy where enabled = true and environment in ('*', #{environment})
     </select>
 
     <select id="selectLatestVersion" resultType="java.lang.String">

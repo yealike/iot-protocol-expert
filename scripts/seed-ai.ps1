@@ -85,6 +85,7 @@ Start-PepJar `
     -Name "control" `
     -Jar $controlJar `
     -Port ([int]$env:PEP_CONTROL_PORT) `
+    -HealthPath "/actuator/health/readiness" `
     -TimeoutSeconds $StartupTimeoutSeconds | Out-Null
 
 $publicationSql = @'

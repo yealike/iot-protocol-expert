@@ -14,6 +14,11 @@ public interface KnowledgeMapper {
             @Param("keywords") List<String> keywords,
             @Param("limit") int limit);
 
+    List<KnowledgeRepository.ChunkRow> candidatesBySourceDocument(
+            @Param("sourceDocumentId") String sourceDocumentId,
+            @Param("keywords") List<String> keywords,
+            @Param("limit") int limit);
+
     List<KnowledgeRepository.DocumentRow> findDocument(
             @Param("source") String source, @Param("sourceDocumentId") String sourceDocumentId);
 

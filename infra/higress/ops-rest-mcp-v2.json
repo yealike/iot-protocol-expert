@@ -1,0 +1,156 @@
+{
+  "server": {
+    "name": "ipe-ops-rest-v2",
+    "type": "rest",
+    "version": "2.0.0",
+    "config": {
+      "serviceToken": ""
+    }
+  },
+  "tools": [
+    {
+      "name": "resolve_device",
+      "description": "按平台设备 SN、10 位平台枪号或第三方协议设备号定位设备，返回产品、协议和协议文档信息。第三方编号命中多个协议时返回 IDENTIFIER_AMBIGUOUS。",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "args": [
+        {
+          "name": "identifier",
+          "description": "8 位平台设备 SN、10 位平台枪号，或第三方协议设备号",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "protocol_hint",
+          "description": "可选协议提示，仅支持 YKC16 或 OCPP16J",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "_ipe_context",
+          "description": "内部授权上下文，由 Runtime 注入且模型不可见",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "requestTemplate": {
+        "url": "/internal/ai/rest/resolve_device",
+        "method": "POST",
+        "argsToJsonBody": true,
+        "headers": [
+          {
+            "key": "X-Ops-Service-Token",
+            "value": "{{.config.serviceToken}}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "list_device_frames",
+      "description": "按平台设备 SN 查询最近或指定时间窗的报文摘要，不返回长 HEX。",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "args": [
+        {
+          "name": "device_sn",
+          "description": "平台设备 SN；不得传第三方设备号",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "from",
+          "description": "可选起始时间，ISO-8601",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "to",
+          "description": "可选结束时间，ISO-8601",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "direction",
+          "description": "可选方向：IN 或 OUT",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "frame_type",
+          "description": "可选帧过滤：云快充使用 0x01 等十六进制，OCPP 可使用 Action 名称或消息类型",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "limit",
+          "description": "返回条数，默认 20，最大 50",
+          "type": "integer",
+          "required": false
+        },
+        {
+          "name": "_ipe_context",
+          "description": "内部授权上下文，由 Runtime 注入且模型不可见",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "requestTemplate": {
+        "url": "/internal/ai/rest/list_device_frames",
+        "method": "POST",
+        "argsToJsonBody": true,
+        "headers": [
+          {
+            "key": "X-Ops-Service-Token",
+            "value": "{{.config.serviceToken}}"
+          }
+        ]
+      }
+    },
+    {
+      "name": "decode_device_frame",
+      "description": "按平台设备 SN 锁定产品协议后解码指定 frame_id 或 raw_frame。frame_id 与 raw_frame 必须且只能提供一个。",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "args": [
+        {
+          "name": "device_sn",
+          "description": "平台设备 SN；不得传第三方设备号",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "frame_id",
+          "description": "list_device_frames 返回的帧 ID",
+          "type": "integer",
+          "required": false
+        },
+        {
+          "name": "raw_frame",
+          "description": "用户提供的完整原始帧；云快充为完整 HEX，OCPP 为完整 JSON 或 payload JSON",
+          "type": "string",
+          "required": false
+        },
+        {
+          "name": "_ipe_context",
+          "description": "内部授权上下文，由 Runtime 注入且模型不可见",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "requestTemplate": {
+        "url": "/internal/ai/rest/decode_device_frame",
+        "method": "POST",
+        "argsToJsonBody": true,
+        "headers": [
+          {
+            "key": "X-Ops-Service-Token",
+            "value": "{{.config.serviceToken}}"
+          }
+        ]
+      }
+    }
+  ]
+}

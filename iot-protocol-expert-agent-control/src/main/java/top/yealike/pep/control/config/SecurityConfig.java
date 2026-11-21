@@ -6,6 +6,9 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -25,7 +28,11 @@ import top.yealike.pep.control.support.AiExceptions.AiException;
 @EnableMethodSecurity
 public class SecurityConfig {
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http, OpsIdentityClient identities) throws Exception {
+    SecurityFilterChain securityFilterChain(
+            HttpSecurity http,
+            OpsIdentityClient identities,
+            @Value("${ipe.ai.platform.security.internal-service-token:}") String internalServiceToken)
+            throws Exception {
         return http.csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth.dispatcherTypeMatchers(DispatcherType.ASYNC)
@@ -45,8 +52,45 @@ public class SecurityConfig {
                         .authenticated())
                 .exceptionHandling(errors ->
                         errors.authenticationEntryPoint((request, response, exception) -> response.sendError(401)))
+                .addFilterBefore(
+                        new InternalServiceTokenFilter(internalServiceToken),
+                        UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(new OpsIdentityFilter(identities), UsernamePasswordAuthenticationFilter.class)
                 .build();
+    }
+
+    static final class InternalServiceTokenFilter extends OncePerRequestFilter {
+        static final String KNOWLEDGE_PATH = "/internal/ai/knowledge";
+        static final String KNOWLEDGE_PATH_PREFIX = "/internal/ai/knowledge/";
+        private final String expectedToken;
+
+        InternalServiceTokenFilter(String expectedToken) {
+            this.expectedToken = expectedToken;
+        }
+
+        @Override
+        protected boolean shouldNotFilter(HttpServletRequest request) {
+            String uri = request.getRequestURI();
+            return !KNOWLEDGE_PATH.equals(uri) && !uri.startsWith(KNOWLEDGE_PATH_PREFIX);
+        }
+
+        @Override
+        protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
+                throws ServletException, IOException {
+            String providedToken = request.getHeader("X-Ops-Service-Token");
+            if (expectedToken == null
+                    || expectedToken.isBlank()
+                    || providedToken == null
+                    || !MessageDigest.isEqual(
+                            expectedToken.getBytes(StandardCharsets.UTF_8),
+                            providedToken.getBytes(StandardCharsets.UTF_8))) {
+                response.setStatus(401);
+                response.setContentType("application/json;charset=UTF-8");
+                response.getWriter().write("{\"error\":\"SERVICE_TOKEN_INVALID\",\"message\":\"服务身份校验失败\"}");
+                return;
+            }
+            chain.doFilter(request, response);
+        }
     }
 
     static final class OpsIdentityFilter extends OncePerRequestFilter {

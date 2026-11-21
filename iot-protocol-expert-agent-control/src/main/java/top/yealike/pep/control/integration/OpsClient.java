@@ -4,7 +4,10 @@ import java.io.ByteArrayOutputStream;
 import java.util.Base64;
 import java.util.List;
 import java.util.Map;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.RestClient;
+import top.yealike.pep.control.agents.config.PlatformProperties;
 import top.yealike.pep.control.config.AiProperties;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.UserIdentity;
@@ -12,28 +15,48 @@ import top.yealike.pep.runtime.contract.UserIdentity;
 /** Typed access to MCP capabilities used by application code, outside the model's tool list. */
 @Component
 public class OpsClient {
-    private final McpGateway gateway;
+    private final RestClient http;
+    private final String serviceToken;
     private final int maxDocumentBytes;
 
-    public OpsClient(McpGateway gateway, AiProperties properties) {
-        this.gateway = gateway;
+    public OpsClient(RestClient.Builder builder, AiProperties properties, PlatformProperties platformProperties) {
+        PlatformProperties.Identity identity = platformProperties.identity();
+        if (identity == null || identity.baseUrl() == null || identity.baseUrl().isBlank()) {
+            throw new IllegalStateException("缺少 IPE_OPS_BASE_URL");
+        }
+        serviceToken = identity.serviceToken();
+        http = builder.baseUrl(identity.baseUrl()).build();
         maxDocumentBytes = properties.knowledge().maxDocumentBytes();
     }
 
     public List<Map<String, Object>> documents(UserIdentity identity) {
-        Object data = gateway.call("list_documents", Map.of(), actor(identity)).get("data");
-        if (!(data instanceof List<?> rows)) throw AiExceptions.upstream("协议文档列表读取失败");
-        return rows.stream().map(McpGateway::object).toList();
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> rows = http.get()
+                .uri("/internal/protocol-documents")
+                .header("X-Ops-Service-Token", requireServiceToken())
+                .accept(MediaType.APPLICATION_JSON)
+                .retrieve()
+                .body(List.class);
+        return rows == null ? List.of() : rows;
     }
 
     public byte[] documentContent(UserIdentity identity, String documentId) {
         var output = new ByteArrayOutputStream();
         long expectedSize = -1;
         while (true) {
-            var result = gateway.call(
-                    "read_document",
-                    Map.of("id", Long.parseLong(documentId), "offset", output.size()),
-                    actor(identity));
+            @SuppressWarnings("unchecked")
+            Map<String, Object> result = http.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/internal/protocol-documents/{id}/content")
+                            .queryParam("offset", output.size())
+                            .build(Long.parseLong(documentId)))
+                    .header("X-Ops-Service-Token", requireServiceToken())
+                    .accept(MediaType.APPLICATION_JSON)
+                    .retrieve()
+                    .body(Map.class);
+            if (result == null) {
+                throw AiExceptions.upstream("协议文档分块读取失败");
+            }
             long size = ((Number) result.get("size")).longValue();
             long offset = ((Number) result.get("offset")).longValue();
             if (size > maxDocumentBytes) throw new IllegalArgumentException("协议文档超过索引大小上限");
@@ -51,7 +74,10 @@ public class OpsClient {
         }
     }
 
-    private static Map<String, String> actor(UserIdentity identity) {
-        return Map.of("X-Ai-Actor", identity.actor());
+    private String requireServiceToken() {
+        if (serviceToken == null || serviceToken.isBlank()) {
+            throw AiExceptions.upstream("未配置 IPE_OPS_SERVICE_TOKEN");
+        }
+        return serviceToken;
     }
 }

@@ -126,7 +126,6 @@ public class RuntimeRunCoordinator {
                     run.actor(),
                     run.actorAuthVersion() == null ? 0 : run.actorAuthVersion(),
                     run.actorRoles(),
-                    "",
                     null);
         }
         if (run.deadlineAt() != null && run.deadlineAt().isBefore(Instant.now())) {
@@ -140,7 +139,6 @@ public class RuntimeRunCoordinator {
                     run.actor(),
                     run.actorAuthVersion() == null ? 0 : run.actorAuthVersion(),
                     run.actorRoles(),
-                    "",
                     null);
         }
         if (run.agentReleaseId() == null) {
@@ -173,7 +171,6 @@ public class RuntimeRunCoordinator {
                 run.actor(),
                 identity.authVersion(),
                 run.actorRoles(),
-                policy.stationScopeHeader(identity),
                 release.manifest().budget());
     }
 
@@ -188,7 +185,6 @@ public class RuntimeRunCoordinator {
                 run.actor(),
                 run.actorAuthVersion() == null ? 0 : run.actorAuthVersion(),
                 run.actorRoles(),
-                "",
                 null);
     }
 
@@ -360,8 +356,7 @@ public class RuntimeRunCoordinator {
         if (!policy.canUseTool(identity, run.agentKey(), request.toolAlias()).allowed()) {
             return denied(run, ErrorCodes.TOOL_DENIED, "当前账号无权调用该工具");
         }
-        return new ToolAuthorizeResponse(
-                true, "OK", null, run.actor(), currentVersion, policy.stationScopeHeader(identity));
+        return new ToolAuthorizeResponse(true, "OK", null, run.actor(), currentVersion);
     }
 
     public CredentialResolveResponse resolveCredential(CredentialResolveRequest request) {
@@ -465,7 +460,7 @@ public class RuntimeRunCoordinator {
 
     private ToolAuthorizeResponse denied(Run run, String code, String reason) {
         return new ToolAuthorizeResponse(
-                false, code, reason, run.actor(), run.actorAuthVersion() == null ? 0 : run.actorAuthVersion(), "");
+                false, code, reason, run.actor(), run.actorAuthVersion() == null ? 0 : run.actorAuthVersion());
     }
 
     private UserIdentity identity(Run run) {

@@ -46,5 +46,8 @@ public record PlatformProperties(
             String modelBaseUrl,
             String modelName,
             String skillVersion,
-            java.util.List<String> reviewedReadOnlyTools) {}
+            java.util.List<String> reviewedReadOnlyTools,
+            String opsMcpEndpoint,
+            String knowledgeMcpEndpoint,
+            java.util.List<String> knowledgeReviewedReadOnlyTools) {}
 }

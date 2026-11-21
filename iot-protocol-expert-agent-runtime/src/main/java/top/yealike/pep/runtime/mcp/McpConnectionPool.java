@@ -13,6 +13,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -184,7 +185,8 @@ public class McpConnectionPool {
         if (traceContentEnabled()) {
             requestAttributes.put(
                     "gen_ai.tool.call.arguments",
-                    SensitiveDataSanitizer.sanitize(render(arguments, "{}"), traceMaxContentChars()));
+                    SensitiveDataSanitizer.sanitize(
+                            render(argumentsForTrace(arguments), "{}"), traceMaxContentChars()));
         }
         io.opentelemetry.api.trace.Span.current().addEvent("mcp.request", requestAttributes.build());
         long started = System.nanoTime();
@@ -313,6 +315,19 @@ public class McpConnectionPool {
         } catch (Exception exception) {
             return String.valueOf(data);
         }
+    }
+
+    private Map<String, Object> argumentsForTrace(Map<String, Object> arguments) {
+        if (arguments == null || arguments.isEmpty()) {
+            return Map.of();
+        }
+        Map<String, Object> traceArguments = new LinkedHashMap<>();
+        arguments.forEach((name, value) -> {
+            if (!OpsMcpInvocationAdapter.CONTEXT_FIELD.equalsIgnoreCase(name)) {
+                traceArguments.put(name, value);
+            }
+        });
+        return traceArguments;
     }
 
     private McpConnection connect(McpDescriptor descriptor, String secret) {

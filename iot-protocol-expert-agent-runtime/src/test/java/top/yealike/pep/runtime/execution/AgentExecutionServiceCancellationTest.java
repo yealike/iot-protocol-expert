@@ -76,7 +76,6 @@ class AgentExecutionServiceCancellationTest {
                         "actor",
                         1L,
                         List.of(),
-                        "",
                         manifest.budget()));
 
         ThreadPoolExecutor runExecutor =

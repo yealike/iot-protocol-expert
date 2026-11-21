@@ -1,19 +1,22 @@
 {
   "tools": [
     {
-      "description": "查询订单详情",
-      "name": "get_order_detail",
+      "description": "按平台设备 SN、10 位平台枪号或第三方协议设备号定位设备",
+      "name": "resolve_device",
       "annotations": {
         "readOnlyHint": true
       },
       "inputSchema": {
         "required": [
-          "order_no",
+          "identifier",
           "_ipe_context"
         ],
         "type": "object",
         "properties": {
-          "order_no": {
+          "identifier": {
+            "type": "string"
+          },
+          "protocol_hint": {
             "type": "string"
           },
           "_ipe_context": {
@@ -23,41 +26,34 @@
       }
     },
     {
-      "description": "查询订单账单",
-      "name": "get_order_bills",
+      "description": "按平台设备 SN 查询最近报文摘要",
+      "name": "list_device_frames",
       "annotations": {
         "readOnlyHint": true
       },
       "inputSchema": {
         "required": [
-          "order_no",
+          "device_sn",
           "_ipe_context"
         ],
         "type": "object",
         "properties": {
-          "order_no": {
+          "device_sn": {
             "type": "string"
           },
-          "_ipe_context": {
+          "from": {
             "type": "string"
-          }
-        }
-      }
-    },
-    {
-      "description": "查询设备详情",
-      "name": "get_device_detail",
-      "annotations": {
-        "readOnlyHint": true
-      },
-      "inputSchema": {
-        "required": [
-          "device_id",
-          "_ipe_context"
-        ],
-        "type": "object",
-        "properties": {
-          "device_id": {
+          },
+          "to": {
+            "type": "string"
+          },
+          "direction": {
+            "type": "string"
+          },
+          "frame_type": {
+            "type": "string"
+          },
+          "limit": {
             "type": "integer"
           },
           "_ipe_context": {
@@ -67,107 +63,26 @@
       }
     },
     {
-      "description": "查询订单遥测摘要",
-      "name": "get_order_telemetry_summary",
+      "description": "按平台设备 SN 锁定协议后解码指定帧",
+      "name": "decode_device_frame",
       "annotations": {
         "readOnlyHint": true
       },
       "inputSchema": {
         "required": [
-          "order_no",
+          "device_sn",
           "_ipe_context"
         ],
         "type": "object",
         "properties": {
-          "window_hours": {
-            "type": "integer"
-          },
-          "order_no": {
+          "device_sn": {
             "type": "string"
           },
-          "_ipe_context": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    {
-      "description": "校验浏览器会话",
-      "name": "resolve_session",
-      "annotations": {
-        "readOnlyHint": true
-      },
-      "inputSchema": {
-        "required": [
-          "_ipe_context"
-        ],
-        "type": "object",
-        "properties": {
-          "_ipe_context": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    {
-      "description": "读取当前用户权限",
-      "name": "resolve_actor",
-      "annotations": {
-        "readOnlyHint": true
-      },
-      "inputSchema": {
-        "required": [
-          "id",
-          "_ipe_context"
-        ],
-        "type": "object",
-        "properties": {
-          "id": {
+          "frame_id": {
             "type": "integer"
           },
-          "_ipe_context": {
+          "raw_frame": {
             "type": "string"
-          }
-        }
-      }
-    },
-    {
-      "description": "列出协议文档",
-      "name": "list_documents",
-      "annotations": {
-        "readOnlyHint": true
-      },
-      "inputSchema": {
-        "required": [
-          "_ipe_context"
-        ],
-        "type": "object",
-        "properties": {
-          "_ipe_context": {
-            "type": "string"
-          }
-        }
-      }
-    },
-    {
-      "description": "分块读取协议文档",
-      "name": "read_document",
-      "annotations": {
-        "readOnlyHint": true
-      },
-      "inputSchema": {
-        "required": [
-          "id",
-          "offset",
-          "_ipe_context"
-        ],
-        "type": "object",
-        "properties": {
-          "offset": {
-            "type": "integer"
-          },
-          "id": {
-            "type": "integer"
           },
           "_ipe_context": {
             "type": "string"
@@ -177,96 +92,36 @@
     }
   ],
   "toolsMeta": {
-    "get_order_detail": {
+    "resolve_device": {
       "enabled": true,
       "templates": {
         "json-go-template": {
           "requestTemplate": {
-            "url": "/internal/ai/rest/get_order_detail",
+            "url": "/internal/ai/rest/resolve_device",
             "method": "POST",
             "argsToJsonBody": true
           }
         }
       }
     },
-    "get_order_bills": {
+    "list_device_frames": {
       "enabled": true,
       "templates": {
         "json-go-template": {
           "requestTemplate": {
-            "url": "/internal/ai/rest/get_order_bills",
+            "url": "/internal/ai/rest/list_device_frames",
             "method": "POST",
             "argsToJsonBody": true
           }
         }
       }
     },
-    "get_device_detail": {
+    "decode_device_frame": {
       "enabled": true,
       "templates": {
         "json-go-template": {
           "requestTemplate": {
-            "url": "/internal/ai/rest/get_device_detail",
-            "method": "POST",
-            "argsToJsonBody": true
-          }
-        }
-      }
-    },
-    "get_order_telemetry_summary": {
-      "enabled": true,
-      "templates": {
-        "json-go-template": {
-          "requestTemplate": {
-            "url": "/internal/ai/rest/get_order_telemetry_summary",
-            "method": "POST",
-            "argsToJsonBody": true
-          }
-        }
-      }
-    },
-    "resolve_session": {
-      "enabled": true,
-      "templates": {
-        "json-go-template": {
-          "requestTemplate": {
-            "url": "/internal/ai/rest/resolve_session",
-            "method": "POST",
-            "argsToJsonBody": true
-          }
-        }
-      }
-    },
-    "resolve_actor": {
-      "enabled": true,
-      "templates": {
-        "json-go-template": {
-          "requestTemplate": {
-            "url": "/internal/ai/rest/resolve_actor",
-            "method": "POST",
-            "argsToJsonBody": true
-          }
-        }
-      }
-    },
-    "list_documents": {
-      "enabled": true,
-      "templates": {
-        "json-go-template": {
-          "requestTemplate": {
-            "url": "/internal/ai/rest/list_documents",
-            "method": "POST",
-            "argsToJsonBody": true
-          }
-        }
-      }
-    },
-    "read_document": {
-      "enabled": true,
-      "templates": {
-        "json-go-template": {
-          "requestTemplate": {
-            "url": "/internal/ai/rest/read_document",
+            "url": "/internal/ai/rest/decode_device_frame",
             "method": "POST",
             "argsToJsonBody": true
           }

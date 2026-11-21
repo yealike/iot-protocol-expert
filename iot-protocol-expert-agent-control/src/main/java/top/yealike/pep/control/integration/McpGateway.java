@@ -88,7 +88,6 @@ public class McpGateway {
             var claims = new LinkedHashMap<String, Object>();
             claims.put("expires", Instant.now().plusSeconds(45).getEpochSecond());
             if (headers.containsKey("X-Ai-Actor")) claims.put("actor", headers.get("X-Ai-Actor"));
-            if (headers.containsKey("X-Ai-Station-Scope")) claims.put("scope", headers.get("X-Ai-Station-Scope"));
             if (headers.containsKey("Cookie")) {
                 for (String part : headers.get("Cookie").split(";")) {
                     String cookie = part.strip();

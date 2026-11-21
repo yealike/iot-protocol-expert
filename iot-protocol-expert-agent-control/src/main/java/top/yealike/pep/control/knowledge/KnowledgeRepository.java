@@ -111,6 +111,14 @@ public class KnowledgeRepository {
         return mapper.candidates(protocolCode, protocolVersion, keywords, limit);
     }
 
+    /** 产品绑定文档的精确召回，避免同协议同版本的多份文档互相污染。 */
+    public List<ChunkRow> candidatesBySourceDocument(String sourceDocumentId, List<String> keywords, int limit) {
+        if (sourceDocumentId == null || sourceDocumentId.isBlank() || keywords.isEmpty()) {
+            return List.of();
+        }
+        return mapper.candidatesBySourceDocument(sourceDocumentId, keywords, limit);
+    }
+
     public int publishDocument(UUID documentId) {
         return mapper.publishDocument(documentId);
     }

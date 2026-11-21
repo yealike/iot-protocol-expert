@@ -210,7 +210,9 @@ Control 必须拒绝过期 token、错误 instanceId、非 ACTIVE release、错�
 | `IPE_AI_ADVERTISE_IP` / `IPE_CONTROL_SERVICE_NAME` | 可被 Runtime 访问的 Control 地址/服务名 |
 | `IPE_AI_MCP_GATEWAY_BASE` | 显式拼接既有 Higress `/ipe-mcp/{serverName}` 入口 |
 | `IPE_AI_MCP_REGISTRY_ENABLED` | 旧兼容变量，不再触发 MCP 目录订阅 |
-| `IPE_AI_MCP_URL` / `IPE_AI_MCP_TOKEN` | Higress MCP 固定入口和共享令牌；生产必须显式配置 |
+| `IPE_AI_OPS_MCP_URL` / `IPE_AI_MCP_TOKEN` | Higress 暴露的设备报文 MCP 入口和共享令牌；`IPE_AI_MCP_URL` 作为 Ops 地址兼容回退 |
+| `IPE_AI_KNOWLEDGE_MCP_URL` | Higress 暴露的 Control 协议知识检索 MCP 入口 |
+| `IPE_AI_BOOTSTRAP_REVIEWED_READ_ONLY_TOOLS` / `IPE_AI_BOOTSTRAP_KNOWLEDGE_READ_ONLY_TOOLS` | 引导时自动审核的只读工具，默认覆盖设备报文三工具和知识检索工具 |
 | `IPE_CREDENTIAL_MASTER_KEY` / `_FILE` | 凭据加密主密钥；生产必须稳定配置 |
 | `IPE_INTERNAL_SERVICE_KEY` / `_FILE` | Control/Runtime 共享 HMAC 密钥，两端必须一致；Control 当前只读取环境变量，Runtime 还支持 `_FILE` |
 | `IPE_INTERNAL_SERVICE_NAME` / `IPE_RUNTIME_SERVICE_NAME` | 内部调用身份名，本地脚本默认 `control` / `runtime` |
@@ -229,6 +231,7 @@ Control 必须拒绝过期 token、错误 instanceId、非 ACTIVE release、错�
 - `IPE_AI_MCP_REGISTRY_ENABLED` 为旧兼容变量；系统工具入口不再订阅 Nacos AI 目录。
 - 本地脚本默认关闭 Nacos，可通过 `IPE_AI_REGISTRY_ENABLED=true` 启用服务/Runtime 实例发现；无 Nacos 时显式允许 Runtime 静态直连。
 - MCP/Skill 的平台发布状态为权威；Nacos 仅用于服务和 Runtime 已装配 Agent 版本的实例发现。
+- 协议专家只绑定 `resolve_device`、`list_device_frames`、`decode_device_frame`、`search_protocol_knowledge`。第三方设备号先由 `resolve_device` 映射为平台 8 位 SN，报文与文档查询再使用平台身份。
 - `IPE_CONTROL_SERVICE_NAME` 同时影响 Control 的平台 Nacos 服务名和 Runtime 的发现目标，默认统一为 `iot-protocol-expert-agent-control`；如需覆盖，Control 与 Runtime 必须使用同一值。
 
 ### 7.2 Runtime

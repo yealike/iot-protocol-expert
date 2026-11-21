@@ -70,6 +70,25 @@ class ContentFilteringTracerTest {
     }
 
     @Test
+    void redactsInvocationContextFromEnabledToolContent() {
+        var tracer = new ContentFilteringTracer(delegate, true, 8192);
+
+        var span = tracer.spanBuilder("mcp call").startSpan();
+        span.setAttribute(
+                "gen_ai.tool.call.arguments", "{\"_ipe_context\":\"sealed-context\",\"order_no\":\"202411130001\"}");
+        span.end();
+
+        String exported = exporter.getFinishedSpanItems()
+                .get(0)
+                .getAttributes()
+                .get(AttributeKey.stringKey("gen_ai.tool.call.arguments"));
+        assertThat(exported)
+                .contains("\"_ipe_context\":\"***\"")
+                .contains("202411130001")
+                .doesNotContain("sealed-context");
+    }
+
+    @Test
     void filtersContentFromEventsExceptionsAndLinks() {
         var tracer = new ContentFilteringTracer(delegate, false, 8192);
         var span = tracer.spanBuilder("tool call").startSpan();

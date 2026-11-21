@@ -16,8 +16,8 @@ class PolicyServiceRoleCompatibilityTest {
         var mapper = mock(PermissionPolicyMapper.class);
         when(mapper.selectEnabled("test"))
                 .thenReturn(List.of(
-                        new PolicyService.Rule("ADMIN", Set.of("admin-agent"), Set.of("admin-tool"), Set.of("*")),
-                        new PolicyService.Rule("OPS", Set.of("ops-agent"), Set.of("read-tool"), Set.of("station-1"))));
+                        new PolicyService.Rule("ADMIN", Set.of("admin-agent"), Set.of("admin-tool")),
+                        new PolicyService.Rule("OPS", Set.of("ops-agent"), Set.of("read-tool"))));
         when(mapper.selectLatestVersion()).thenReturn(List.of("v1"));
         var policy = new PolicyService(mapper, new AiProperties("test", null, 1000, null, null, null, null));
         var admin = identity("PLATFORM_ADMIN");
@@ -26,7 +26,6 @@ class PolicyServiceRoleCompatibilityTest {
         assertThat(policy.canUseAgent(admin, "admin-agent").allowed()).isTrue();
         assertThat(policy.canUseTool(operator, "ops-agent", "read-tool").allowed())
                 .isTrue();
-        assertThat(policy.stationScope(operator)).containsExactly("station-1");
         assertThat(policy.canUseTool(operator, "ops-agent", "admin-tool").allowed())
                 .isFalse();
         assertThat(policy.canUseAgent(identity("ANALYST"), "admin-agent").allowed())

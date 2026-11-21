@@ -110,7 +110,6 @@ public final class McpAgentTool implements AgentTool {
         }
         String requestId = UUID.randomUUID().toString();
         String actor = null;
-        String stationScope = null;
         boolean slot = false;
         McpConnection connection = null;
         try {
@@ -142,7 +141,6 @@ public final class McpAgentTool implements AgentTool {
                         ToolAuditMetadata.DENIED);
             }
             actor = authorization.actorId();
-            stationScope = authorization.stationScope();
             String secret = null;
             if (descriptor.credentialRef() != null
                     && !descriptor.credentialRef().isBlank()) {
@@ -178,7 +176,7 @@ public final class McpAgentTool implements AgentTool {
                 }
                 arguments.put(
                         OpsMcpInvocationAdapter.CONTEXT_FIELD,
-                        OpsMcpInvocationAdapter.seal(tool.originalName(), actor, stationScope, secret));
+                        OpsMcpInvocationAdapter.seal(tool.originalName(), actor, secret));
             }
             // 授权、凭据和连接建立期间可能已收到取消；真正发送前再次向 Control 复核执行权，
             // 取消落库后即使 cancel HTTP 被阻断，也不能再发起新的业务工具调用。

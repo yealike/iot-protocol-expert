@@ -32,7 +32,7 @@ class McpAgentToolTest {
     void authorizationRejectionProducesDeniedStateAndAuditMetadata() {
         ControlClient control = mock(ControlClient.class);
         when(control.authorize(any()))
-                .thenReturn(new ToolAuthorizeResponse(false, ErrorCodes.TOOL_DENIED, "当前账号无权调用该工具", null, 7L, null));
+                .thenReturn(new ToolAuthorizeResponse(false, ErrorCodes.TOOL_DENIED, "当前账号无权调用该工具", null, 7L));
         RuntimeObservability observability = mock(RuntimeObservability.class);
         when(observability.observeSupplier(anyString(), any())).thenAnswer(invocation -> {
             Supplier<?> operation = invocation.getArgument(1);

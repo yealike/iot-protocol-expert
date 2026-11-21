@@ -1,7 +1,6 @@
 package top.yealike.pep.control.access.policy;
 
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -12,7 +11,7 @@ import top.yealike.pep.control.agents.mapper.PermissionPolicyMapper;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
 /**
- * 授权策略：角色到 Agent / Tool / 站点范围的映射。
+ * 授权策略：角色到 Agent / Tool 的映射。
  *
  * <p>子 Agent 的可用工具 = 用户授权 ∩ Agent 授权 ∩ 当前数据范围 ∩ 环境策略。策略缺失时默认拒绝。
  */
@@ -32,7 +31,7 @@ public class PolicyService {
         this.environment = properties.environment();
     }
 
-    public record Rule(String role, Set<String> agentKeys, Set<String> toolNames, Set<String> stationScope) {}
+    public record Rule(String role, Set<String> agentKeys, Set<String> toolNames) {}
 
     public record Snapshot(List<Rule> rules, String version) {}
 
@@ -108,31 +107,6 @@ public class PolicyService {
         return new Decision(allowed, allowed ? "OK" : "无权调用该工具", current().version());
     }
 
-    /** 站点范围：* 表示不限；空集合表示不允许访问任何业务数据。 */
-    public Set<String> stationScope(UserIdentity identity) {
-        Set<String> scope = new LinkedHashSet<>();
-        for (Rule rule : rulesFor(identity)) {
-            scope.addAll(rule.stationScope());
-        }
-        return scope;
-    }
-
-    public boolean unlimitedStationScope(UserIdentity identity) {
-        return stationScope(identity).contains(ALL);
-    }
-
-    /** 供工具调用前取一个可传给 ops 的范围表达式，业务侧会再校验一次。 */
-    public String stationScopeHeader(UserIdentity identity) {
-        Set<String> scope = stationScope(identity);
-        if (scope.isEmpty()) {
-            return "";
-        }
-        if (scope.contains(ALL)) {
-            return ALL;
-        }
-        return scope.stream().sorted().collect(java.util.stream.Collectors.joining(","));
-    }
-
     public List<String> allowedAgents(UserIdentity identity) {
         List<String> result = new ArrayList<>();
         for (Rule rule : rulesFor(identity)) {
@@ -154,15 +128,7 @@ public class PolicyService {
     public Map<String, Object> describe() {
         List<Map<String, Object>> rows = new ArrayList<>();
         for (Rule rule : current().rules()) {
-            rows.add(Map.of(
-                    "role",
-                    rule.role(),
-                    "agentKeys",
-                    rule.agentKeys(),
-                    "toolNames",
-                    rule.toolNames(),
-                    "stationScope",
-                    rule.stationScope()));
+            rows.add(Map.of("role", rule.role(), "agentKeys", rule.agentKeys(), "toolNames", rule.toolNames()));
         }
         return Map.of("version", current().version(), "rules", rows);
     }

@@ -5,34 +5,23 @@ import java.util.regex.Pattern;
 /** 统一的文本脱敏与长度限制，供 Trace 内容策略和评估证据复用。 */
 public final class SensitiveDataSanitizer {
 
+    private static final String SENSITIVE_KEY_NAMES =
+            "(?:api[_-]?key|x[_-]?api[_-]?key|password|passwd|pwd|secret|client[_-]?secret"
+                    + "|private[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|token"
+                    + "|authorization|cookie|session|credential|_ipe_context)";
     private static final Pattern JSON_SECRET =
-            Pattern.compile("(?i)(\"(?:api[_-]?key|x[_-]?api[_-]?key|password|passwd|pwd|secret|client[_-]?secret"
-                    + "|private[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|token"
-                    + "|authorization|cookie|session|credential)\"\\s*:\\s*\")"
-                    + "((?:\\\\.|[^\"\\\\])*)(\")");
+            Pattern.compile("(?i)(\"" + SENSITIVE_KEY_NAMES + "\"\\s*:\\s*\")" + "((?:\\\\.|[^\"\\\\])*)(\")");
     private static final Pattern UNTERMINATED_JSON_SECRET =
-            Pattern.compile("(?i)(\"(?:api[_-]?key|x[_-]?api[_-]?key|password|passwd|pwd|secret|client[_-]?secret"
-                    + "|private[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|token"
-                    + "|authorization|cookie|session|credential)\"\\s*:\\s*\")"
-                    + "((?:\\\\.|[^\"\\\\])*)$");
+            Pattern.compile("(?i)(\"" + SENSITIVE_KEY_NAMES + "\"\\s*:\\s*\")" + "((?:\\\\.|[^\"\\\\])*)$");
     private static final Pattern AUTHORIZATION_HEADER =
             Pattern.compile("(?i)(\\b(?:proxy-)?authorization\\s*:\\s*)[^\\r\\n]+");
     private static final Pattern COOKIE_HEADER = Pattern.compile("(?i)(\\b(?:set-)?cookie\\s*:\\s*)[^\\r\\n]+");
     private static final Pattern KEY_VALUE_SECRET =
-            Pattern.compile("(?i)\\b(api[_-]?key|x[_-]?api[_-]?key|password|passwd|pwd|secret|client[_-]?secret"
-                    + "|private[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|token"
-                    + "|authorization|cookie|session|credential)"
-                    + "(\\s*[=:]\\s*)([^\\s,;&\"']+)");
-    private static final Pattern QUOTED_KEY_VALUE_SECRET =
-            Pattern.compile("(?i)\\b(api[_-]?key|x[_-]?api[_-]?key|password|passwd|pwd|secret|client[_-]?secret"
-                    + "|private[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|token"
-                    + "|authorization|cookie|session|credential)"
-                    + "(\\s*[=:]\\s*)(\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*')");
-    private static final Pattern UNTERMINATED_QUOTED_KEY_VALUE_SECRET =
-            Pattern.compile("(?i)\\b(api[_-]?key|x[_-]?api[_-]?key|password|passwd|pwd|secret|client[_-]?secret"
-                    + "|private[_-]?key|access[_-]?token|refresh[_-]?token|id[_-]?token|token"
-                    + "|authorization|cookie|session|credential)"
-                    + "(\\s*[=:]\\s*)(?:\"(?:\\\\.|[^\"\\\\])*|'(?:\\\\.|[^'\\\\])*)$");
+            Pattern.compile("(?i)(\\b" + SENSITIVE_KEY_NAMES + ")" + "(\\s*[=:]\\s*)([^\\s,;&\"']+)");
+    private static final Pattern QUOTED_KEY_VALUE_SECRET = Pattern.compile(
+            "(?i)(\\b" + SENSITIVE_KEY_NAMES + ")" + "(\\s*[=:]\\s*)(\"(?:\\\\.|[^\"\\\\])*\"|'(?:\\\\.|[^'\\\\])*')");
+    private static final Pattern UNTERMINATED_QUOTED_KEY_VALUE_SECRET = Pattern.compile(
+            "(?i)(\\b" + SENSITIVE_KEY_NAMES + ")" + "(\\s*[=:]\\s*)(?:\"(?:\\\\.|[^\"\\\\])*|'(?:\\\\.|[^'\\\\])*)$");
     private static final Pattern BEARER = Pattern.compile("(?i)(Bearer\\s+)[A-Za-z0-9._~+/=-]+");
     private static final Pattern BASIC = Pattern.compile("(?i)(Basic\\s+)[A-Za-z0-9+/=._~-]+");
     private static final Pattern API_KEY = Pattern.compile("(?i)\\bsk-[A-Za-z0-9_-]{8,}\\b");

@@ -15,5 +15,4 @@ public record RunClaimResponse(
         String actorId,
         long authVersion,
         List<String> roles,
-        String stationScope,
         AgentManifest.Budget budget) {}

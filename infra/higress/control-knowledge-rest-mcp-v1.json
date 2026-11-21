@@ -1,0 +1,56 @@
+{
+  "server": {
+    "name": "ipe-control-knowledge-rest",
+    "type": "rest",
+    "version": "1.0.0",
+    "config": {
+      "serviceToken": ""
+    }
+  },
+  "tools": [
+    {
+      "name": "search_protocol_knowledge",
+      "description": "在设备绑定的已发布协议文档索引中检索证据，返回章节、页码和原文片段。",
+      "annotations": {
+        "readOnlyHint": true
+      },
+      "args": [
+        {
+          "name": "query",
+          "description": "检索问题或帧码，例如 0x01 登录认证",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "protocol_document_id",
+          "description": "resolve_device 返回的 protocol_document_id",
+          "type": "string",
+          "required": true
+        },
+        {
+          "name": "top_k",
+          "description": "返回证据条数，默认 3，最大 8",
+          "type": "integer",
+          "required": false
+        },
+        {
+          "name": "_ipe_context",
+          "description": "内部授权上下文，由 Runtime 注入且模型不可见",
+          "type": "string",
+          "required": true
+        }
+      ],
+      "requestTemplate": {
+        "url": "/internal/ai/knowledge/search_protocol_knowledge",
+        "method": "POST",
+        "argsToJsonBody": true,
+        "headers": [
+          {
+            "key": "X-Ops-Service-Token",
+            "value": "{{.config.serviceToken}}"
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -47,7 +47,7 @@ public final class OpsMcpInvocationAdapter {
         return "ops".equalsIgnoreCase(descriptor.key());
     }
 
-    public static String seal(String operation, String actor, String scope, String secret) {
+    public static String seal(String operation, String actor, String secret) {
         if (operation == null || operation.isBlank()) {
             throw new IllegalArgumentException("MCP 工具名不能为空");
         }
@@ -59,9 +59,6 @@ public final class OpsMcpInvocationAdapter {
             claims.put("expires", Instant.now().plusSeconds(MAX_CONTEXT_SECONDS).getEpochSecond());
             if (actor != null && !actor.isBlank()) {
                 claims.put("actor", actor);
-            }
-            if (scope != null && !scope.isBlank()) {
-                claims.put("scope", scope);
             }
             byte[] nonce = new byte[NONCE_BYTES];
             RANDOM.nextBytes(nonce);

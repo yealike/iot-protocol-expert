@@ -218,6 +218,40 @@ public class KnowledgeService {
         }
         List<KnowledgeRepository.ChunkRow> candidates =
                 repository.candidates(protocolCode, protocolVersion, keywords, limit * 12);
+        return rank(candidates, keywords, limit);
+    }
+
+    /**
+     * Agent 工具使用的文档级检索。sourceDocumentId 对应 Ops 的 protocol_document_id，
+     * 只允许召回已经发布且存在分块的索引。
+     */
+    public List<Hit> searchBySourceDocument(String sourceDocumentId, String query, Integer topK) {
+        if (sourceDocumentId == null || sourceDocumentId.isBlank()) {
+            throw AiExceptions.badRequest("protocol_document_id 不能为空");
+        }
+        KnowledgeRepository.DocumentRow document = repository
+                .findDocument(SOURCE, sourceDocumentId)
+                .orElseThrow(() -> new AiExceptions.AiException(404, "KNOWLEDGE_NOT_INDEXED", "该协议文档尚未建立知识索引"));
+        if (!"PUBLISHED".equals(document.status())) {
+            throw new AiExceptions.AiException(409, "KNOWLEDGE_NOT_PUBLISHED", "该协议文档知识索引尚未发布");
+        }
+        if (document.chunkCount() <= 0) {
+            throw new AiExceptions.AiException(404, "KNOWLEDGE_NOT_INDEXED", "该协议文档知识索引没有可用分块");
+        }
+        if (query == null || query.isBlank()) {
+            return List.of();
+        }
+        int limit = Math.min(Math.max(topK == null ? 3 : topK, 1), 8);
+        List<String> keywords = TextChunker.keywords(query).stream().limit(10).toList();
+        if (keywords.isEmpty()) {
+            return List.of();
+        }
+        List<KnowledgeRepository.ChunkRow> candidates =
+                repository.candidatesBySourceDocument(sourceDocumentId, keywords, limit * 12);
+        return rank(candidates, keywords, limit);
+    }
+
+    private List<Hit> rank(List<KnowledgeRepository.ChunkRow> candidates, List<String> keywords, int limit) {
         List<Hit> hits = new ArrayList<>();
         for (KnowledgeRepository.ChunkRow row : candidates) {
             int score = score(row.normalized(), keywords);

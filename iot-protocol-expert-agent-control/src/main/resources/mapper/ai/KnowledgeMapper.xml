@@ -48,6 +48,18 @@
         limit #{limit}
     </select>
 
+    <select id="candidatesBySourceDocument" resultMap="ChunkRowMap">
+        select c.id, c.document_id, c.chunk_no, c.section_path, c.page_no, c.content, c.normalized,
+               c.keywords, d.title, d.protocol_code, d.protocol_version, d.source_document_id
+        from ai_chunk c join ai_document d on d.id = c.document_id
+        where d.status = 'PUBLISHED'
+          and d.source_document_id = #{sourceDocumentId}
+          and <foreach collection="keywords" item="keyword" open="(" separator=" or " close=")">
+              c.normalized like concat('%', #{keyword}, '%')
+          </foreach>
+        limit #{limit}
+    </select>
+
     <select id="findDocument" resultMap="DocumentRowMap">
         select id, source, source_document_id, protocol_code, protocol_version, title, content_hash, status,
             chunk_count, index_version, updated_at from ai_document where source = #{source} and source_document_id =

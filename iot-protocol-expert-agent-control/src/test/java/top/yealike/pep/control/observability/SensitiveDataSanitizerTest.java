@@ -2,6 +2,9 @@ package top.yealike.pep.control.observability;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import top.yealike.pep.observability.SensitiveDataSanitizer;
 
@@ -47,5 +50,23 @@ class SensitiveDataSanitizerTest {
 
         assertThat(sanitized).hasSize(24).endsWith("...[truncated]");
         assertThat(sanitized.codePointCount(0, sanitized.length())).isEqualTo(24);
+    }
+
+    @Test
+    void redactsInvocationContextFromMapsAndKeyValueText() throws Exception {
+        Map<String, Object> arguments = new LinkedHashMap<>();
+        arguments.put("_ipe_context", "sealed-context");
+        arguments.put("_IPE_CONTEXT", "upper-context");
+        arguments.put("order_no", "202411130001");
+        String source = new ObjectMapper().writeValueAsString(arguments) + "\n_IPE_CONTEXT='quoted context'";
+
+        String sanitized = SensitiveDataSanitizer.sanitize(source, 8192);
+
+        assertThat(sanitized)
+                .contains("\"_ipe_context\":\"***\"")
+                .contains("\"_IPE_CONTEXT\":\"***\"")
+                .contains("_IPE_CONTEXT=***")
+                .contains("202411130001")
+                .doesNotContain("sealed-context", "upper-context", "quoted context");
     }
 }
