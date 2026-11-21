@@ -91,12 +91,7 @@ const items: NavigationItem[] = [
   { key: '/users', icon: <UserOutlined />, label: '用户管理', section: 'administration' }
 ]
 
-const restrictedUserItems = new Set([
-  '/assistant',
-  '/ai-knowledge',
-  '/ai-admin',
-  '/usage'
-])
+const restrictedUserItems = new Set(['/assistant', '/ai-knowledge', '/ai-admin', '/usage'])
 
 export default function AppLayout({ user, children }: Props) {
   const location = useLocation()
@@ -233,7 +228,9 @@ export default function AppLayout({ user, children }: Props) {
           </div>
         </Header>
         <Content
-          className={`app-content${location.pathname === '/assistant' ? ' app-content-assistant' : ''}`}
+          className={`app-content${
+            location.pathname === '/assistant' ? ' app-content-assistant' : ''
+          }${location.pathname.startsWith('/simulator') ? ' app-content-simulator' : ''}`}
         >
           {children}
         </Content>

@@ -18,6 +18,7 @@ imported=[o for o in bpy.context.scene.objects if o.type=='MESH']
 old_groups=[o for o in bpy.context.scene.objects if o.type=='EMPTY']
 car=group('EV')
 car['identity']='Tesla Model Y · 2021 / classic 2020–2024 body'
+car['drive_side']='Left-hand drive / China mainland'
 car['author']='tonielpro520'
 car['license']='CC BY 4.0'
 car['source']='https://sketchfab.com/3d-models/2021-tesla-model-y-59e2ead369984b1a85c800ff6cf6789d'
@@ -29,7 +30,31 @@ for o in imported:
     o.parent=None; o.matrix_world=Matrix.Identity(4)
     o.data.transform(transform); o.data.update(); o.parent=car
     o.name='Tesla_Model_Y_'+o.name
+    if o.name=='Tesla_Model_Y_Object_41': o.name='ModelY_Ghost_Hide_Front_Bumper'
+    elif o.name=='Tesla_Model_Y_Object_18': o.name='ModelY_Ghost_Hide_Front_Intake'
 for o in old_groups: bpy.data.objects.remove(o,do_unlink=True)
+
+# Shared trim meshes span the whole car; isolate only the front overhang for the cutaway.
+for source in list(imported):
+    if source.name.startswith('ModelY_Ghost_Hide_') or not any(
+        m and any(kind in m.name for kind in ('Plastico','Vidros','Cromado','Metal_Preto'))
+        for m in source.data.materials
+    ): continue
+    bm=bmesh.new(); bm.from_mesh(source.data); bm.normal_update()
+    front=[f for f in bm.faces if f.calc_center_median().y < -1.70 and f.calc_center_median().z < .85]
+    if not front: bm.free(); continue
+    if len(front)==len(bm.faces):
+        source.name='ModelY_Ghost_Hide_Front_Lower_'+source.name
+        bm.free(); continue
+    lower=source.copy(); lower.data=source.data.copy()
+    lower.name='ModelY_Ghost_Hide_Front_Lower_'+source.name
+    source.users_collection[0].objects.link(lower); lower.parent=car
+    bmesh.ops.delete(bm,geom=front,context='FACES')
+    bm.to_mesh(source.data); bm.free(); source.data.update()
+    bm=bmesh.new(); bm.from_mesh(lower.data); bm.normal_update()
+    rest=[f for f in bm.faces if not (f.calc_center_median().y < -1.70 and f.calc_center_median().z < .85)]
+    bmesh.ops.delete(bm,geom=rest,context='FACES')
+    bm.to_mesh(lower.data); bm.free(); lower.data.update(); imported.append(lower)
 
 # The source uses diffuse materials. Refinish its existing material slots;
 # lamp, tire and interior textures remain attached to their original UVs.
@@ -60,6 +85,31 @@ for m in set(m for o in imported for m in o.data.materials):
     elif 'Plastico' in name:
         p.inputs['Base Color'].default_value=(.012,.017,.023,1)
         p.inputs['Roughness'].default_value=.37
+
+interior=bpy.data.objects['Tesla_Model_Y_Object_7']
+bm=bmesh.new(); bm.from_mesh(interior.data); bm.normal_update()
+old_dashboard=[f for f in bm.faces if f.calc_center_median().y<.10 and f.calc_center_median().z>.48]
+bmesh.ops.delete(bm,geom=old_dashboard,context='FACES')
+bm.to_mesh(interior.data); bm.free(); interior.data.update()
+
+cockpit_dark=mat('Model Y flat dashboard',(.035,.043,.05),.05,.52)
+cockpit_trim=mat('Model Y dashboard trim',(.31,.27,.21),0,.58)
+screen_light=mat('Model Y landscape touchscreen',(.12,.32,.40),.1,.24,.65)
+screen_ui=mat('Model Y touchscreen UI',(.65,.88,.91),0,.35,.4)
+box('ModelY_Cockpit_Flat_Dashboard',(0,-.89,.92),(1.42,.43,.11),cockpit_dark,car,.035)
+box('ModelY_Cockpit_Dashboard_Trim',(0,-.674,.952),(1.34,.018,.035),cockpit_trim,car,.006)
+box('ModelY_Cockpit_Screen_Mount',(0,-.64,1.00),(.075,.12,.055),black,car,.012)
+box('ModelY_Cockpit_Landscape_Bezel',(0,-.575,1.085),(.40,.027,.235),black,car,.014)
+box('ModelY_Cockpit_Landscape_Display',(0,-.558,1.085),(.372,.008,.207),screen_light,car,.009)
+box('ModelY_Cockpit_Display_Status',(-.115,-.553,1.135),(.105,.003,.012),screen_ui,car,.003)
+box('ModelY_Cockpit_Display_Map',(.045,-.553,1.07),(.20,.003,.11),screen_ui,car,.004)
+bpy.ops.mesh.primitive_torus_add(major_segments=48,minor_segments=12,location=(.43,-.45,1.00),
+    rotation=(math.pi/2,0,0),major_radius=.13,minor_radius=.017)
+steering=finish(bpy.context.object,'ModelY_Cockpit_Steering_Wheel',cockpit_dark,car)
+for f in steering.data.polygons:f.use_smooth=True
+box('ModelY_Cockpit_Steering_Hub',(.43,-.45,1.00),(.095,.045,.065),cockpit_dark,car,.018)
+box('ModelY_Cockpit_Steering_Spoke',(.43,-.447,1.00),(.19,.025,.025),cockpit_dark,car,.008)
+box('ModelY_Cockpit_Steering_Lower_Spoke',(.43,-.447,.945),(.025,.025,.10),cockpit_dark,car,.008)
 
 # The real Model Y port is integrated into the left REAR lamp. Sample the
 # source's side surface so the socket follows the car, rather than a door.

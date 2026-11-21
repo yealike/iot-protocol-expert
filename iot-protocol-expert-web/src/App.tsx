@@ -86,7 +86,7 @@ export default function App() {
           <Route path="/protocol-documents" element={<ProtocolDocuments />} />
           <Route path="/orders" element={<Orders />} />
           <Route path="/orders/:orderNo" element={<OrderDetail />} />
-          <Route path="/simulator" element={<Simulator />} />
+          <Route path="/simulator/*" element={<Simulator />} />
           <Route path="/assistant" element={<Assistant />} />
           <Route path="/usage" element={<Usage user={user} />} />
           <Route path="/users" element={<Users />} />

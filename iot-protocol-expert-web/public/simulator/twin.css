@@ -55,7 +55,7 @@
 
 /* Daylight automotive studio: the interface and the rendered environment share
    a neutral palette, with green reserved for active energy transfer. */
-.twin-panel[data-presentation=studio]{background:#e6ebec!important;border-color:#d3dcdf!important;color:#233d46;box-shadow:0 8px 28px #273e4a0a}
+.twin-panel[data-presentation=studio]{background:#f2f5f6!important;border-color:#d7e0e3!important;color:#233d46;box-shadow:0 10px 32px #273e4a0d}
 .twin-panel[data-presentation=studio] .twin-heading h2{color:#233d46}
 .twin-panel[data-presentation=studio] .twin-heading h2 small{color:#758a92}
 .twin-panel[data-presentation=studio] .twin-kicker{color:#55857f}

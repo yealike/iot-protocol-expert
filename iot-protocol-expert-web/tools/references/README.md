@@ -13,7 +13,7 @@
 - 作者预览：`tesla-model-y-author-reference.jpg`，通过作者模型的 [Sketchfab metadata](https://api.sketchfab.com/v3/models/59e2ead369984b1a85c800ff6cf6789d) 中 thumbnails 保存。
 - 原始三维资产：`tesla-model-y-source.glb`，作者 **tonielpro520**，作品 [2021 Tesla Model Y](https://sketchfab.com/3d-models/2021-tesla-model-y-59e2ead369984b1a85c800ff6cf6789d)，**[CC BY 4.0](https://creativecommons.org/licenses/by/4.0/)**；作者署名、商业使用与改编许可由 Sketchfab API 元数据及 GLB 内嵌 `asset.extras` 交叉核实，保存为 `tesla-model-y-license.json`。
 - 公开文件镜像：[AmericaWant GLB](https://shop.americawant.com/wp-content/uploads/2026/08/tesla-model-y.glb)，[镜像署名页](https://shop.americawant.com/atribuciones/)。未使用该站点程序代码。
-- 改动：解压 Draco，坐标归一化，按官方尺寸校准，白色清漆与玻璃等 PBR 材质调整，添加独立充电口与可动盖板。车身、车窗、轮胎、轮毂、内饰、灯组使用原有真实车型网格。
+- 改动：解压 Draco，坐标归一化，按官方尺寸校准，白色清漆与玻璃等 PBR 材质调整，添加独立充电口与可动盖板。车身、车窗、轮胎、轮毂和灯组使用原有真实车型网格；保留原座椅，替换不符合 Model Y 的隆起仪表台，新增纯平仪表台、中国大陆左舵方向盘和横向中控屏。充电透视时隐藏前保险杠、黑色进气格栅及同一区域的前部下包围和饰板，避免燃油车式前脸干扰电池与 SOC 展示；正常外观保留全部面片。
 
 ## 星星充电 双子座120kW直流一体充电桩 V3.2
 

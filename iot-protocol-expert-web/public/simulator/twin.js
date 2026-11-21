@@ -10,6 +10,7 @@ import { loadCablePhysics, CablePhysicsWorld, createCableSkin } from './cable-ph
 export function mountTwin(root = document) {
   const container = root.querySelector('#twin-view');
   const panel = container.closest('.twin-panel');
+  const energyPanel = root.querySelector('.simulator-energy-panel');
   const message = root.querySelector('#twin-message');
   const badge = root.querySelector('#twin-status');
   const find = id => root.querySelector(`#${id}`);
@@ -38,14 +39,14 @@ export function mountTwin(root = document) {
   }
 
   async function init() {
-    scene.background = new THREE.Color(0xe6ebec);
-    scene.fog = new THREE.Fog(0xe6ebec, 14, 35);
+    scene.background = new THREE.Color(0xf2f5f6);
+    scene.fog = new THREE.Fog(0xf2f5f6, 16, 40);
     const camera = new THREE.PerspectiveCamera(36, 1, .1, 80);
     renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.0;
+    renderer.toneMappingExposure = 1.12;
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     renderer.domElement.setAttribute('aria-label', '一台直流充电桩与一台新能源汽车的交互三维场景');
@@ -60,7 +61,7 @@ export function mountTwin(root = document) {
     // Large softboxes supply clear reflections on paint and glass without
     // downloading an HDR map. PMREM is created once and released on unmount.
     const studio = new THREE.Scene();
-    studio.background = new THREE.Color(0x7f868c);
+    studio.background = new THREE.Color(0xaeb8bf);
     for (const [x,y,z,sx,sy,sz] of [[-4,5,2,1,3,7],[4,4,-3,1,3,7],[0,7,0,7,.1,3]]) {
       const softbox = new THREE.Mesh(new THREE.BoxGeometry(sx,sy,sz), new THREE.MeshBasicMaterial({ color: 0xffffff }));
       softbox.position.set(x,y,z); studio.add(softbox);
@@ -68,19 +69,21 @@ export function mountTwin(root = document) {
     const pmrem = new THREE.PMREMGenerator(renderer);
     environment = pmrem.fromScene(studio, .02);
     scene.environment = environment.texture;
+    scene.environmentIntensity = 1.1;
     pmrem.dispose(); disposeObjects(studio);
-    scene.add(new THREE.HemisphereLight(0xf5f9ff, 0x737d7c, 1.0));
-    const key = new THREE.DirectionalLight(0xfffaf2, 2.6);
+    scene.add(new THREE.HemisphereLight(0xf8fbff, 0x8c9695, 1.25));
+    const key = new THREE.DirectionalLight(0xfffaf2, 3.1);
     key.position.set(-3,7,5); key.castShadow = true;
     key.shadow.mapSize.set(2048,2048);
     Object.assign(key.shadow.camera,{ left:-5, right:5, top:5, bottom:-5, near:.5, far:18 });
     key.shadow.bias = -.0002; key.shadow.normalBias = .008; key.shadow.radius=4;
     scene.add(key);
     cleanups.push(() => key.shadow.dispose());
-    const rim = new THREE.DirectionalLight(0xe4f4ff, 1.0); rim.position.set(4,4,-5); scene.add(rim);
+    const rim = new THREE.DirectionalLight(0xe4f4ff, 1.25); rim.position.set(4,4,-5); scene.add(rim);
+    const fill = new THREE.DirectionalLight(0xffffff, .65); fill.position.set(4,3,5); scene.add(fill);
     // Continuous architectural floor, measured parking bay and soft contact
     // shadows replace the floating primitive turntable.
-    const ground = new THREE.Mesh(new THREE.PlaneGeometry(160,160), new THREE.MeshStandardMaterial({ color:0xb8c2c4, roughness:.73, metalness:0 }));
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(160,160), new THREE.MeshStandardMaterial({ color:0xc8d0d2, roughness:.73, metalness:0 }));
     ground.rotation.x=-Math.PI/2; ground.position.y=-.008; ground.receiveShadow=true; scene.add(ground);
     const marking = new THREE.MeshStandardMaterial({color:0xf5f7f7,roughness:.85});
     for (const x of [-1.05,1.65]) {
@@ -184,9 +187,11 @@ export function mountTwin(root = document) {
 
     // Real depth-tested chassis presentation. The exterior fades while the
     // wheels, axles, battery frame and modules stay solid and correctly placed.
-    const fadedMeshes=[], fadeMaterials=new Map();
+    const fadedMeshes=[], ghostHiddenMeshes=[], fadeMaterials=new Map();
     car.traverse(object=>{
       if(!object.isMesh || object.name.startsWith('Port_'))return;
+      if(object.name.startsWith('ModelY_Ghost_Hide_'))ghostHiddenMeshes.push(object);
+      if(object.name.startsWith('ModelY_Cockpit_'))return;
       let parent=object.parent;
       while(parent && parent!==car) {if(parent===port)return; parent=parent.parent;}
       const materials=Array.isArray(object.material)?object.material:[object.material];
@@ -341,9 +346,12 @@ export function mountTwin(root = document) {
       else {physicalCable.setEnd(gripPosition); cablePhysics.step(dt);}
       cableSkin.update(); spareSkin?.update();
       const flowing=charging && amount===1;
-      if(panel.dataset.flowing!==String(flowing)) panel.dataset.flowing=String(flowing);
       const seated=String(plugged && amount===1);
-      if(panel.dataset.plugged!==seated) panel.dataset.plugged=seated;
+      for(const target of [panel,energyPanel]) {
+        if(!target)continue;
+        if(target.dataset.flowing!==String(flowing))target.dataset.flowing=String(flowing);
+        if(target.dataset.plugged!==seated)target.dataset.plugged=seated;
+      }
       portHalo.visible=pose.lid>.8;
       portHalo.material.color.setHex(g?.fault?0xe9594c:flowing?0x27ca86:plugged?0x4ba7f0:0xc9eaf4);
       portHalo.scale.setScalar(flowing?1+Math.sin(now*.004)*.025:1);
@@ -358,6 +366,7 @@ export function mountTwin(root = document) {
         material.depthWrite=ghost>.01?false:depthWrite;
       }
       fadedMeshes.forEach(o=>{o.castShadow=ghost<.3;});
+      ghostHiddenMeshes.forEach(o=>{o.visible=ghost<.55;});
       battery.visible=ghost>.1;
       socLabel.visible=flowing && batteryEnabled;
       if(battery.visible) {

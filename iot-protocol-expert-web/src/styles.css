@@ -1430,6 +1430,10 @@ button:focus-visible,
   padding: 0;
 }
 
+.app-content-simulator {
+  padding: 20px 24px 28px;
+}
+
 .page-header {
   margin-bottom: 24px;
 }
