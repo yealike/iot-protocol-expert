@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import org.apache.ibatis.session.SqlSession;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
@@ -17,14 +16,16 @@ import top.yealike.pep.ops.audit.mapper.AuditLogMapper;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
 import top.yealike.pep.ops.charging.mapper.BillMapper;
 import top.yealike.pep.ops.charging.mapper.ChargeOrderMapper;
+import top.yealike.pep.ops.charging.mapper.ChargeOrderSegmentMapper;
 import top.yealike.pep.ops.charging.mapper.CommandRecordMapper;
+import top.yealike.pep.ops.charging.mapper.OrderExternalReferenceMapper;
 import top.yealike.pep.ops.charging.mapper.RateModelMapper;
-import top.yealike.pep.ops.charging.mapper.StationMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceChannelMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceEventLogMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
 import top.yealike.pep.ops.devices.mapper.DevicePropertyLatestMapper;
 import top.yealike.pep.ops.devices.mapper.DevicePropertyTsMapper;
+import top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceTagMapper;
 import top.yealike.pep.ops.devices.mapper.FrameLogMapper;
 import top.yealike.pep.ops.devices.mapper.ProductMapper;
@@ -51,33 +52,33 @@ class MapperSqlSmokeTest {
             LocalDateTime from = LocalDateTime.now().minusDays(1);
             LocalDateTime to = LocalDateTime.now().plusDays(1);
 
-            StationMapper stations = session.getMapper(StationMapper.class);
-            stations.selectById(-1L);
-            stations.selectByStationCode("__missing__");
-            stations.selectAll();
-            stations.selectByIds(List.of(-1L));
-            stations.count();
-            stations.countById(-1L);
-
             ProductMapper products = session.getMapper(ProductMapper.class);
             products.selectById(-1L);
             products.selectByProductCode("__missing__");
             products.selectAllOrderByIdAsc();
-            products.search(null, null, null, "id DESC", 10, 0);
-            products.countSearch(null, null, null);
+            products.selectByIds(List.of(-1L));
+            products.selectByProtocolAndState("OCPP16J", "PUBLISHED");
+            products.search(null, null, "id DESC", 10, 0);
+            products.countSearch(null, null);
             products.count();
 
             DeviceInstanceMapper devices = session.getMapper(DeviceInstanceMapper.class);
             devices.selectById(-1L);
             devices.selectByDeviceCode("__missing__");
-            devices.selectByProtocolAndProtocolDeviceId("YKC16", "__missing__");
+            devices.selectByPlatformGunNo("__missing__");
             devices.selectAll();
-            devices.search(null, null, null, null, null, null, Map.of(), "id DESC", 10, 0);
-            devices.countSearch(null, null, null, null, null, null, Map.of());
-            devices.selectByDeviceType("__missing__");
-            devices.selectByStationId(-1L);
+            devices.search(null, null, null, null, null, null, "id DESC", 10, 0);
+            devices.countSearch(null, null, null, null, null, null);
             devices.selectByProductId(-1L);
             devices.selectByIds(List.of(-1L));
+            devices.selectCountByProductId(-1L);
+            devices.selectNextDeviceSnCandidate();
+
+            DeviceProtocolMappingMapper mappings = session.getMapper(DeviceProtocolMappingMapper.class);
+            mappings.selectPage(0L, 10);
+            mappings.selectByDeviceIds(List.of(-1L));
+            mappings.selectByDeviceId(-1L);
+            mappings.selectByProtocolAndThirdPartyDeviceId("OCPP16J", "__missing__");
 
             DeviceTagMapper tags = session.getMapper(DeviceTagMapper.class);
             tags.selectByDeviceIdOrderByTagKeyAsc(-1L);
@@ -89,7 +90,6 @@ class MapperSqlSmokeTest {
             channels.selectByDeviceIdAndChannelNo(-1L, "__missing__");
             channels.selectByDeviceIds(List.of(-1L));
             channels.countByDeviceId(-1L);
-            channels.countByDeviceIdAndChannelType(-1L, "CONNECTOR");
 
             DevicePropertyLatestMapper latest = session.getMapper(DevicePropertyLatestMapper.class);
             latest.selectByDeviceId(-1L);
@@ -107,32 +107,44 @@ class MapperSqlSmokeTest {
             ChargeOrderMapper orders = session.getMapper(ChargeOrderMapper.class);
             orders.selectById(-1L);
             orders.selectByOrderNo("__missing__");
+            orders.selectByOrderNoForUpdate("__missing__");
+            orders.selectTopActive(-1L, "__missing__", List.of(ChargeOrder.Status.PENDING));
+            orders.selectTopByDevice(-1L);
             orders.selectTop200();
             orders.selectPendingBefore(LocalDateTime.now(), 10);
-            orders.search(null, null, null, null, null, from, to, null, 10, 0);
-            orders.countSearch(null, null, null, null, null, from, to, null);
-            orders.maxOcppTransactionId();
+            orders.search(null, null, null, null, from, to, null, 10, 0);
+            orders.countSearch(null, null, null, null, from, to, null);
             orders.countByStatusIn(List.of(ChargeOrder.Status.PENDING));
-            orders.summarizeStation(-1L, ChargeOrder.Status.SETTLED, from, to);
             orders.summarizeDevice(-1L, ChargeOrder.Status.SETTLED, from, to);
             orders.summarizeAll(ChargeOrder.Status.SETTLED, from, to);
             orders.sumEnergyActiveBetween(to, from);
 
+            OrderExternalReferenceMapper references = session.getMapper(OrderExternalReferenceMapper.class);
+            references.selectByExternal(-1L, "OCPP16J", "OCPP_TRANSACTION", "__missing__");
+            references.selectByOrder(-1L, "OCPP16J", "OCPP_TRANSACTION");
+            references.nextOcppTransactionId();
+
+            ChargeOrderSegmentMapper segments = session.getMapper(ChargeOrderSegmentMapper.class);
+            segments.selectByOrderId(-1L);
+
             BillMapper bills = session.getMapper(BillMapper.class);
             bills.selectById(-1L);
-            bills.search(null, null, null, null, from, to, null, 10);
+            bills.selectBySource(-1L, "OCPP16J", "OCPP_STOP_TRANSACTION", "__missing__");
+            bills.search(null, null, null, from, to, null, 10);
             bills.selectByOrderId(-1L);
             bills.countByOrderId(-1L);
-            bills.summarizeStation(-1L, "DEVICE_BILL", from, to);
-            bills.countByStationIdIsNull();
+            bills.lockSourceTransaction(-1L, "YKC16", "YKC_TRANSACTION", "__missing__");
 
             RateModelMapper rates = session.getMapper(RateModelMapper.class);
             rates.selectAll();
             rates.selectByModelNo("__missing__");
             rates.selectById(-1L);
+            rates.selectTopActive();
 
             FrameLogMapper frames = session.getMapper(FrameLogMapper.class);
             frames.search(null, null, null, null, from, to, 10);
+            frames.searchForAi(-1L, "IN", null, null, from, to, 10);
+            frames.selectByIdAndDeviceId(-1L, -1L);
             frames.selectRecent(10);
             frames.selectRecentByDevice(-1L, 10);
             frames.countByDirection("IN");
@@ -164,11 +176,9 @@ class MapperSqlSmokeTest {
             identities.selectIdentityByUsername("__missing__");
             identities.selectRoleCodes(-1L);
             identities.selectPermissions(-1L);
-            identities.selectStationIds(-1L);
             identities.selectRoles();
             identities.selectRolePermissions("__missing__");
             identities.countUsername("__missing__");
-            identities.stationExists(-1L);
 
             ProtocolDocumentMapper documents = session.getMapper(ProtocolDocumentMapper.class);
             documents.selectActive("");

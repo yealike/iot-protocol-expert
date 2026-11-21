@@ -131,7 +131,10 @@ public class OcppSimulatorClient {
                         runtime.onOcppBootAccepted(interval);
                         for (int i = 1; i <= properties.getGunCount(); i++) {
                             String gunNo = String.format("%02d", i);
-                            statusNotification(i, runtime.gunRuntimeStatus(gunNo), runtime.gunFaultCode(gunNo));
+                            statusNotification(
+                                    runtime.ocppConnectorIdForGun(gunNo),
+                                    runtime.gunRuntimeStatus(gunNo),
+                                    runtime.gunFaultCode(gunNo));
                         }
                     } else {
                         runtime.onOcppError("OCPP BootNotification 被拒绝: " + status);
@@ -176,7 +179,7 @@ public class OcppSimulatorClient {
         BigDecimal powerKw = voltage.multiply(current).divide(THOUSAND, 4, RoundingMode.HALF_UP);
 
         ObjectNode payload = OcppMessageCodec.object();
-        payload.put("connectorId", connectorId(gunNo));
+        payload.put("connectorId", runtime.ocppConnectorIdForGun(gunNo));
         payload.put("transactionId", transactionIds.get(gunNo));
         ArrayNode meterValue = OcppMessageCodec.array();
         ObjectNode sample = OcppMessageCodec.object();
@@ -209,7 +212,7 @@ public class OcppSimulatorClient {
                         return;
                     }
                     Map<String, Object> start = new LinkedHashMap<>();
-                    start.put("connectorId", connectorId(gunNo));
+                    start.put("connectorId", runtime.ocppConnectorIdForGun(gunNo));
                     start.put("idTag", idTag == null ? "" : idTag);
                     start.put("meterStart", meterStart);
                     start.put("timestamp", Instant.now().toString());
@@ -359,7 +362,7 @@ public class OcppSimulatorClient {
     private void handleRemoteStart(OcppMessage message, JsonNode payload) {
         int connectorId = integer(payload, "connectorId", 0);
         String idTag = text(payload, "idTag", "IPE-APP");
-        String gunNo = String.format("%02d", connectorId);
+        String gunNo = runtime.ocppGunNoForConnector(connectorId);
         if (!runtime.ocppCanStart(gunNo)) {
             result(message, Map.of("status", OcppConstants.REJECTED));
             return;
@@ -475,14 +478,6 @@ public class OcppSimulatorClient {
         node.put("errorCode", message.errorCode());
         node.put("errorDescription", message.errorDescription());
         return node;
-    }
-
-    private int connectorId(String gunNo) {
-        try {
-            return Integer.parseInt(gunNo);
-        } catch (NumberFormatException e) {
-            return 1;
-        }
     }
 
     private static String mapStopReason(int reason) {

@@ -21,9 +21,6 @@ public class ProtocolProperties {
     /** OCPP WebSocket 路径前缀，实际连接地址为 ws://host:port{path}/{桩号}。 */
     private String ocppPath = "/ocpp";
 
-    /** OCPP BootNotification 未携带枪数时的默认枪数。 */
-    private int ocppDefaultConnectorCount = 2;
-
     /** OCPP 读空闲超时秒数。 */
     private int ocppIdleTimeoutSeconds = 300;
 
@@ -36,19 +33,11 @@ public class ProtocolProperties {
     /** 是否要求收发加密帧；false 时按明文收发（模拟器需一致）。 */
     private boolean encryptionEnabled = false;
 
-    /** 未知桩首次登录是否自动建档。 */
-    private boolean autoRegister = true;
-
     /** 读空闲超时秒数，超时断开。 */
     private int heartbeatTimeoutSeconds = 45;
 
     /** 下行业务命令等待应答秒数。 */
     private int pendingTimeoutSeconds = 15;
-
-    /** 默认计费模型编号。 */
-    private String defaultRateModelNo = "0001";
-
-    private String defaultPilePrefix = "3201060003";
 
     /** 运维平台内部 API 地址。 */
     private String opsBaseUrl = "http://127.0.0.1:19082";
@@ -89,14 +78,6 @@ public class ProtocolProperties {
 
     public void setOcppPath(String ocppPath) {
         this.ocppPath = ocppPath;
-    }
-
-    public int getOcppDefaultConnectorCount() {
-        return ocppDefaultConnectorCount;
-    }
-
-    public void setOcppDefaultConnectorCount(int ocppDefaultConnectorCount) {
-        this.ocppDefaultConnectorCount = ocppDefaultConnectorCount;
     }
 
     public int getOcppIdleTimeoutSeconds() {
@@ -147,14 +128,6 @@ public class ProtocolProperties {
         this.encryptionEnabled = encryptionEnabled;
     }
 
-    public boolean isAutoRegister() {
-        return autoRegister;
-    }
-
-    public void setAutoRegister(boolean autoRegister) {
-        this.autoRegister = autoRegister;
-    }
-
     public int getHeartbeatTimeoutSeconds() {
         return heartbeatTimeoutSeconds;
     }
@@ -169,14 +142,6 @@ public class ProtocolProperties {
 
     public void setPendingTimeoutSeconds(int pendingTimeoutSeconds) {
         this.pendingTimeoutSeconds = pendingTimeoutSeconds;
-    }
-
-    public String getDefaultRateModelNo() {
-        return defaultRateModelNo;
-    }
-
-    public void setDefaultRateModelNo(String defaultRateModelNo) {
-        this.defaultRateModelNo = defaultRateModelNo;
     }
 
     public String getOpsBaseUrl() {
@@ -201,13 +166,5 @@ public class ProtocolProperties {
 
     public void setOpsTimeoutMs(int opsTimeoutMs) {
         this.opsTimeoutMs = opsTimeoutMs;
-    }
-
-    public String getDefaultPilePrefix() {
-        return defaultPilePrefix;
-    }
-
-    public void setDefaultPilePrefix(String defaultPilePrefix) {
-        this.defaultPilePrefix = defaultPilePrefix;
     }
 }

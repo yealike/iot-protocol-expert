@@ -52,6 +52,21 @@
         order by id
     </select>
 
+    <select id="selectAllForUpdate" resultMap="RateModelMap">
+        select <include refid="columns"/>
+        from pep_domain.rate_model
+        order by id
+        for update
+    </select>
+
+    <update id="deactivateAllExcept">
+        update pep_domain.rate_model
+        set active = false,
+            updated_at = now()
+        where active = true
+          and model_no &lt;&gt; #{modelNo}
+    </update>
+
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         insert into pep_domain.rate_model
             (model_no, sharp_energy, sharp_service, peak_energy, peak_service, flat_energy,

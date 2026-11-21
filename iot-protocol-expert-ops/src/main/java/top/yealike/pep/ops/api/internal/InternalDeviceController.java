@@ -28,7 +28,7 @@ public class InternalDeviceController {
                 "device",
                 String.valueOf(device.id),
                 "SUCCESS",
-                device.protocol + "/" + device.protocolDeviceId);
+                device.protocol + "/" + device.deviceCode);
         return devices.view(device);
     }
 

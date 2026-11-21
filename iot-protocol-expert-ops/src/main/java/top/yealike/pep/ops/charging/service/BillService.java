@@ -3,9 +3,11 @@ package top.yealike.pep.ops.charging.service;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.ObjectMapper;
 import top.yealike.pep.ops.api.dto.OpsDtos;
 import top.yealike.pep.ops.charging.domain.Bill;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
@@ -22,29 +24,45 @@ public class BillService {
     private final BillMapper bills;
     private final DeviceService devices;
     private final OrderService orders;
+    private final ChargeBillingService billing;
+    private final ObjectMapper json;
 
-    public BillService(BillMapper bills, DeviceService devices, OrderService orders) {
+    public BillService(
+            BillMapper bills,
+            DeviceService devices,
+            OrderService orders,
+            ChargeBillingService billing,
+            ObjectMapper json) {
         this.bills = bills;
         this.devices = devices;
         this.orders = orders;
+        this.billing = billing;
+        this.json = json;
     }
 
-    /** 云快充 0x3B 交易记录：按协议 + 来源交易号幂等；订单存在时在同一事务内结算并生成账单。 */
+    /** 云快充 0x3B 交易记录：先按设备与协议交易号定位平台订单，再落电费、服务费和四段明细。 */
     @Transactional
     public Bill acceptYkc(OpsDtos.BillRequest request) {
-        var existing = bills.findByProtocolAndSourceTypeAndSourceTransactionNo(
-                "YKC16", SOURCE_YKC_TRANSACTION, request.transactionNo());
+        DeviceInstance device = devices.resolve("YKC16", request.protocolDeviceId());
+        bills.lockSourceTransaction(device.id, "YKC16", SOURCE_YKC_TRANSACTION, request.transactionNo());
+        var existing = bills.findByDeviceAndProtocolAndSourceTypeAndSourceTransactionNo(
+                device.id, "YKC16", SOURCE_YKC_TRANSACTION, request.transactionNo());
         if (existing.isPresent()) {
             return existing.get();
         }
-        DeviceInstance device = devices.resolve("YKC16", request.protocolDeviceId());
+
+        ChargeOrder order =
+                orders.findByExternal(device.id, "YKC16", OrderService.YKC_TRANSACTION, request.transactionNo());
+        if (order != null) {
+            order = orders.lockByOrderNo(order.orderNo);
+        }
         Bill bill = new Bill();
         bill.deviceId = device.id;
         bill.protocol = "YKC16";
         bill.sourceType = SOURCE_YKC_TRANSACTION;
         bill.sourceTransactionNo = request.transactionNo();
-        bill.energy = request.totalEnergy() == null ? BigDecimal.ZERO : request.totalEnergy();
-        bill.amount = request.totalAmount() == null ? BigDecimal.ZERO : request.totalAmount();
+        bill.energy = zero(request.totalEnergy());
+        bill.amount = zero(request.totalAmount());
         bill.currency = "CNY";
         bill.amountType = ChargeOrder.AMOUNT_SOURCE_DEVICE;
         bill.stopReason = request.stopReason();
@@ -52,38 +70,63 @@ public class BillService {
         bill.receivedAt = LocalDateTime.now();
         bill.createdAt = LocalDateTime.now();
         bill.rawPayload = truncate(request.rawHex(), 8000);
+        bill.partial = true;
 
-        ChargeOrder order = orders.findByOrderNo(request.transactionNo());
         if (order == null) {
-            bill.stationId = device.stationId;
+            ChargeBillingService.RateSnapshot snapshot = billing.currentSnapshot();
+            ChargeBillingService.YkcBillCalculation calculation = billing.calculateYkcBill(snapshot, request);
+            ChargeBillingService.FeeTotal total = calculation.total();
+            bill.energy = total.energy();
+            bill.electricityFee = total.electricityFee();
+            bill.serviceFee = total.serviceFee();
+            bill.amount = total.amount();
+            bill.lossEnergy = total.lossEnergy();
+            bill.rateModelNo = snapshot.modelNo();
+            bill.rateSnapshot = billing.json(snapshot);
+            bill.feeBreakdown = total.breakdown();
             bill.accepted = true;
             bill.rejectReason = "平台无对应订单，按离线账单入库";
+        } else if (!Objects.equals(order.deviceId, device.id) || !Objects.equals(order.gunNo, request.gunNo())) {
+            bill.accepted = false;
+            bill.rejectReason = "订单设备或枪号不匹配";
         } else {
-            bill.stationId = order.stationId;
-            if (!Objects.equals(order.deviceId, device.id) || !Objects.equals(order.gunNo, request.gunNo())) {
-                bill.accepted = false;
-                bill.rejectReason = "订单桩号/枪号不匹配";
-            } else {
-                bill.orderId = order.id;
-                bill.orderNo = order.orderNo;
-                orders.settle(
-                        order.orderNo,
-                        request.totalEnergy(),
-                        request.totalAmount(),
-                        request.startTime(),
-                        request.endTime(),
-                        request.stopReason(),
-                        ChargeOrder.AMOUNT_SOURCE_DEVICE);
+            ChargeBillingService.FeeTotal fee = billing.applyYkcBill(order, request);
+            orders.settle(
+                    order.orderNo,
+                    fee.energy(),
+                    fee.electricityFee(),
+                    fee.serviceFee(),
+                    fee.amount(),
+                    fee.lossEnergy(),
+                    request.startTime(),
+                    request.endTime(),
+                    request.stopReason(),
+                    ChargeOrder.AMOUNT_SOURCE_DEVICE);
+            ChargeOrder settled = orders.require(order.orderNo);
+            if (settled.status != ChargeOrder.Status.SETTLED) {
+                throw new IllegalStateException("设备账单无法结算订单: " + order.orderNo);
             }
+            bill.orderId = settled.id;
+            bill.orderNo = settled.orderNo;
+            bill.energy = zero(settled.energy);
+            bill.electricityFee = settled.electricityFee;
+            bill.serviceFee = settled.serviceFee;
+            bill.amount = zero(settled.amount);
+            bill.lossEnergy = settled.lossEnergy;
+            bill.rateModelNo = settled.rateModelNo;
+            bill.rateSnapshot = settled.rateSnapshot;
+            bill.feeBreakdown = settled.feeBreakdown;
+            bill.partial = fee.partial();
+            bill.accepted = true;
         }
         return bills.save(bill);
     }
 
     /** OCPP StopTransaction 的平台估算账单，与订单结算在同一事务内。 */
     @Transactional
-    public Bill recordOcppSettlement(ChargeOrder order, String rateModelNo) {
-        var existing =
-                bills.findByProtocolAndSourceTypeAndSourceTransactionNo("OCPP16J", SOURCE_OCPP_STOP, order.orderNo);
+    public Bill recordOcppSettlement(ChargeOrder order, String transactionNo) {
+        var existing = bills.findByDeviceAndProtocolAndSourceTypeAndSourceTransactionNo(
+                order.deviceId, "OCPP16J", SOURCE_OCPP_STOP, transactionNo);
         if (existing.isPresent()) {
             return existing.get();
         }
@@ -91,12 +134,18 @@ public class BillService {
         bill.orderId = order.id;
         bill.orderNo = order.orderNo;
         bill.deviceId = order.deviceId;
-        bill.stationId = order.stationId;
         bill.protocol = "OCPP16J";
         bill.sourceType = SOURCE_OCPP_STOP;
-        bill.sourceTransactionNo = order.orderNo;
-        bill.energy = order.energy;
-        bill.amount = order.amount;
+        bill.sourceTransactionNo = transactionNo;
+        bill.energy = zero(order.energy);
+        bill.electricityFee = order.electricityFee;
+        bill.serviceFee = order.serviceFee;
+        bill.amount = zero(order.amount);
+        bill.lossEnergy = order.lossEnergy;
+        bill.rateModelNo = order.rateModelNo;
+        bill.rateSnapshot = order.rateSnapshot;
+        bill.feeBreakdown = order.feeBreakdown;
+        bill.partial = false;
         bill.currency = "CNY";
         bill.amountType = ChargeOrder.AMOUNT_SOURCE_ESTIMATE;
         bill.stopReason = order.stopReason;
@@ -104,20 +153,19 @@ public class BillService {
         bill.receivedAt = LocalDateTime.now();
         bill.createdAt = LocalDateTime.now();
         bill.accepted = true;
-        bill.rawPayload =
-                "{\"rateModelNo\":\"" + rateModelNo + "\",\"ocppTransactionId\":" + order.ocppTransactionId + "}";
+        bill.rawPayload = json.writeValueAsString(Map.of(
+                "rateModelNo", Objects.requireNonNullElse(order.rateModelNo, ""), "ocppTransactionId", transactionNo));
         return bills.save(bill);
     }
 
     public List<Bill> search(
-            Long stationId,
             Long deviceId,
             String protocol,
             String sourceTransactionNo,
             LocalDateTime from,
             LocalDateTime to,
             Boolean accepted) {
-        return bills.search(stationId, deviceId, protocol, sourceTransactionNo, from, to, accepted, 500);
+        return bills.search(deviceId, protocol, sourceTransactionNo, from, to, accepted, 500);
     }
 
     public List<Bill> byOrder(Long orderId) {
@@ -125,23 +173,28 @@ public class BillService {
     }
 
     public OpsDtos.BillView view(Bill bill) {
-        String code = null;
+        String deviceSn = null;
         try {
-            code = devices.get(bill.deviceId).protocolDeviceId;
+            deviceSn = devices.get(bill.deviceId).deviceCode;
         } catch (RuntimeException ignored) {
+            // A bill remains readable after its device record is removed.
         }
         return new OpsDtos.BillView(
                 bill.id,
                 bill.orderId,
                 bill.orderNo,
                 bill.deviceId,
-                code,
-                bill.stationId,
+                deviceSn,
                 bill.protocol,
                 bill.sourceType,
                 bill.sourceTransactionNo,
                 bill.energy,
+                bill.electricityFee,
+                bill.serviceFee,
                 bill.amount,
+                bill.lossEnergy,
+                bill.rateModelNo,
+                bill.partial,
                 bill.currency,
                 bill.amountType,
                 bill.stopReason,
@@ -150,6 +203,10 @@ public class BillService {
                 bill.accepted,
                 bill.rejectReason,
                 bill.createdAt);
+    }
+
+    private static BigDecimal zero(BigDecimal value) {
+        return Objects.requireNonNullElse(value, BigDecimal.ZERO);
     }
 
     private static String truncate(String value, int max) {

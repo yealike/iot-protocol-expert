@@ -32,9 +32,6 @@ public final class OpsDtos {
             Long id,
             String sn,
             String protocol,
-            String protocolDeviceId,
-            Long stationId,
-            String stationName,
             int gunCount,
             boolean enabled,
             boolean allowSimulate,
@@ -50,6 +47,19 @@ public final class OpsDtos {
             int operator,
             String chargePointVendor,
             String chargePointModel) {}
+
+    public record DeviceMappingConnector(String platformGunNo, String protocolConnectorNo) {}
+
+    public record DeviceMappingRow(
+            Long id,
+            String deviceSn,
+            String protocol,
+            String thirdPartyDeviceId,
+            boolean enabled,
+            List<DeviceMappingConnector> connectors) {}
+
+    public record DeviceMappingPage(
+            List<DeviceMappingRow> content, boolean hasMore, Long nextAfterId, String snapshotToken) {}
 
     public record DevicePatch(boolean allowWork, int maxPowerPercent) {}
 
@@ -81,24 +91,29 @@ public final class OpsDtos {
             String logicalCard,
             String account) {}
 
-    public record StartResult(boolean accepted, String orderNo, Integer failReason, String message) {}
+    public record StartResult(
+            boolean accepted, String orderNo, String transactionNo, Integer failReason, String message) {}
 
     public record OrderView(
             Long id,
             String orderNo,
+            String transactionNo,
             Long deviceId,
-            String protocolDeviceId,
+            String deviceSn,
             String gunNo,
-            Long stationId,
+            String platformGunNo,
             String protocol,
             String status,
-            Integer ocppTransactionId,
             BigDecimal meterStartWh,
             LocalDateTime startTime,
             LocalDateTime endTime,
             BigDecimal energy,
+            BigDecimal electricityFee,
+            BigDecimal serviceFee,
             BigDecimal amount,
+            BigDecimal lossEnergy,
             String amountSource,
+            String rateModelNo,
             int stopReason,
             String failReason,
             LocalDateTime createdAt) {}
@@ -129,6 +144,8 @@ public final class OpsDtos {
             String traceId,
             LocalDateTime createdAt) {}
 
+    public record YkcEnergySegment(BigDecimal unitPrice, BigDecimal energy, BigDecimal lossEnergy, BigDecimal amount) {}
+
     public record BillRequest(
             String protocol,
             String protocolDeviceId,
@@ -140,6 +157,7 @@ public final class OpsDtos {
             BigDecimal totalEnergy,
             BigDecimal totalAmount,
             BigDecimal lossTotalEnergy,
+            List<YkcEnergySegment> segments,
             int stopReason,
             int tradeFlag,
             String physicalCard,

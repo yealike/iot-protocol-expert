@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper">
+
+    <resultMap id="DeviceProtocolMappingMap"
+               type="top.yealike.pep.ops.devices.entity.DeviceProtocolMapping">
+        <id property="id" column="id"/>
+        <result property="deviceId" column="device_id"/>
+        <result property="protocol" column="protocol"/>
+        <result property="thirdPartyDeviceId" column="third_party_device_id"/>
+        <result property="enabled" column="enabled"/>
+        <result property="createdAt" column="created_at"/>
+        <result property="updatedAt" column="updated_at"/>
+    </resultMap>
+
+    <sql id="columns">
+        id, device_id, protocol, third_party_device_id, enabled, created_at, updated_at
+    </sql>
+
+    <select id="selectPage" resultMap="DeviceProtocolMappingMap">
+        select <include refid="columns"/>
+        from pep_domain.device_protocol_mapping
+        where id > #{afterId}
+        order by id
+        limit #{limit}
+    </select>
+
+    <select id="selectByDeviceIds" resultMap="DeviceProtocolMappingMap">
+        select <include refid="columns"/>
+        from pep_domain.device_protocol_mapping
+        where device_id in
+        <foreach collection="deviceIds" item="deviceId" open="(" separator="," close=")">
+            #{deviceId}
+        </foreach>
+    </select>
+
+    <select id="selectByDeviceId" resultMap="DeviceProtocolMappingMap">
+        select <include refid="columns"/>
+        from pep_domain.device_protocol_mapping
+        where device_id = #{deviceId}
+    </select>
+
+    <select id="selectByProtocolAndThirdPartyDeviceId" resultMap="DeviceProtocolMappingMap">
+        select <include refid="columns"/>
+        from pep_domain.device_protocol_mapping
+        where protocol = #{protocol}
+          and third_party_device_id = #{thirdPartyDeviceId}
+    </select>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        insert into pep_domain.device_protocol_mapping
+            (device_id, protocol, third_party_device_id, enabled, created_at, updated_at)
+        values
+            (#{deviceId}, #{protocol}, #{thirdPartyDeviceId}, #{enabled}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <update id="update">
+        update pep_domain.device_protocol_mapping
+        set protocol = #{protocol},
+            third_party_device_id = #{thirdPartyDeviceId},
+            enabled = #{enabled},
+            updated_at = #{updatedAt}
+        where id = #{id}
+    </update>
+
+    <delete id="deleteByDeviceId">
+        delete from pep_domain.device_protocol_mapping where device_id = #{deviceId}
+    </delete>
+</mapper>

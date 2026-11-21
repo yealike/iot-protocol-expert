@@ -20,16 +20,12 @@ public interface ProductMapper {
 
     List<Product> search(
             @Param("keyword") String keyword,
-            @Param("deviceType") String deviceType,
             @Param("categoryCode") String categoryCode,
             @Param("orderBy") String orderBy,
             @Param("limit") int limit,
             @Param("offset") int offset);
 
-    long countSearch(
-            @Param("keyword") String keyword,
-            @Param("deviceType") String deviceType,
-            @Param("categoryCode") String categoryCode);
+    long countSearch(@Param("keyword") String keyword, @Param("categoryCode") String categoryCode);
 
     long count();
 

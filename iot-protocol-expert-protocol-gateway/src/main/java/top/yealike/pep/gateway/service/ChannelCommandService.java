@@ -12,6 +12,8 @@ import top.yealike.pep.codec.frames.MaintenanceFrames;
 import top.yealike.pep.codec.frames.OperationFrames;
 import top.yealike.pep.codec.ocpp16.OcppConstants;
 import top.yealike.pep.gateway.config.ProtocolProperties;
+import top.yealike.pep.gateway.core.DeviceIdentityRegistry;
+import top.yealike.pep.gateway.core.ProtocolType;
 import top.yealike.pep.gateway.netty.SessionRegistry;
 import top.yealike.pep.gateway.ocpp16.OcppCommandFacade;
 import top.yealike.pep.gateway.ocpp16.OcppSessionRegistry;
@@ -26,18 +28,21 @@ public class ChannelCommandService {
     private final CommandFacade ykcCommands;
     private final OcppCommandFacade ocppCommands;
     private final java.time.Duration commandTimeout;
+    private final DeviceIdentityRegistry identities;
 
     public ChannelCommandService(
             SessionRegistry ykcSessions,
             OcppSessionRegistry ocppSessions,
             CommandFacade ykcCommands,
             OcppCommandFacade ocppCommands,
-            ProtocolProperties properties) {
+            ProtocolProperties properties,
+            DeviceIdentityRegistry identities) {
         this.ykcSessions = ykcSessions;
         this.ocppSessions = ocppSessions;
         this.ykcCommands = ykcCommands;
         this.ocppCommands = ocppCommands;
         this.commandTimeout = java.time.Duration.ofSeconds(Math.max(properties.getPendingTimeoutSeconds(), 1));
+        this.identities = identities;
     }
 
     public OpsDtos.CommandResult execute(OpsDtos.CommandRequest request) {
@@ -55,26 +60,29 @@ public class ChannelCommandService {
     }
 
     private OpsDtos.CommandResult ykc(OpsDtos.CommandRequest request) {
-        String pileCode = request.protocolDeviceId();
+        DeviceIdentityRegistry.Device identity = identities.resolve(ProtocolType.YKC16, request.protocolDeviceId());
+        String deviceSn = identity.deviceSn();
+        String externalPileCode = identity.thirdPartyDeviceId();
         Map<String, Object> params = request.params() == null ? Map.of() : request.params();
         return switch (request.type()) {
             case "remote-start" -> {
-                String orderNo = str(params, "orderNo");
+                String transactionNo = required(params, "transactionNo");
                 String gunNo = str(params, "gunNo");
                 String idTag = str(params, "idTag");
+                DeviceIdentityRegistry.Connector connector = identity.connectorByPlatformGunNo(gunNo);
                 String balanceText = str(params, "balance");
                 BigDecimal balance = balanceText == null || balanceText.isBlank()
                         ? new BigDecimal("1000.00")
                         : new BigDecimal(balanceText);
                 OperationFrames.RemoteStart command = new OperationFrames.RemoteStart(
-                        orderNo,
-                        pileCode,
-                        gunNo,
+                        transactionNo,
+                        externalPileCode,
+                        connector.externalYkcGunNo(),
                         idTag == null || idTag.isBlank() ? "0" : idTag,
                         str(params, "physicalCard"),
                         balance);
                 Frame ack = ykcSessions.request(
-                        pileCode,
+                        deviceSn,
                         FrameType.REMOTE_START,
                         FrameType.REMOTE_START_ACK,
                         OperationFrames.encodeRemoteStart(command),
@@ -96,11 +104,13 @@ public class ChannelCommandService {
             }
             case "remote-stop" -> {
                 String gunNo = str(params, "gunNo");
+                DeviceIdentityRegistry.Connector connector = identity.connectorByPlatformGunNo(gunNo);
                 Frame ack = ykcSessions.request(
-                        pileCode,
+                        deviceSn,
                         FrameType.REMOTE_STOP,
                         FrameType.STOP_ACK,
-                        OperationFrames.encodeRemoteStop(new OperationFrames.RemoteStop(pileCode, gunNo)),
+                        OperationFrames.encodeRemoteStop(
+                                new OperationFrames.RemoteStop(externalPileCode, connector.externalYkcGunNo())),
                         commandTimeout);
                 OperationFrames.StopAck result = OperationFrames.decodeStopAck(ack.body());
                 yield new OpsDtos.CommandResult(
@@ -116,26 +126,26 @@ public class ChannelCommandService {
             }
             case "read-realtime" ->
                 new OpsDtos.CommandResult(
-                        true, "读取实时数据成功", Map.of("realtime", ykcCommands.readRealtime(pileCode, str(params, "gunNo"))));
+                        true, "读取实时数据成功", Map.of("realtime", ykcCommands.readRealtime(deviceSn, str(params, "gunNo"))));
             case "time-sync" ->
                 new OpsDtos.CommandResult(
                         true,
                         "对时成功",
-                        Map.of("time", ykcCommands.timeSync(pileCode).pileCode()));
+                        Map.of("time", ykcCommands.timeSync(deviceSn).pileCode()));
             case "param-set" -> {
                 var result = ykcCommands.paramSet(
-                        pileCode, bool(params, "allowWork", true), intVal(params, "maxPowerPercent", 100));
+                        deviceSn, bool(params, "allowWork", true), intVal(params, "maxPowerPercent", 100));
                 yield new OpsDtos.CommandResult(
                         result.success(), result.success() ? "参数设置成功" : "参数设置失败", Map.of("success", result.success()));
             }
             case "reboot" -> {
-                var result = ykcCommands.reboot(pileCode, intVal(params, "control", 1));
+                var result = ykcCommands.reboot(deviceSn, intVal(params, "control", 1));
                 yield new OpsDtos.CommandResult(
                         result.success(), result.success() ? "重启命令已接受" : "重启失败", Map.of("success", result.success()));
             }
             case "update" -> {
                 var update = new MaintenanceFrames.Update(
-                        pileCode,
+                        deviceSn,
                         intVal(params, "pileModel", 1),
                         intVal(params, "power", 0),
                         str(params, "serverAddress"),
@@ -145,12 +155,12 @@ public class ChannelCommandService {
                         str(params, "filePath"),
                         intVal(params, "control", 1),
                         intVal(params, "downloadTimeoutMinutes", 10));
-                var result = ykcCommands.update(pileCode, update);
+                var result = ykcCommands.update(deviceSn, update);
                 yield new OpsDtos.CommandResult(
                         result.status() == 0, "升级命令状态=" + result.status(), Map.of("status", result.status()));
             }
             case "rate-model" -> {
-                var result = ykcCommands.pushRateModel(pileCode);
+                var result = ykcCommands.pushRateModel(deviceSn);
                 yield new OpsDtos.CommandResult(
                         result.success(),
                         result.success() ? "计费模型下发成功" : "计费模型下发失败",
@@ -158,7 +168,7 @@ public class ChannelCommandService {
             }
             case "balance" -> {
                 var result = ykcCommands.balance(
-                        pileCode,
+                        deviceSn,
                         str(params, "gunNo"),
                         str(params, "physicalCard"),
                         decimal(params, "balance", new BigDecimal("1000.00")));
@@ -167,24 +177,25 @@ public class ChannelCommandService {
             }
             case "cards-sync" -> {
                 var cards = toCards(params);
-                var result = ykcCommands.cardSync(pileCode, cards);
+                var result = ykcCommands.cardSync(deviceSn, cards);
                 yield new OpsDtos.CommandResult(
                         result != null && result.success(),
                         "离线卡同步完成",
                         Map.of("success", result != null && result.success()));
             }
             case "cards-clear" -> {
-                var result = ykcCommands.cardClear(pileCode, toStringList(params.get("cards")));
+                var result = ykcCommands.cardClear(deviceSn, toStringList(params.get("cards")));
                 yield new OpsDtos.CommandResult(
                         true, "离线卡清除完成", Map.of("count", result.results().size()));
             }
             case "cards-query" -> {
-                var result = ykcCommands.cardQuery(pileCode, toStringList(params.get("cards")));
+                var result = ykcCommands.cardQuery(deviceSn, toStringList(params.get("cards")));
                 yield new OpsDtos.CommandResult(
                         true, "离线卡查询完成", Map.of("count", result.results().size()));
             }
             case "lock" -> {
-                var result = ykcCommands.lockControl(pileCode, intVal(params, "gunNo", 1), intVal(params, "action", 1));
+                var result = ykcCommands.lockControl(
+                        deviceSn, String.format("%02d", intVal(params, "gunNo", 1)), intVal(params, "action", 1));
                 yield new OpsDtos.CommandResult(
                         result.success(), result.success() ? "地锁控制成功" : "地锁控制失败", Map.of("success", result.success()));
             }
@@ -193,12 +204,13 @@ public class ChannelCommandService {
     }
 
     private OpsDtos.CommandResult ocpp(OpsDtos.CommandRequest request) {
-        String code = request.protocolDeviceId();
+        DeviceIdentityRegistry.Device identity = identities.resolve(ProtocolType.OCPP16J, request.protocolDeviceId());
+        String code = identity.deviceSn();
         Map<String, Object> params = request.params() == null ? Map.of() : request.params();
         JsonNode reply;
         switch (request.type()) {
             case "remote-start" -> {
-                int connectorId = intVal(params, "gunNo", 1);
+                int connectorId = externalOcppConnector(identity, params, "gunNo", 1);
                 Map<String, Object> payload = new LinkedHashMap<>();
                 payload.put("connectorId", connectorId);
                 payload.put("idTag", str(params, "idTag") == null ? "IPE-APP" : str(params, "idTag"));
@@ -227,7 +239,9 @@ public class ChannelCommandService {
                 return result(ocppCommands.reset(code, str(params, "mode")), "重启命令已发送");
             }
             case "unlock" -> {
-                return result(ocppCommands.unlockConnector(code, intVal(params, "connectorId", 1)), "解锁命令已发送");
+                return result(
+                        ocppCommands.unlockConnector(code, externalOcppConnector(identity, params, "connectorId", 1)),
+                        "解锁命令已发送");
             }
             case "configuration" -> {
                 if ("GET".equalsIgnoreCase(str(params, "method"))) {
@@ -243,13 +257,16 @@ public class ChannelCommandService {
             }
             case "availability" -> {
                 return result(
-                        ocppCommands.changeAvailability(code, intVal(params, "connectorId", 0), str(params, "type")),
+                        ocppCommands.changeAvailability(
+                                code, externalOcppConnector(identity, params, "connectorId", 0), str(params, "type")),
                         "可用性切换已发送");
             }
             case "trigger" -> {
                 return result(
                         ocppCommands.triggerMessage(
-                                code, str(params, "requestedMessage"), intVal(params, "connectorId", 0)),
+                                code,
+                                str(params, "requestedMessage"),
+                                externalOcppConnector(identity, params, "connectorId", 0)),
                         "触发消息已发送");
             }
             case "clear-cache" -> {
@@ -318,6 +335,14 @@ public class ChannelCommandService {
         return value == null ? null : String.valueOf(value);
     }
 
+    private static String required(Map<String, Object> params, String key) {
+        String value = str(params, key);
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("缺少命令参数: " + key);
+        }
+        return value;
+    }
+
     private static int intVal(Map<String, Object> params, String key, int fallback) {
         Object value = params.get(key);
         if (value == null) {
@@ -331,6 +356,30 @@ public class ChannelCommandService {
         } catch (NumberFormatException e) {
             return fallback;
         }
+    }
+
+    private static int externalOcppConnector(
+            DeviceIdentityRegistry.Device identity, Map<String, Object> params, String preferredKey, int fallback) {
+        Object raw = params.get(preferredKey);
+        if (raw == null && !"gunNo".equals(preferredKey)) {
+            raw = params.get("gunNo");
+        }
+        if (raw == null) {
+            raw = fallback;
+        }
+        String value = String.valueOf(raw).trim();
+        if (value.matches("[0-9]{10}")) {
+            value = value.substring(8);
+        }
+        if (value.matches("[0-9]{1,2}")) {
+            int number = Integer.parseInt(value);
+            if (number == 0) {
+                return 0;
+            }
+            return identity.connectorByPlatformGunNo(String.format("%02d", number))
+                    .externalOcppConnectorId();
+        }
+        throw new IllegalArgumentException("OCPP 平台枪号格式非法: " + raw);
     }
 
     private static boolean bool(Map<String, Object> params, String key, boolean fallback) {

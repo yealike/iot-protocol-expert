@@ -14,80 +14,67 @@ import java.util.Optional;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.pep.ops.charging.domain.CommandRecord;
-import top.yealike.pep.ops.charging.domain.Station;
 import top.yealike.pep.ops.charging.mapper.CommandRecordMapper;
-import top.yealike.pep.ops.charging.mapper.StationMapper;
 import top.yealike.pep.ops.devices.dto.DeviceDtos;
 import top.yealike.pep.ops.devices.entity.DeviceChannel;
 import top.yealike.pep.ops.devices.entity.DeviceEventLog;
 import top.yealike.pep.ops.devices.entity.DeviceInstance;
 import top.yealike.pep.ops.devices.entity.DevicePropertyLatest;
-import top.yealike.pep.ops.devices.entity.DeviceTag;
+import top.yealike.pep.ops.devices.entity.DeviceProtocolMapping;
 import top.yealike.pep.ops.devices.entity.Product;
 import top.yealike.pep.ops.devices.mapper.DeviceChannelMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceEventLogMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
 import top.yealike.pep.ops.devices.mapper.DevicePropertyLatestMapper;
-import top.yealike.pep.ops.devices.mapper.DeviceTagMapper;
-import top.yealike.pep.ops.devices.thingmodel.DeviceTypeCatalog;
+import top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper;
+import top.yealike.pep.ops.devices.mapper.ProtocolDocumentMapper;
 import top.yealike.pep.ops.devices.thingmodel.ThingModel;
 import top.yealike.pep.ops.devices.thingmodel.ThingModelCodec;
+import top.yealike.pep.ops.devices.thingmodel.ThingValues;
 import top.yealike.pep.ops.support.page.PageResult;
 import top.yealike.pep.ops.support.page.PageSupport;
 
-/**
- * 设备实例服务：档案、生命周期与视图组装。
- *
- * <p>与改造前的 {@code DeviceService} 相比，职责边界清楚了：
- *
- * <ul>
- *   <li>档案与状态在这里；
- *   <li>实时值在 {@link DevicePropertyService}；
- *   <li>物模型在 {@link ThingModelResolver}。
- * </ul>
- *
- * 原来一个 280 行的类同时做这些事，是「粗制滥造」的主要来源。
- */
+/** 充电桩档案、枪口、第三方映射和实时视图。 */
 @Service
 public class DeviceInstanceService {
 
     private static final Logger log = LoggerFactory.getLogger(DeviceInstanceService.class);
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
     private static final Set<String> SORTABLE =
-            Set.of("id", "deviceCode", "name", "deviceType", "protocol", "state", "lastSeen", "createdAt", "updatedAt");
+            Set.of("id", "deviceCode", "name", "protocol", "state", "lastSeen", "createdAt", "updatedAt");
+    private static final List<String> CHANNEL_METRIC_PRIORITY =
+            List.of("gunState", "soc", "chargeEnergy", "voltage", "current", "chargeAmount");
 
     private final DeviceInstanceMapper devices;
-    private final DeviceTagMapper tags;
     private final DeviceChannelMapper channels;
     private final DeviceEventLogMapper events;
     private final DevicePropertyLatestMapper latest;
+    private final DeviceProtocolMappingMapper mappings;
     private final ProductService products;
-    private final StationMapper stations;
     private final ThingModelResolver models;
     private final DevicePropertyService properties;
     private final CommandRecordMapper commands;
 
     public DeviceInstanceService(
             DeviceInstanceMapper devices,
-            DeviceTagMapper tags,
             DeviceChannelMapper channels,
             DeviceEventLogMapper events,
             DevicePropertyLatestMapper latest,
+            DeviceProtocolMappingMapper mappings,
             ProductService products,
-            StationMapper stations,
             ThingModelResolver models,
             DevicePropertyService properties,
             CommandRecordMapper commands) {
         this.devices = devices;
-        this.tags = tags;
         this.channels = channels;
         this.events = events;
         this.latest = latest;
+        this.mappings = mappings;
         this.products = products;
-        this.stations = stations;
         this.models = models;
         this.properties = properties;
         this.commands = commands;
@@ -96,32 +83,31 @@ public class DeviceInstanceService {
     // ------------------------------------------------------------------ 查询
 
     public PageResult<DeviceDtos.DeviceRow> query(DeviceDtos.DeviceQuery query) {
-        String keyword = query.keyword() == null || query.keyword().isBlank()
-                ? null
-                : query.keyword().trim();
-        String deviceType = query.deviceType() == null || query.deviceType().isBlank()
-                ? null
-                : query.deviceType().trim().toUpperCase(Locale.ROOT);
+        SearchSpec search = SearchSpec.of(query.keyword());
         List<String> states = query.states() == null
                 ? null
                 : query.states().stream().map(DeviceInstance::normalizeState).toList();
-        Map<String, String> tagFilters = query.tagFilters() == null ? Map.of() : query.tagFilters();
         PageSupport.PageQuery paging = PageSupport.pageable(query.page(), query.size(), query.sort(), SORTABLE);
         List<DeviceInstance> content = devices.search(
-                keyword,
-                deviceType,
+                search.keyword(),
+                search.deviceSn(),
+                search.platformGunNo(),
                 states,
-                query.stationId(),
                 query.productId(),
                 query.enabled(),
-                tagFilters,
                 paging.orderBy(),
                 paging.size(),
                 paging.offset());
         long total = devices.countSearch(
-                keyword, deviceType, states, query.stationId(), query.productId(), query.enabled(), tagFilters);
+                search.keyword(),
+                search.deviceSn(),
+                search.platformGunNo(),
+                states,
+                query.productId(),
+                query.enabled());
         ViewContext context = context(content);
-        return PageResult.of(content, paging.page(), paging.size(), total, device -> row(device, context));
+        return PageResult.of(
+                content, paging.page(), paging.size(), total, device -> row(device, context, search.gunNo()));
     }
 
     public DeviceInstance get(Long id) {
@@ -132,31 +118,50 @@ public class DeviceInstanceService {
         return devices.findByDeviceCode(deviceCode);
     }
 
-    public DeviceInstance resolve(String protocol, String protocolDeviceId) {
-        return devices.findByProtocolAndProtocolDeviceId(normalizeProtocol(protocol), protocolDeviceId)
-                .orElseThrow(() -> new DeviceRejectedException("设备未登记: " + protocol + "/" + protocolDeviceId));
+    /**
+     * 协议入口定位设备。8 位平台 SN 直接命中；其他输入按协议第三方设备号映射命中。
+     * 未登记映射一律拒绝，不自动注册。
+     */
+    public DeviceInstance resolve(String protocol, String identifier) {
+        String normalizedProtocol = normalizeProtocol(protocol);
+        if (identifier == null || identifier.isBlank()) {
+            throw new DeviceRejectedException("设备编号为空");
+        }
+        String value = identifier.trim();
+        DeviceInstance device;
+        if (value.matches("[1-9][0-9]{7}")) {
+            device = devices.findByDeviceCode(value).orElseThrow(() -> new DeviceRejectedException("设备未登记: " + value));
+        } else {
+            DeviceProtocolMapping mapping = mappings.findByProtocolAndThirdPartyDeviceId(normalizedProtocol, value)
+                    .filter(item -> item.enabled)
+                    .orElseThrow(() -> new DeviceRejectedException("第三方设备未登记: " + normalizedProtocol + "/" + value));
+            device = devices.findById(mapping.deviceId)
+                    .orElseThrow(() -> new DeviceRejectedException("设备映射指向不存在的设备: " + mapping.deviceId));
+        }
+        if (!normalizedProtocol.equals(device.protocol)) {
+            throw new DeviceRejectedException("设备协议不匹配: " + normalizedProtocol + "/" + value);
+        }
+        return device;
     }
 
     public List<DeviceInstance> simulatorDevices() {
         return devices.findAll().stream()
-                .filter(device -> "CHARGER".equals(device.deviceType) && device.enabled && device.allowSimulate)
+                .filter(device -> device.enabled && device.allowSimulate)
                 .sorted(Comparator.comparing(device -> device.id))
                 .toList();
     }
-
-    // ------------------------------------------------------------------ 详情
 
     public DeviceDtos.DeviceDetail detail(Long id) {
         DeviceInstance device = get(id);
         ThingModel model = models.of(device);
         ViewContext context = context(List.of(device));
         return new DeviceDtos.DeviceDetail(
-                row(device, context),
-                ThingModelCodec.toMap(model),
+                row(device, context, null),
                 properties.channelViews(device, model),
                 properties.propertyViews(device, model),
                 eventViews(device.id),
-                commandViews(device.id));
+                commandViews(device.id),
+                mappingViews(device, context.mappings().get(device.id)));
     }
 
     private List<DeviceDtos.EventView> eventViews(Long deviceId) {
@@ -196,168 +201,121 @@ public class DeviceInstanceService {
         return views;
     }
 
-    private static String format(LocalDateTime time) {
-        return time == null ? null : time.format(TIME);
-    }
+    // ------------------------------------------------------------------ 视图
 
-    private static Object parse(String json) {
-        if (json == null || json.isBlank()) {
-            return null;
-        }
-        try {
-            return ThingModelCodec.mapper().readValue(json, Object.class);
-        } catch (RuntimeException e) {
-            return json;
-        }
-    }
-
-    // ------------------------------------------------------------------ 视图组装
-
-    /** 列表页的批量上下文，避免每行都查一次站点与属性。 */
     private record ViewContext(
-            Map<Long, String> stationNames,
-            Map<Long, String> productNames,
-            Map<Long, Map<String, Object>> protocolDocuments,
-            Map<Long, List<DeviceTag>> tags,
+            Map<Long, Product> productById,
+            Map<Long, ProtocolDocumentMapper.Ref> protocolDocuments,
             Map<Long, Map<String, DevicePropertyLatest>> properties,
-            Map<Long, int[]> channelCounts) {}
+            Map<Long, List<DeviceChannel>> channels,
+            Map<Long, DeviceProtocolMapping> mappings) {}
 
     private ViewContext context(List<DeviceInstance> list) {
-        Map<Long, String> stationNames = new LinkedHashMap<>();
-        Map<Long, String> productNames = new LinkedHashMap<>();
-        Map<Long, List<DeviceTag>> tagMap = new LinkedHashMap<>();
+        Map<Long, Product> productById = new LinkedHashMap<>();
         Map<Long, Map<String, DevicePropertyLatest>> propertyMap = new LinkedHashMap<>();
-        Map<Long, int[]> channelCounts = new LinkedHashMap<>();
+        Map<Long, List<DeviceChannel>> channelMap = new LinkedHashMap<>();
+        Map<Long, DeviceProtocolMapping> mappingMap = new LinkedHashMap<>();
         if (list.isEmpty()) {
-            return new ViewContext(stationNames, productNames, Map.of(), tagMap, propertyMap, channelCounts);
+            return new ViewContext(productById, Map.of(), propertyMap, channelMap, mappingMap);
         }
-        Set<Long> stationIds = new LinkedHashSet<>();
         Set<Long> productIds = new LinkedHashSet<>();
         for (DeviceInstance device : list) {
-            if (device.stationId != null) {
-                stationIds.add(device.stationId);
-            }
             if (device.productId != null) {
                 productIds.add(device.productId);
             }
         }
-        if (!stationIds.isEmpty()) {
-            for (Station station : stations.findAllById(stationIds)) {
-                stationNames.put(station.id, station.name);
-            }
-        }
-        if (!productIds.isEmpty()) {
-            for (Product product : products.findAllById(productIds)) {
-                productNames.put(product.id, product.name);
-            }
+        for (Product product : products.findAllById(productIds)) {
+            productById.put(product.id, product);
         }
         List<Long> deviceIds = list.stream().map(device -> device.id).toList();
-        // 批量取，避免「每台设备 1 次标签查询 + 1 次通道查询」的 N+1
-        for (DeviceTag tag : tags.findByDeviceIdInOrderByDeviceIdAsc(deviceIds)) {
-            tagMap.computeIfAbsent(tag.deviceId, key -> new ArrayList<>()).add(tag);
-        }
         for (DevicePropertyLatest row : latest.findByDeviceIdIn(deviceIds)) {
             propertyMap
                     .computeIfAbsent(row.deviceId, key -> new LinkedHashMap<>())
                     .put(row.channelNo + "|" + row.propertyId, row);
         }
         for (DeviceChannel channel : channels.findByDeviceIdIn(deviceIds)) {
-            int[] counts = channelCounts.computeIfAbsent(channel.deviceId, key -> new int[2]);
-            counts[1]++;
-            if ("CONNECTOR".equals(channel.channelType)) {
-                counts[0]++;
-            }
+            channelMap
+                    .computeIfAbsent(channel.deviceId, key -> new ArrayList<>())
+                    .add(channel);
+        }
+        for (DeviceProtocolMapping mapping : mappings.selectByDeviceIds(deviceIds)) {
+            mappingMap.put(mapping.deviceId, mapping);
         }
         return new ViewContext(
-                stationNames, productNames, products.protocolDocuments(productIds), tagMap, propertyMap, channelCounts);
+                productById, products.protocolDocuments(productIds), propertyMap, channelMap, mappingMap);
     }
 
     public DeviceDtos.DeviceRow view(DeviceInstance device) {
-        return row(device, context(List.of(device)));
+        return row(device, context(List.of(device)), null);
     }
 
-    /** 批量视图：一次查完站点、产品、标签、属性、通道计数。 */
     public List<DeviceDtos.DeviceRow> rows(List<DeviceInstance> devices) {
         if (devices.isEmpty()) {
             return List.of();
         }
         ViewContext context = context(devices);
-        return devices.stream().map(device -> row(device, context)).toList();
+        return devices.stream().map(device -> row(device, context, null)).toList();
     }
 
-    private DeviceDtos.DeviceRow row(DeviceInstance device, ViewContext context) {
+    private DeviceDtos.DeviceRow row(DeviceInstance device, ViewContext context, String matchedGunNo) {
+        Product product = context.productById().get(device.productId);
+        ProtocolDocumentMapper.Ref document = context.protocolDocuments().get(device.productId);
         ThingModel model = models.of(device);
-        List<DeviceTag> deviceTags = context.tags().get(device.id);
-        if (deviceTags == null) {
-            deviceTags = List.of();
-        }
-        List<DeviceDtos.TagValue> tagValues = deviceTags.stream()
-                .map(tag -> new DeviceDtos.TagValue(tag.tagKey, tag.tagValue, tag.valueType))
-                .toList();
-        // 注意：不能用 getOrDefault(..., 查询)，默认值参数会被提前求值，等于白白多一次查询
         Map<String, DevicePropertyLatest> stored = context.properties().get(device.id);
         if (stored == null) {
             stored = properties.latestMap(device.id);
         }
+        List<DeviceChannel> deviceChannels = context.channels().getOrDefault(device.id, List.of());
 
-        Map<String, Object> protocolDoc = context.protocolDocuments().getOrDefault(device.productId, Map.of());
         return new DeviceDtos.DeviceRow(
                 device.id,
                 device.deviceCode,
                 device.name,
                 device.productId,
-                context.productNames().get(device.productId),
-                device.deviceType,
-                DeviceTypeCatalog.find(device.deviceType)
-                        .map(DeviceTypeCatalog::label)
-                        .orElse(device.deviceType),
+                product == null ? null : product.name,
                 device.protocol,
-                (String) protocolDoc.get("protocol_code"),
-                (String) protocolDoc.get("protocol_name_en"),
-                (String) protocolDoc.get("document_version"),
-                device.protocolDeviceId,
-                device.stationId,
-                context.stationNames().get(device.stationId),
+                document == null ? fallbackProtocolName(device.protocol) : document.protocolNameEn(),
+                document == null ? fallbackProtocolVersion(device.protocol) : document.documentVersion(),
                 device.getStateOrOffline(),
                 device.enabled,
-                device.allowWork,
-                device.allowSimulate,
+                keyMetrics(model, stored, deviceChannels),
                 format(device.lastSeen),
-                format(device.onlineAt),
-                format(device.registryTime),
-                anchor(device),
-                tagValues,
-                highlights(model, stored),
-                channelCounts(context, device.id)[0],
-                channelCounts(context, device.id)[1]);
+                deviceChannels.size(),
+                matchedGunNo);
     }
 
-    private static int[] channelCounts(ViewContext context, Long deviceId) {
-        int[] counts = context.channelCounts().get(deviceId);
-        return counts == null ? new int[] {0, 0} : counts;
-    }
-
-    /** 列表页展示的关键指标：物模型里前 4 个有值的只读属性，带单位。 */
-    private Map<String, Object> highlights(ThingModel model, Map<String, DevicePropertyLatest> stored) {
+    private Map<String, Object> keyMetrics(
+            ThingModel model, Map<String, DevicePropertyLatest> stored, List<DeviceChannel> deviceChannels) {
         Map<String, Object> result = new LinkedHashMap<>();
-        for (ThingModel.PropertyMetadata property : model.properties()) {
-            if (property.channel() || property.id().equals("allowWork")) {
-                continue;
+        if (stored == null || stored.isEmpty()) {
+            return result;
+        }
+
+        Map<String, ThingModel.PropertyMetadata> propertiesById = model.propertyIndex();
+        if (!deviceChannels.isEmpty()) {
+            DeviceChannel focus = focusChannel(stored, deviceChannels);
+            for (DeviceChannel channel : deviceChannels) {
+                addMetric(result, propertiesById.get("gunState"), stored, channel);
             }
+            for (String propertyId : CHANNEL_METRIC_PRIORITY) {
+                if (result.size() >= 4) {
+                    break;
+                }
+                if (!"gunState".equals(propertyId)) {
+                    addMetric(result, propertiesById.get(propertyId), stored, focus);
+                }
+            }
+            if (!result.isEmpty()) {
+                return result;
+            }
+        }
+
+        for (ThingModel.PropertyMetadata property : model.deviceProperties()) {
             DevicePropertyLatest row = stored.get("|" + property.id());
             if (row == null) {
                 continue;
             }
-            var value = new top.yealike.pep.ops.devices.thingmodel.ThingValues.StoredValue(
-                    row.valueType, row.valueNum, row.valueText, row.valueJson, row.valueTime);
-            String display = top.yealike.pep.ops.devices.thingmodel.ThingValues.format(property.valueType(), value);
-            if (display == null) {
-                continue;
-            }
-            String unit = property.valueType() == null || property.valueType().unit() == null
-                    ? ""
-                    : " " + property.valueType().unit();
-            result.put(property.id(), display + unit);
+            putMetric(result, property, row, null);
             if (result.size() >= 4) {
                 break;
             }
@@ -365,211 +323,337 @@ public class DeviceInstanceService {
         return result;
     }
 
-    private DeviceDtos.SceneAnchor anchor(DeviceInstance device) {
-        if (device.sceneAnchor == null || device.sceneAnchor.isBlank()) {
-            String fallback = DeviceTypeCatalog.find(device.deviceType)
-                    .map(DeviceTypeCatalog::sceneModel)
-                    .orElse(null);
-            return fallback == null ? null : new DeviceDtos.SceneAnchor(fallback, null, null);
+    private DeviceChannel focusChannel(Map<String, DevicePropertyLatest> stored, List<DeviceChannel> deviceChannels) {
+        for (DeviceChannel channel : deviceChannels) {
+            DevicePropertyLatest state = stored.get(channel.channelNo + "|gunState");
+            if (state != null && "charging".equals(state.valueText)) {
+                return channel;
+            }
         }
-        try {
-            Map<String, Object> map = ThingModelCodec.mapper().readValue(device.sceneAnchor, Map.class);
-            String model = map.get("model") == null ? null : String.valueOf(map.get("model"));
-            List<Double> position = new ArrayList<>();
-            if (map.get("position") instanceof List<?> list) {
-                for (Object item : list) {
-                    if (item instanceof Number number) {
-                        position.add(number.doubleValue());
-                    }
+
+        DeviceChannel latest = deviceChannels.get(0);
+        LocalDateTime latestTime = null;
+        for (DeviceChannel channel : deviceChannels) {
+            String prefix = channel.channelNo + "|";
+            for (Map.Entry<String, DevicePropertyLatest> entry : stored.entrySet()) {
+                if (!entry.getKey().startsWith(prefix)) {
+                    continue;
+                }
+                LocalDateTime valueTime = entry.getValue().valueTime;
+                if (valueTime != null && (latestTime == null || valueTime.isAfter(latestTime))) {
+                    latest = channel;
+                    latestTime = valueTime;
                 }
             }
-            Double scale = map.get("scale") instanceof Number number ? number.doubleValue() : null;
-            return new DeviceDtos.SceneAnchor(model, position.isEmpty() ? null : position, scale);
-        } catch (RuntimeException e) {
-            return null;
         }
+        return latest;
+    }
+
+    private void addMetric(
+            Map<String, Object> result,
+            ThingModel.PropertyMetadata property,
+            Map<String, DevicePropertyLatest> stored,
+            DeviceChannel channel) {
+        if (property == null || result.size() >= 4) {
+            return;
+        }
+        DevicePropertyLatest row = stored.get(channel.channelNo + "|" + property.id());
+        if (row != null) {
+            putMetric(result, property, row, channel.channelNo);
+        }
+    }
+
+    private void putMetric(
+            Map<String, Object> result,
+            ThingModel.PropertyMetadata property,
+            DevicePropertyLatest row,
+            String channelNo) {
+        ThingValues.StoredValue value =
+                new ThingValues.StoredValue(row.valueType, row.valueNum, row.valueText, row.valueJson, row.valueTime);
+        String display = ThingValues.format(property.valueType(), value);
+        if (display == null) {
+            return;
+        }
+        String unit = property.valueType() == null || property.valueType().unit() == null
+                ? ""
+                : " " + property.valueType().unit();
+        String prefix = channelNo == null ? "" : channelNo + "枪 · ";
+        result.put(channelNo == null ? property.id() : channelNo + "|" + property.id(), prefix + display + unit);
+    }
+
+    private List<DeviceDtos.ProtocolMappingView> mappingViews(DeviceInstance device, DeviceProtocolMapping mapping) {
+        List<DeviceDtos.ProtocolMappingView> result = new ArrayList<>();
+        for (DeviceChannel channel : channels.findByDeviceIdOrderByChannelNoAsc(device.id)) {
+            result.add(new DeviceDtos.ProtocolMappingView(
+                    channel.channelNo,
+                    channel.platformGunNo,
+                    mapping == null ? null : mapping.thirdPartyDeviceId,
+                    channel.protocolConnectorNo,
+                    mapping != null && mapping.enabled));
+        }
+        return result;
     }
 
     // ------------------------------------------------------------------ 写入
 
     @Transactional
-    public DeviceInstance save(DeviceDtos.DeviceSave input) {
-        if (input.deviceCode() == null || input.deviceCode().isBlank()) {
-            throw new IllegalArgumentException("设备编码不能为空");
+    public DeviceInstance create(DeviceDtos.DeviceSave input) {
+        validateSave(input, true);
+        Product product = requirePublishedProduct(input.productId());
+        String sn = input.sn() == null || input.sn().isBlank() ? allocateDeviceSn() : validateDeviceSn(input.sn());
+        if (devices.findByDeviceCode(sn).isPresent()) {
+            throw new IllegalArgumentException("设备 SN 已存在: " + sn);
+        }
+
+        DeviceInstance device = new DeviceInstance();
+        device.deviceCode = sn;
+        device.name = input.name().trim();
+        device.productId = product.id;
+        device.protocol = product.protocol;
+        device.state = DeviceInstance.STATE_NOT_ACTIVE;
+        device.enabled = input.enabled() == null || input.enabled();
+        device.allowSimulate = true;
+        device.allowWork = true;
+        device.configuration = "{}";
+        device.createdAt = LocalDateTime.now();
+        device.updatedAt = device.createdAt;
+        DeviceInstance saved;
+        try {
+            saved = devices.save(device);
+        } catch (DuplicateKeyException e) {
+            throw new IllegalArgumentException("设备 SN 已存在: " + sn, e);
+        }
+        ensureProductChannels(saved, product);
+        replaceMappings(saved, product, input.protocolMappings());
+        return saved;
+    }
+
+    @Transactional
+    public DeviceInstance update(Long id, DeviceDtos.DeviceSave input) {
+        validateSave(input, false);
+        DeviceInstance device = get(id);
+        if (input.sn() != null
+                && !input.sn().isBlank()
+                && !device.deviceCode.equals(input.sn().trim())) {
+            throw new IllegalArgumentException("设备 SN 创建后不可修改");
+        }
+        if (input.productId() != null && !Objects.equals(device.productId, input.productId())) {
+            throw new IllegalArgumentException("设备已绑定产品，不能切换产品");
+        }
+        Product product = products.get(device.productId);
+        if (!device.protocol.equals(product.protocol)) {
+            throw new IllegalStateException("设备协议与产品配置不一致，请检查数据");
+        }
+        device.name = input.name().trim();
+        if (input.enabled() != null) {
+            device.enabled = input.enabled();
+        }
+        device.updatedAt = LocalDateTime.now();
+        DeviceInstance saved = devices.save(device);
+        ensureProductChannels(saved, product);
+        replaceMappings(saved, product, input.protocolMappings());
+        return saved;
+    }
+
+    private static void validateSave(DeviceDtos.DeviceSave input, boolean creating) {
+        if (input == null) {
+            throw new IllegalArgumentException("设备请求不能为空");
         }
         if (input.name() == null || input.name().isBlank()) {
             throw new IllegalArgumentException("设备名称不能为空");
         }
-        if (input.productId() == null) {
-            throw new IllegalArgumentException("必须选择产品");
+        if (creating && input.productId() == null) {
+            throw new IllegalArgumentException("必须选择充电桩产品");
         }
-        Product product = products.get(input.productId());
+    }
+
+    private Product requirePublishedProduct(Long productId) {
+        if (productId == null) {
+            throw new IllegalArgumentException("必须选择充电桩产品");
+        }
+        Product product = products.get(productId);
         if (!"PUBLISHED".equals(product.state)) {
-            throw new IllegalArgumentException("产品未发布，不能创建设备: " + product.name);
+            throw new IllegalArgumentException("产品未发布，不能创建充电桩: " + product.name);
         }
-
-        String code = input.deviceCode().trim();
-        DeviceInstance device = devices.findByDeviceCode(code).orElseGet(DeviceInstance::new);
-        if (device.id != null && !Objects.equals(device.productId, product.id)) {
-            throw new IllegalArgumentException("设备已绑定产品，不能直接更换产品");
-        }
-        if (device.id != null && input.deviceCode() != null && !device.deviceCode.equals(code)) {
-            throw new IllegalArgumentException("设备编码创建后不可修改");
-        }
-        String protocolDeviceId =
-                input.protocolDeviceId() == null || input.protocolDeviceId().isBlank()
-                        ? code
-                        : input.protocolDeviceId().trim();
-        devices.findByProtocolAndProtocolDeviceId(product.protocol, protocolDeviceId)
-                .ifPresent(other -> {
-                    if (!Objects.equals(other.id, device.id)) {
-                        throw new IllegalArgumentException(
-                                "该协议下设备编号已被使用: " + product.protocol + "/" + protocolDeviceId);
-                    }
-                });
-        if (input.stationId() != null && stations.findById(input.stationId()).isEmpty()) {
-            throw new IllegalArgumentException("站点不存在: " + input.stationId());
-        }
-        if (input.parentId() != null) {
-            DeviceInstance parent = get(input.parentId());
-            if (Objects.equals(parent.id, device.id)) {
-                throw new IllegalArgumentException("设备不能作为自己的父设备");
-            }
-        }
-
-        device.deviceCode = code;
-        device.name = input.name().trim();
-        device.productId = product.id;
-        device.deviceType = product.deviceType;
-        device.protocol = product.protocol;
-        device.protocolDeviceId = protocolDeviceId;
-        device.stationId = input.stationId();
-        device.parentId = input.parentId();
-        device.enabled = input.enabled() == null || input.enabled();
-        device.allowSimulate = input.allowSimulate() == null || input.allowSimulate();
-        device.allowWork = input.allowWork() == null || input.allowWork();
-        device.remark = input.remark();
-        if (input.configuration() != null) {
-            device.configuration = ProductService.toJson(input.configuration());
-        }
-        if (input.sceneAnchor() != null) {
-            device.sceneAnchor = anchorJson(input.sceneAnchor());
-        }
-        device.updatedAt = LocalDateTime.now();
-        if (device.id == null) {
-            device.createdAt = LocalDateTime.now();
-            device.state = DeviceInstance.STATE_NOT_ACTIVE;
-        }
-        DeviceInstance saved = devices.save(device);
-
-        applyTags(saved, input.tags());
-        applyChannels(saved, input.channels(), product);
-        return saved;
+        return product;
     }
 
-    private String anchorJson(DeviceDtos.SceneAnchor anchor) {
-        Map<String, Object> map = new LinkedHashMap<>();
-        map.put("model", anchor.model());
-        if (anchor.position() != null) {
-            map.put("position", anchor.position());
+    private String allocateDeviceSn() {
+        for (int attempt = 0; attempt < 10_000; attempt++) {
+            String candidate = devices.selectNextDeviceSnCandidate();
+            if (candidate == null) {
+                break;
+            }
+            if (devices.findByDeviceCode(candidate).isEmpty()) {
+                return candidate;
+            }
         }
-        if (anchor.scale() != null) {
-            map.put("scale", anchor.scale());
-        }
-        return ProductService.toJson(map);
+        throw new IllegalStateException("平台设备 SN 已耗尽");
     }
 
-    private void applyTags(DeviceInstance device, Map<String, String> input) {
-        if (input == null) {
-            return;
+    private static String validateDeviceSn(String raw) {
+        String value = raw.trim();
+        if (!value.matches("[1-9][0-9]{7}")) {
+            throw new IllegalArgumentException("设备 SN 必须为 8 位纯数字且不小于 10000000");
         }
-        for (Map.Entry<String, String> entry : input.entrySet()) {
-            String key = entry.getKey() == null ? null : entry.getKey().trim();
-            if (key == null || key.isEmpty()) {
-                continue;
-            }
-            DeviceTag tag = tags.findByDeviceIdAndTagKey(device.id, key)
-                    .orElseGet(() -> new DeviceTag(device.id, key, null, "string"));
-            tag.tagValue = entry.getValue();
-            tag.updatedAt = LocalDateTime.now();
-            tags.save(tag);
-        }
+        return value;
     }
 
-    /** 通道：显式传入优先；否则按设备类型补齐默认通道（2 枪 / 8 组串 / 4 簇 / 3 相 / 1 镜头）。 */
-    private void applyChannels(DeviceInstance device, List<DeviceDtos.ChannelSpec> input, Product product) {
-        if (input != null && !input.isEmpty()) {
-            for (DeviceDtos.ChannelSpec spec : input) {
-                if (spec.channelNo() == null || spec.channelNo().isBlank()) {
-                    continue;
-                }
-                DeviceChannel channel = channels.findByDeviceIdAndChannelNo(
-                                device.id, spec.channelNo().trim())
-                        .orElseGet(DeviceChannel::new);
-                channel.deviceId = device.id;
-                channel.channelNo = spec.channelNo().trim();
-                channel.channelType =
-                        spec.channelType() == null || spec.channelType().isBlank()
-                                ? DeviceTypeCatalog.find(device.deviceType)
-                                        .map(DeviceTypeCatalog::channelType)
-                                        .orElse("CHANNEL")
-                                : spec.channelType().trim().toUpperCase(Locale.ROOT);
-                channel.name = spec.name();
-                channel.enabled = spec.enabled() == null || spec.enabled();
-                channel.updatedAt = LocalDateTime.now();
-                if (channel.id == null) {
-                    channel.createdAt = LocalDateTime.now();
-                }
-                channels.save(channel);
-            }
-            return;
-        }
-        if (channels.countByDeviceId(device.id) > 0) {
-            return;
-        }
-        DeviceTypeCatalog type = DeviceTypeCatalog.find(device.deviceType).orElse(null);
-        if (type == null || !type.hasChannel()) {
-            return;
-        }
-        for (String channelNo : defaultChannelNos(type)) {
-            DeviceChannel channel = new DeviceChannel();
+    private void ensureProductChannels(DeviceInstance device, Product product) {
+        for (int i = 1; i <= product.connectorCount; i++) {
+            String gunNo = String.format("%02d", i);
+            DeviceChannel channel =
+                    channels.findByDeviceIdAndChannelNo(device.id, gunNo).orElseGet(DeviceChannel::new);
             channel.deviceId = device.id;
-            channel.channelNo = channelNo;
-            channel.channelType = type.channelType();
-            channel.name = channelNo;
-            channel.createdAt = LocalDateTime.now();
+            channel.channelNo = gunNo;
+            channel.platformGunNo = device.deviceCode + gunNo;
+            channel.name = channel.name == null ? "充电枪 " + gunNo : channel.name;
+            channel.enabled = channel.id == null || channel.enabled;
             channel.updatedAt = LocalDateTime.now();
+            if (channel.id == null) {
+                channel.createdAt = channel.updatedAt;
+            }
             channels.save(channel);
         }
-        log.debug(
-                "设备 {} 自动补齐 {} 个 {} 通道",
-                device.deviceCode,
-                defaultChannelNos(type).size(),
-                type.channelType());
     }
 
-    private List<String> defaultChannelNos(DeviceTypeCatalog type) {
-        return List.of("01", "02");
+    @Transactional
+    public DeviceInstance replaceMappings(
+            DeviceInstance device, Product product, List<DeviceDtos.ProtocolMappingInput> inputs) {
+        if (inputs == null) {
+            return device;
+        }
+        List<DeviceDtos.ProtocolMappingInput> values =
+                inputs.stream().filter(Objects::nonNull).toList();
+        Map<String, DeviceDtos.ProtocolMappingInput> byGun = new LinkedHashMap<>();
+        for (DeviceDtos.ProtocolMappingInput value : values) {
+            String gunNo = normalizeGunNo(value.gunNo(), product.connectorCount);
+            if (byGun.putIfAbsent(gunNo, value) != null) {
+                throw new IllegalArgumentException("枪号重复: " + gunNo);
+            }
+        }
+
+        Set<String> externalIds = new LinkedHashSet<>();
+        Set<String> connectorIds = new LinkedHashSet<>();
+        Set<Boolean> enabledValues = new LinkedHashSet<>();
+        for (DeviceDtos.ProtocolMappingInput value : values) {
+            String thirdParty = trimToNull(value.thirdPartyDeviceId());
+            String connector = trimToNull(value.protocolConnectorNo());
+            if (thirdParty == null) {
+                if (connector != null) {
+                    throw new IllegalArgumentException("配置第三方枪号前必须填写第三方设备号");
+                }
+                continue;
+            }
+            validateThirdPartyDeviceId(product.protocol, thirdParty);
+            externalIds.add(thirdParty);
+            String gunNo = normalizeGunNo(value.gunNo(), product.connectorCount);
+            connectorIds.add(normalizeProtocolConnectorNo(connector == null ? gunNo : connector));
+            if (value.enabled() != null) {
+                enabledValues.add(value.enabled());
+            }
+        }
+        if (externalIds.size() > 1) {
+            throw new IllegalArgumentException("同一台充电桩只能映射一个第三方设备号");
+        }
+        if (enabledValues.size() > 1) {
+            throw new IllegalArgumentException("同一台充电桩的映射启用状态必须一致");
+        }
+        if (connectorIds.size()
+                != values.stream()
+                        .filter(value -> trimToNull(value.thirdPartyDeviceId()) != null)
+                        .count()) {
+            throw new IllegalArgumentException("第三方枪号不能重复");
+        }
+
+        DeviceProtocolMapping mapping = mappings.findByDeviceId(device.id).orElse(null);
+        if (externalIds.isEmpty()) {
+            if (mapping != null) {
+                mappings.deleteByDeviceId(device.id);
+            }
+            clearProtocolConnectors(device.id);
+            return device;
+        }
+        long configuredGuns = values.stream()
+                .filter(value -> trimToNull(value.thirdPartyDeviceId()) != null)
+                .count();
+        if (configuredGuns != product.connectorCount) {
+            throw new IllegalArgumentException("配置第三方设备号时必须完整映射全部 " + product.connectorCount + " 把充电枪");
+        }
+
+        String externalId = externalIds.iterator().next();
+        mappings.findByProtocolAndThirdPartyDeviceId(product.protocol, externalId)
+                .filter(other -> !Objects.equals(other.deviceId, device.id))
+                .ifPresent(other -> {
+                    throw new IllegalArgumentException("第三方设备号已被其他充电桩使用: " + product.protocol + "/" + externalId);
+                });
+        if (mapping == null) {
+            mapping = new DeviceProtocolMapping();
+            mapping.deviceId = device.id;
+            mapping.createdAt = LocalDateTime.now();
+        }
+        mapping.protocol = product.protocol;
+        mapping.thirdPartyDeviceId = externalId;
+        mapping.enabled = !enabledValues.contains(false);
+        mapping.updatedAt = LocalDateTime.now();
+        try {
+            mappings.save(mapping);
+        } catch (DuplicateKeyException e) {
+            throw new IllegalArgumentException("第三方设备号已被其他充电桩使用: " + product.protocol + "/" + externalId, e);
+        }
+
+        for (DeviceChannel channel : channels.findByDeviceIdOrderByChannelNoAsc(device.id)) {
+            DeviceDtos.ProtocolMappingInput value = byGun.get(channel.channelNo);
+            String connector = null;
+            if (value != null && trimToNull(value.thirdPartyDeviceId()) != null) {
+                connector = normalizeProtocolConnectorNo(
+                        trimToNull(value.protocolConnectorNo()) == null
+                                ? channel.channelNo
+                                : value.protocolConnectorNo());
+            }
+            if (!Objects.equals(channel.protocolConnectorNo, connector)) {
+                channel.protocolConnectorNo = connector;
+                channel.updatedAt = LocalDateTime.now();
+                channels.save(channel);
+            }
+        }
+        return device;
+    }
+
+    @Transactional
+    public DeviceInstance saveMappings(Long id, List<DeviceDtos.ProtocolMappingInput> inputs) {
+        DeviceInstance device = get(id);
+        return replaceMappings(device, products.get(device.productId), inputs);
+    }
+
+    private void clearProtocolConnectors(Long deviceId) {
+        for (DeviceChannel channel : channels.findByDeviceIdOrderByChannelNoAsc(deviceId)) {
+            if (channel.protocolConnectorNo != null) {
+                channel.protocolConnectorNo = null;
+                channel.updatedAt = LocalDateTime.now();
+                channels.save(channel);
+            }
+        }
     }
 
     @Transactional
     public void delete(Long id) {
         DeviceInstance device = get(id);
         if (!DeviceInstance.STATE_NOT_ACTIVE.equals(device.state)) {
-            throw new IllegalArgumentException("只有未激活的设备可以删除，请先注销");
+            throw new IllegalArgumentException("只有未激活的充电桩可以删除，请先注销");
         }
         if (devices.hasDeletionBlockers(id)) {
-            throw new IllegalArgumentException("设备存在子设备或业务记录，不能删除");
+            throw new IllegalArgumentException("充电桩存在业务记录，不能删除");
         }
+        mappings.deleteByDeviceId(id);
+        channels.deleteByDeviceId(id);
         devices.deleteTags(id);
-        devices.deleteChannels(id);
         devices.deleteLatestProperties(id);
         devices.delete(device);
     }
 
     // ------------------------------------------------------------------ 生命周期
 
-    /** 激活：把设备档案发布到运行时（协议通道下次登录即可命中）。 不在此处建立连接——连接由设备主动发起，平台只负责准入。 */
     @Transactional
     public DeviceInstance deploy(Long id) {
         DeviceInstance device = get(id);
@@ -586,7 +670,6 @@ public class DeviceInstanceService {
         return devices.save(device);
     }
 
-    /** 注销：断开运行时登记，设备回到未激活，必须重新激活才能登录。 */
     @Transactional
     public DeviceInstance undeploy(Long id) {
         DeviceInstance device = get(id);
@@ -596,7 +679,6 @@ public class DeviceInstanceService {
         return devices.save(device);
     }
 
-    /** 协议通道登录：按协议编码 + 协议侧编号定位，写入在线状态。 */
     @Transactional
     public DeviceInstance markOnline(DeviceInstance device, String sessionId) {
         device.state = DeviceInstance.STATE_ONLINE;
@@ -611,33 +693,30 @@ public class DeviceInstanceService {
     }
 
     @Transactional
-    public void touch(String protocol, String protocolDeviceId) {
-        devices.findByProtocolAndProtocolDeviceId(normalizeProtocol(protocol), protocolDeviceId)
-                .ifPresent(device -> {
-                    device.lastSeen = LocalDateTime.now();
-                    if (!device.isOnline()) {
-                        device.state = DeviceInstance.STATE_ONLINE;
-                        device.onlineAt = LocalDateTime.now();
-                    }
-                    device.updatedAt = LocalDateTime.now();
-                    devices.save(device);
-                });
+    public void touch(String protocol, String identifier) {
+        resolveIfPresent(protocol, identifier).ifPresent(device -> {
+            device.lastSeen = LocalDateTime.now();
+            if (!device.isOnline()) {
+                device.state = DeviceInstance.STATE_ONLINE;
+                device.onlineAt = LocalDateTime.now();
+            }
+            device.updatedAt = LocalDateTime.now();
+            devices.save(device);
+        });
     }
 
-    /** 断开连接：只有当前会话才能置离线，避免旧连接覆盖新会话。 */
     @Transactional
-    public void markOffline(String protocol, String protocolDeviceId, String sessionId) {
-        devices.findByProtocolAndProtocolDeviceId(normalizeProtocol(protocol), protocolDeviceId)
-                .ifPresent(device -> {
-                    if (sessionId != null && device.sessionId != null && !sessionId.equals(device.sessionId)) {
-                        return;
-                    }
-                    device.state = DeviceInstance.STATE_OFFLINE;
-                    device.sessionId = null;
-                    device.lastSeen = LocalDateTime.now();
-                    device.updatedAt = LocalDateTime.now();
-                    devices.save(device);
-                });
+    public void markOffline(String protocol, String identifier, String sessionId) {
+        resolveIfPresent(protocol, identifier).ifPresent(device -> {
+            if (sessionId != null && device.sessionId != null && !sessionId.equals(device.sessionId)) {
+                return;
+            }
+            device.state = DeviceInstance.STATE_OFFLINE;
+            device.sessionId = null;
+            device.lastSeen = LocalDateTime.now();
+            device.updatedAt = LocalDateTime.now();
+            devices.save(device);
+        });
     }
 
     @Transactional
@@ -648,17 +727,6 @@ public class DeviceInstanceService {
             device.state = DeviceInstance.STATE_OFFLINE;
             device.sessionId = null;
         }
-        device.updatedAt = LocalDateTime.now();
-        return devices.save(device);
-    }
-
-    @Transactional
-    public DeviceInstance move(Long id, Long stationId) {
-        DeviceInstance device = get(id);
-        if (stationId != null && stations.findById(stationId).isEmpty()) {
-            throw new IllegalArgumentException("站点不存在: " + stationId);
-        }
-        device.stationId = stationId;
         device.updatedAt = LocalDateTime.now();
         return devices.save(device);
     }
@@ -676,38 +744,20 @@ public class DeviceInstanceService {
         return saved;
     }
 
-    // ------------------------------------------------------------------ 总览
+    // ------------------------------------------------------------------ 总览及工具
 
     public DeviceDtos.Overview overview() {
-        List<DeviceInstance> all = devices.findByDeviceType("CHARGER");
+        List<DeviceInstance> all = devices.findAll();
         long online = all.stream().filter(DeviceInstance::isOnline).count();
         long fault = all.stream()
-                .filter(d -> DeviceInstance.STATE_FAULT.equals(d.state))
+                .filter(device -> DeviceInstance.STATE_FAULT.equals(device.state))
                 .count();
-        List<DeviceDtos.DeviceTypeSummary> byType = new ArrayList<>();
-        for (DeviceTypeCatalog type : DeviceTypeCatalog.values()) {
-            List<DeviceInstance> group = all.stream()
-                    .filter(device -> type.name().equals(device.deviceType))
-                    .toList();
-            if (group.isEmpty()) {
-                continue;
-            }
-            byType.add(new DeviceDtos.DeviceTypeSummary(
-                    type.name(),
-                    type.label(),
-                    group.size(),
-                    group.stream().filter(DeviceInstance::isOnline).count(),
-                    group.stream()
-                            .filter(d -> DeviceInstance.STATE_FAULT.equals(d.state))
-                            .count(),
-                    group.stream()
-                            .filter(d -> DeviceInstance.STATE_OFFLINE.equals(d.state))
-                            .count()));
-        }
-        return new DeviceDtos.Overview(all.size(), online, fault, stations.count(), products.count(), byType);
+        return new DeviceDtos.Overview(all.size(), online, fault, products.count());
     }
 
-    // ------------------------------------------------------------------ 工具
+    public int gunCount(Long deviceId) {
+        return (int) channels.countByDeviceId(deviceId);
+    }
 
     public static String normalizeProtocol(String protocol) {
         if (protocol == null || protocol.isBlank()) {
@@ -717,16 +767,95 @@ public class DeviceInstanceService {
         return switch (value) {
             case "OCPP16", "OCPP1.6J", "OCPP16J" -> "OCPP16J";
             case "YKC", "YKC1.6", "YKC16" -> "YKC16";
-            default -> value;
+            default -> throw new IllegalArgumentException("不支持的充电协议: " + protocol);
         };
     }
 
-    /** 充电枪数：只数 CONNECTOR 通道，光伏组串/储能簇不算枪。 */
-    public int gunCount(Long deviceId) {
-        return (int) channels.countByDeviceIdAndChannelType(deviceId, "CONNECTOR");
+    private Optional<DeviceInstance> resolveIfPresent(String protocol, String identifier) {
+        try {
+            return Optional.of(resolve(protocol, identifier));
+        } catch (DeviceRejectedException e) {
+            log.debug("忽略未登记设备状态更新: {}", e.getMessage());
+            return Optional.empty();
+        }
     }
 
-    /** 协议通道拒绝设备的统一异常，由 API 层转 409。 */
+    private static String fallbackProtocolName(String protocol) {
+        return "OCPP16J".equals(protocol) ? "OCPP" : "YKC";
+    }
+
+    private static String fallbackProtocolVersion(String protocol) {
+        return "OCPP16J".equals(protocol) ? "1.6J" : "1.6";
+    }
+
+    private static String trimToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static String normalizeGunNo(String raw, int connectorCount) {
+        String value = trimToNull(raw);
+        if (value == null || !value.matches("[0-9]{1,2}")) {
+            throw new IllegalArgumentException("枪号必须为 1 至 " + connectorCount + ": " + raw);
+        }
+        int number = Integer.parseInt(value);
+        if (number < 1 || number > connectorCount) {
+            throw new IllegalArgumentException("枪号不属于产品: " + value);
+        }
+        return String.format("%02d", number);
+    }
+
+    private static String normalizeProtocolConnectorNo(String raw) {
+        String value = trimToNull(raw);
+        if (value == null || !value.matches("[0-9]{1,2}")) {
+            throw new IllegalArgumentException("第三方枪号必须为 1 至 99: " + raw);
+        }
+        int number = Integer.parseInt(value);
+        if (number < 1 || number > 99) {
+            throw new IllegalArgumentException("第三方枪号必须为 1 至 99: " + raw);
+        }
+        return String.format("%02d", number);
+    }
+
+    private static void validateThirdPartyDeviceId(String protocol, String value) {
+        if (value.length() > 64) {
+            throw new IllegalArgumentException("第三方设备号不能超过 64 个字符");
+        }
+        if (value.matches("[1-9][0-9]{7}")) {
+            throw new IllegalArgumentException("第三方设备号不能使用 8 位平台 SN 格式");
+        }
+        if ("YKC16".equals(protocol) && !value.matches("[0-9]{14}")) {
+            throw new IllegalArgumentException("云快充第三方设备号必须为 14 位数字");
+        }
+    }
+
+    private static String format(LocalDateTime time) {
+        return time == null ? null : time.format(TIME);
+    }
+
+    private static Object parse(String json) {
+        if (json == null || json.isBlank()) {
+            return null;
+        }
+        try {
+            return ThingModelCodec.mapper().readValue(json, Object.class);
+        } catch (RuntimeException e) {
+            return json;
+        }
+    }
+
+    private record SearchSpec(String keyword, String deviceSn, String platformGunNo, String gunNo) {
+        static SearchSpec of(String raw) {
+            String value = raw == null ? "" : raw.trim();
+            if (value.matches("[1-9][0-9]{7}")) {
+                return new SearchSpec(null, value, null, null);
+            }
+            if (value.matches("[1-9][0-9]{9}")) {
+                return new SearchSpec(null, value.substring(0, 8), value, value.substring(8));
+            }
+            return new SearchSpec(value.isBlank() ? null : value, null, null, null);
+        }
+    }
+
     public static class DeviceRejectedException extends RuntimeException {
         public DeviceRejectedException(String message) {
             super(message);

@@ -4,10 +4,9 @@ import org.springframework.stereotype.Component;
 import top.yealike.pep.ops.devices.entity.DeviceInstance;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
 import top.yealike.pep.ops.devices.thingmodel.ThingModel;
-import top.yealike.pep.ops.devices.thingmodel.ThingModelCodec;
 
 /**
- * 物模型解析：产品模板 + 设备覆盖。
+ * 物模型解析：设备只继承产品物模型。
  *
  * <p>放在独立组件里，是为了让「设备服务」与「属性服务」都依赖它，而不是互相依赖。 合并语义在 {@link ThingModel#merge} 里：同名 id 整体替换，新 id 追加。
  */
@@ -26,11 +25,7 @@ public class ThingModelResolver {
         if (device == null) {
             return ThingModel.empty();
         }
-        ThingModel base = productService.model(device.productId);
-        if (device.deriveMetadata == null || device.deriveMetadata.isBlank()) {
-            return base;
-        }
-        return base.merge(ThingModelCodec.parse(device.deriveMetadata));
+        return productService.model(device.productId);
     }
 
     public ThingModel of(Long deviceId) {

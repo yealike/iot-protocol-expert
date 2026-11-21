@@ -52,7 +52,7 @@ public final class PageSupport {
                     || (allowedSortFields != null && !allowedSortFields.contains(field))) {
                 continue;
             }
-            orders.add(column(field) + " " + direction);
+            orders.add(column(field) + " " + direction + " NULLS LAST");
         }
         if (orders.isEmpty()) {
             orders.add("id DESC");

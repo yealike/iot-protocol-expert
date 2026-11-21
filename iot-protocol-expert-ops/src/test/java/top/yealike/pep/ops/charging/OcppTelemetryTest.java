@@ -7,9 +7,9 @@ import org.junit.jupiter.api.Test;
 import top.yealike.pep.ops.api.dto.OpsDtos;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
 import top.yealike.pep.ops.charging.service.BillService;
+import top.yealike.pep.ops.charging.service.ChargeBillingService;
 import top.yealike.pep.ops.charging.service.OcppBusinessService;
 import top.yealike.pep.ops.charging.service.OrderService;
-import top.yealike.pep.ops.charging.service.RateModelService;
 import top.yealike.pep.ops.devices.entity.DeviceInstance;
 import top.yealike.pep.ops.devices.service.DevicePropertyService;
 import top.yealike.pep.ops.devices.service.DeviceService;
@@ -23,7 +23,7 @@ class OcppTelemetryTest {
         var orders = mock(OrderService.class);
         var properties = mock(DevicePropertyService.class);
         var service = new OcppBusinessService(
-                telemetry, devices, orders, properties, mock(BillService.class), mock(RateModelService.class));
+                telemetry, devices, orders, properties, mock(BillService.class), mock(ChargeBillingService.class));
         var device = new DeviceInstance();
         device.id = 1L;
         var order = new ChargeOrder();
@@ -31,7 +31,7 @@ class OcppTelemetryTest {
         order.gunNo = "01";
         order.status = ChargeOrder.Status.CHARGING;
         when(devices.resolve("OCPP16J", "pile")).thenReturn(device);
-        when(orders.byOcppTransactionId(1L, 3)).thenReturn(order);
+        when(orders.lockOcppTransactionId(1L, 3)).thenReturn(order);
         service.meterValues(
                 new OpsDtos.MeterValuesRequest("pile", 1, 3, null, BigDecimal.TEN, null, null, null, null, null));
         verifyNoInteractions(telemetry, properties);
@@ -44,8 +44,8 @@ class OcppTelemetryTest {
         var devices = mock(DeviceService.class);
         var orders = mock(OrderService.class);
         var properties = mock(DevicePropertyService.class);
-        var rates = mock(RateModelService.class);
-        var service = new OcppBusinessService(telemetry, devices, orders, properties, mock(BillService.class), rates);
+        var billing = mock(ChargeBillingService.class);
+        var service = new OcppBusinessService(telemetry, devices, orders, properties, mock(BillService.class), billing);
         var device = new DeviceInstance();
         device.id = 1L;
         var order = new ChargeOrder();
@@ -55,13 +55,21 @@ class OcppTelemetryTest {
         order.status = ChargeOrder.Status.CHARGING;
         order.energy = BigDecimal.ZERO;
         when(devices.resolve("OCPP16J", "pile")).thenReturn(device);
-        when(orders.byOcppTransactionId(1L, 3)).thenReturn(order);
-        when(rates.pricePerKwh(any())).thenReturn(BigDecimal.ONE);
+        when(orders.lockOcppTransactionId(1L, 3)).thenReturn(order);
+        when(billing.applyOcppMeter(eq(order), any(), any()))
+                .thenReturn(new ChargeBillingService.FeeTotal(
+                        new BigDecimal("0.0100"),
+                        BigDecimal.ONE,
+                        BigDecimal.ONE,
+                        new BigDecimal("2.0000"),
+                        BigDecimal.ZERO,
+                        false,
+                        "[]"));
         service.meterValues(new OpsDtos.MeterValuesRequest(
                 "pile",
                 1,
                 3,
-                null,
+                BigDecimal.TEN,
                 BigDecimal.TEN,
                 BigDecimal.ONE,
                 50,
@@ -79,5 +87,8 @@ class OcppTelemetryTest {
                         eq(BigDecimal.ZERO),
                         isNull(),
                         eq(BigDecimal.valueOf(50)));
+        verify(billing).applyOcppMeter(eq(order), eq(new BigDecimal("0.0100")), any());
+        verify(orders, never()).applyMeter(anyString(), any(), any());
+        verify(orders).lockOcppTransactionId(1L, 3);
     }
 }

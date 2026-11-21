@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.ops.charging.mapper.ChargeOrderSegmentMapper">
+
+    <resultMap id="ChargeOrderSegmentMap"
+               type="top.yealike.pep.ops.charging.domain.ChargeOrderSegment">
+        <id property="id" column="id"/>
+        <result property="orderId" column="order_id"/>
+        <result property="period" column="period"/>
+        <result property="energy" column="energy"/>
+        <result property="lossEnergy" column="loss_energy"/>
+        <result property="electricityPrice" column="electricity_price"/>
+        <result property="servicePrice" column="service_price"/>
+        <result property="electricityFee" column="electricity_fee"/>
+        <result property="serviceFee" column="service_fee"/>
+        <result property="totalAmount" column="total_amount"/>
+        <result property="source" column="source"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <select id="selectByOrderId" resultMap="ChargeOrderSegmentMap">
+        select id, order_id, period, energy, loss_energy, electricity_price, service_price,
+               electricity_fee, service_fee, total_amount, source, created_at
+        from pep_domain.charge_order_segment
+        where order_id = #{orderId}
+        order by period
+    </select>
+
+    <delete id="deleteByOrderId">
+        delete from pep_domain.charge_order_segment where order_id = #{orderId}
+    </delete>
+
+    <insert id="insertBatch">
+        insert into pep_domain.charge_order_segment
+            (order_id, period, energy, loss_energy, electricity_price, service_price,
+             electricity_fee, service_fee, total_amount, source, created_at)
+        values
+        <foreach collection="segments" item="item" separator=",">
+            (#{item.orderId}, #{item.period}, #{item.energy}, #{item.lossEnergy},
+             #{item.electricityPrice}, #{item.servicePrice}, #{item.electricityFee},
+             #{item.serviceFee}, #{item.totalAmount}, #{item.source},
+             coalesce(#{item.createdAt}, now()))
+        </foreach>
+    </insert>
+</mapper>

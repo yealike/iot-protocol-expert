@@ -110,8 +110,6 @@ ipe:
       api-key: ${IPE_MODEL_API_KEY:}
       name: ${IPE_MODEL_NAME:deepseek-flash}
       timeout-ms: ${IPE_MODEL_TIMEOUT_MS:15000}
-    default-station-code: ${IPE_DEFAULT_STATION_CODE:ST-DEMO}
-    default-station-name: ${IPE_DEFAULT_STATION_NAME:演示充电站}
     loki-url: ${IPE_LOKI_URL:}
     auto-register: ${IPE_AUTO_REGISTER:true}
 logging:

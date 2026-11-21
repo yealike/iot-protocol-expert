@@ -363,12 +363,11 @@ class SimulatorRuntimeTest {
         config.setAutoConnect(false);
         config.setStateFile(temp.resolve("ocpp.properties").toString());
         config.setGunCount(1);
-        // Device selection accepts arbitrary OCPP IDs; init validates the configured YKC default first.
         var directory = org.mockito.Mockito.mock(OpsDeviceClient.class);
         org.mockito.Mockito.when(directory.get(5L))
                 .thenReturn(new OpsDeviceClient.SimulatorDevice(
-                        5L, "OCPP-A", 1L, "S", "OCPP16J", "OCPP-CHARGER-A", 1, false, true, true));
-        config.setPileCode("32010600000001");
+                        5L, "10000005", "OCPP-A", "OCPP16J", "OCPP-CHARGER-A", 1, false, "OFFLINE", true, true));
+        org.mockito.Mockito.when(directory.rates()).thenReturn(List.of(platformRate()));
         config.setOcppPort(1);
         var telemetry = new top.yealike.pep.observability.protocol.ProtocolTelemetry(
                 io.micrometer.tracing.Tracer.NOOP, new io.micrometer.core.instrument.simple.SimpleMeterRegistry());
@@ -425,6 +424,187 @@ class SimulatorRuntimeTest {
     }
 
     @Test
+    @SuppressWarnings("unchecked")
+    void selectedDeviceUsesProtocolDeviceIdAndProtocolConnectorMappings() {
+        var config = new SimulatorProperties();
+        config.setAutoConnect(false);
+        config.setPlatformPort(1);
+        config.setStateFile(temp.resolve("mapped-ykc.properties").toString());
+        var directory = org.mockito.Mockito.mock(OpsDeviceClient.class);
+        org.mockito.Mockito.when(directory.get(9L))
+                .thenReturn(new OpsDeviceClient.SimulatorDevice(
+                        9L,
+                        "10000009",
+                        "映射测试桩",
+                        "YKC16",
+                        "32010600000099",
+                        2,
+                        false,
+                        "OFFLINE",
+                        true,
+                        true,
+                        List.of(
+                                new OpsDeviceClient.SimulatorConnector("1000000901", "3"),
+                                new OpsDeviceClient.SimulatorConnector("1000000902", "7"))));
+        org.mockito.Mockito.when(directory.rates()).thenReturn(List.of(platformRate()));
+        var mapped = new SimulatorRuntime(
+                config,
+                new top.yealike.pep.observability.protocol.ProtocolTelemetry(
+                        io.micrometer.tracing.Tracer.NOOP,
+                        new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
+                store);
+        mapped.setOpsDevices(directory);
+        mapped.init(false);
+        EmbeddedChannel tcp = new EmbeddedChannel();
+        try {
+            mapped.selectDevice(9L, false);
+            assertEquals("32010600000099", mapped.state().get("pileCode"));
+            assertEquals("10000009", mapped.state().get("deviceSn"));
+            var guns = (List<Map<String, Object>>) mapped.state().get("guns");
+            assertEquals("1000000901", guns.getFirst().get("platformGunNo"));
+            assertEquals("03", guns.getFirst().get("protocolConnectorNo"));
+            assertEquals("07", guns.get(1).get("protocolConnectorNo"));
+            assertEquals(7, mapped.ocppConnectorIdForGun("1000000902"));
+            assertEquals("02", mapped.ocppGunNoForConnector(7));
+
+            mapped.onConnected(tcp);
+            mapped.onFrame(new Frame(
+                    1,
+                    false,
+                    FrameType.LOGIN_ACK.code(),
+                    RegistrationFrames.encodeLoginAck(new RegistrationFrames.LoginAck("32010600000099", true))));
+            mapped.onFrame(new Frame(
+                    2,
+                    false,
+                    FrameType.RATE_VERIFY_ACK.code(),
+                    RegistrationFrames.encodeRateVerifyAck(
+                            new RegistrationFrames.RateVerifyAck("32010600000099", "0000", true))));
+            mapped.plug("1000000902");
+            mapped.onFrame(new Frame(
+                    3,
+                    false,
+                    FrameType.REMOTE_START.code(),
+                    OperationFrames.encodeRemoteStart(new OperationFrames.RemoteStart(
+                            "32010600000099072611090959000001",
+                            "32010600000099",
+                            "07",
+                            "00000000",
+                            "00000000D14B0A54",
+                            new BigDecimal("1000")))));
+            guns = (List<Map<String, Object>>) mapped.state().get("guns");
+            assertEquals(3, guns.get(1).get("stateCode"));
+
+            var realtimeLog = mapped.logs(300).stream()
+                    .filter(log -> log.frameTypeHex().equals(String.format("0x%02X", FrameType.REALTIME.code())))
+                    .findFirst()
+                    .orElseThrow();
+            var realtime = RealtimeFrames.decodeRealtime(FrameCodec.parseHex(realtimeLog.bodyHex()));
+            assertEquals("32010600000099", realtime.pileCode());
+            assertEquals("07", realtime.gunNo());
+
+            mapped.stopLocal("1000000902");
+            var transaction =
+                    (OperationFrames.Transaction) ((List<?>) mapped.state().get("history")).getFirst();
+            assertEquals("32010600000099", transaction.pileCode());
+            assertEquals("07", transaction.gunNo());
+        } finally {
+            mapped.shutdown();
+            tcp.finishAndReleaseAll();
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void parallelCancellationResolvesMappedProtocolConnectorToLocalGun() {
+        var config = new SimulatorProperties();
+        config.setAutoConnect(false);
+        config.setPlatformPort(1);
+        config.setStateFile(temp.resolve("mapped-parallel.properties").toString());
+        var directory = org.mockito.Mockito.mock(OpsDeviceClient.class);
+        org.mockito.Mockito.when(directory.get(10L))
+                .thenReturn(new OpsDeviceClient.SimulatorDevice(
+                        10L,
+                        "10000010",
+                        "并充映射测试桩",
+                        "YKC16",
+                        "32010600000098",
+                        2,
+                        false,
+                        "OFFLINE",
+                        true,
+                        true,
+                        List.of(
+                                new OpsDeviceClient.SimulatorConnector("1000001001", "3"),
+                                new OpsDeviceClient.SimulatorConnector("1000001002", "7"))));
+        org.mockito.Mockito.when(directory.rates()).thenReturn(List.of(platformRate()));
+        var mapped = new SimulatorRuntime(
+                config,
+                new top.yealike.pep.observability.protocol.ProtocolTelemetry(
+                        io.micrometer.tracing.Tracer.NOOP,
+                        new io.micrometer.core.instrument.simple.SimpleMeterRegistry()),
+                store);
+        mapped.setOpsDevices(directory);
+        mapped.init(false);
+        EmbeddedChannel tcp = new EmbeddedChannel();
+        try {
+            mapped.selectDevice(10L, false);
+            mapped.onConnected(tcp);
+            mapped.onFrame(new Frame(
+                    1,
+                    false,
+                    FrameType.LOGIN_ACK.code(),
+                    RegistrationFrames.encodeLoginAck(new RegistrationFrames.LoginAck("32010600000098", true))));
+            mapped.onFrame(new Frame(
+                    2,
+                    false,
+                    FrameType.RATE_VERIFY_ACK.code(),
+                    RegistrationFrames.encodeRateVerifyAck(
+                            new RegistrationFrames.RateVerifyAck("32010600000098", "0000", true))));
+            mapped.plug("1000001001");
+            mapped.plug("1000001002");
+            mapped.startParallel();
+            String parallelNo =
+                    (String) ((List<Map<String, Object>>) mapped.state().get("guns"))
+                            .getFirst()
+                            .get("parallelNo");
+            mapped.onFrame(new Frame(
+                    3,
+                    false,
+                    FrameType.PARALLEL_START_ACK.code(),
+                    ParallelFrames.encodeParallelStartAck(new ParallelFrames.ParallelStartAck(
+                            "32010600000098032611090959000001",
+                            "32010600000098",
+                            "03",
+                            "0",
+                            new BigDecimal("1000"),
+                            true,
+                            0,
+                            parallelNo))));
+            mapped.onFrame(new Frame(
+                    4,
+                    false,
+                    FrameType.PARALLEL_START_ACK.code(),
+                    ParallelFrames.encodeParallelStartAck(new ParallelFrames.ParallelStartAck(
+                            "32010600000098072611090959000001",
+                            "32010600000098",
+                            "07",
+                            "0",
+                            BigDecimal.ZERO,
+                            false,
+                            3,
+                            parallelNo))));
+
+            var history = (List<?>) mapped.state().get("history");
+            assertEquals(1, history.size());
+            var transaction = (OperationFrames.Transaction) history.getFirst();
+            assertEquals("03", transaction.gunNo());
+        } finally {
+            mapped.shutdown();
+            tcp.finishAndReleaseAll();
+        }
+    }
+
+    @Test
     void failedFinalSettlementRetriesAfterChargingHasEnded() {
         start("01");
         runtime.configureClock(null, null, 64);
@@ -470,5 +650,21 @@ class SimulatorRuntimeTest {
                         org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.any(),
                         org.mockito.ArgumentMatchers.anyList());
+    }
+
+    private static OpsDeviceClient.RateModel platformRate() {
+        return new OpsDeviceClient.RateModel(
+                "0001",
+                new BigDecimal("1.20000"),
+                new BigDecimal("0.40000"),
+                new BigDecimal("1.00000"),
+                new BigDecimal("0.35000"),
+                new BigDecimal("0.80000"),
+                new BigDecimal("0.30000"),
+                new BigDecimal("0.50000"),
+                new BigDecimal("0.20000"),
+                0,
+                java.util.Collections.nCopies(48, 2),
+                true);
     }
 }

@@ -14,10 +14,10 @@ import top.yealike.pep.ops.devices.entity.Product;
 import top.yealike.pep.ops.devices.service.ProductService;
 import top.yealike.pep.ops.support.page.PageResult;
 
-/** 产品与物模型。 */
+/** 充电桩产品与物模型。 */
 @RestController
 @RequestMapping("/api/ops/products")
-@Tag(name = "产品与物模型", description = "设备产品档案、协议绑定和物模型配置")
+@Tag(name = "充电桩产品与物模型", description = "产品协议、标准枪数和物模型配置")
 public class ProductController {
 
     private final ProductService products;
@@ -32,25 +32,17 @@ public class ProductController {
     @Operation(summary = "分页查询产品")
     public PageResult<DeviceDtos.ProductRow> list(
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) String deviceType,
             @RequestParam(required = false) String categoryCode,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
             @RequestParam(required = false) String sort) {
-        return products.query(keyword, deviceType, categoryCode, page, size, sort);
+        return products.query(keyword, categoryCode, page, size, sort);
     }
 
     @GetMapping("/all")
     @Operation(summary = "查询全部产品")
     public List<DeviceDtos.ProductRow> all() {
         return products.listAll();
-    }
-
-    /** 设备类型目录 + 每个类型的模板物模型，供「从模板新建产品」使用。 */
-    @GetMapping("/device-types")
-    @Operation(summary = "查询设备类型模板")
-    public List<Map<String, Object>> deviceTypes() {
-        return products.deviceTypeCatalog();
     }
 
     @GetMapping("/{id}")
@@ -60,7 +52,7 @@ public class ProductController {
     }
 
     @GetMapping("/{id}/metadata")
-    @Operation(summary = "查询产品元数据")
+    @Operation(summary = "查询产品物模型")
     public Map<String, Object> metadata(@Parameter(description = "产品 ID") @PathVariable Long id) {
         return products.metadata(id);
     }
@@ -89,15 +81,13 @@ public class ProductController {
                 existing.productCode,
                 input.name(),
                 input.categoryCode(),
-                existing.deviceType,
-                input.protocol(),
                 input.protocolDocumentId(),
                 input.transport(),
                 input.vendor(),
                 input.model(),
+                input.connectorCount(),
                 input.metadata(),
                 input.configuration(),
-                input.sceneModel(),
                 input.description(),
                 input.state());
         Product saved = products.save(merged);

@@ -5,6 +5,7 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 import java.util.Map;
+import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 import top.yealike.pep.ops.api.dto.OpsDtos;
@@ -15,6 +16,8 @@ import top.yealike.pep.ops.charging.service.CommandService;
 import top.yealike.pep.ops.charging.service.OrderService;
 import top.yealike.pep.ops.config.OpsProperties;
 import top.yealike.pep.ops.devices.entity.DeviceInstance;
+import top.yealike.pep.ops.devices.entity.DeviceProtocolMapping;
+import top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper;
 import top.yealike.pep.ops.devices.service.DeviceService;
 import top.yealike.pep.ops.devices.service.ProtocolClient;
 
@@ -41,8 +44,8 @@ class CommandServiceOcppStateTest {
         Fixture fixture = fixture();
         ChargeOrder order = fixture.order;
         order.status = ChargeOrder.Status.CHARGING;
-        order.ocppTransactionId = 7;
         when(fixture.orders.active(1L, "01")).thenReturn(order);
+        when(fixture.orders.transactionNo(order)).thenReturn("7");
         when(fixture.protocol.execute(any(), any()))
                 .thenReturn(new OpsDtos.CommandResult(true, "OCPP 远程停机已受理", Map.of("status", "Accepted")));
 
@@ -98,26 +101,34 @@ class CommandServiceOcppStateTest {
     private static Fixture fixture() {
         var commands = mock(CommandRecordMapper.class);
         var devices = mock(DeviceService.class);
+        var mappings = mock(DeviceProtocolMappingMapper.class);
         var orders = mock(OrderService.class);
         var protocol = mock(ProtocolClient.class);
         var audits = mock(AuditService.class);
         when(commands.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
         DeviceInstance device = new DeviceInstance();
         device.id = 1L;
-        device.deviceCode = "pile";
+        device.deviceCode = "10000000";
         device.protocol = "OCPP16J";
-        device.protocolDeviceId = "pile";
         device.state = DeviceInstance.STATE_ONLINE;
         when(devices.get(1L)).thenReturn(device);
         when(devices.gunCount(1L)).thenReturn(1);
+        DeviceProtocolMapping mapping = new DeviceProtocolMapping();
+        mapping.deviceId = 1L;
+        mapping.protocol = "OCPP16J";
+        mapping.thirdPartyDeviceId = "pile";
+        mapping.enabled = true;
+        when(mappings.findByDeviceId(1L)).thenReturn(Optional.of(mapping));
         ChargeOrder order = new ChargeOrder();
         order.orderNo = "ORDER-1";
         order.deviceId = 1L;
+        order.deviceSn = device.deviceCode;
         order.gunNo = "01";
+        order.platformGunNo = device.deviceCode + "01";
         order.protocol = "OCPP16J";
         order.status = ChargeOrder.Status.PENDING;
         var service = new CommandService(
-                commands, devices, orders, protocol, new OpsProperties(), audits, mock(ObjectMapper.class));
+                commands, devices, mappings, orders, protocol, new OpsProperties(), audits, mock(ObjectMapper.class));
         return new Fixture(service, orders, protocol, order);
     }
 

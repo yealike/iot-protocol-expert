@@ -44,7 +44,6 @@ public class AuthController {
         result.put("id", String.valueOf(identity.id()));
         result.put("permissions", identity.permissions());
         result.put("authVersion", identity.authVersion());
-        result.put("allStations", identity.allStations());
         result.put("username", authentication.getName());
         result.put("roles", roles);
         return result;

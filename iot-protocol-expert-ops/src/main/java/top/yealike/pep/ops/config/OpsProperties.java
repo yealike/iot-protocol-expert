@@ -12,8 +12,6 @@ public class OpsProperties {
     private String protocolBaseUrl = "http://127.0.0.1:19080";
     private int protocolTimeoutMs = 20000;
     private boolean autoRegister = true;
-    private String defaultStationCode = "ST-DEMO";
-    private String defaultStationName = "演示充电站";
     private String lokiUrl = "";
     private final Model model = new Model();
 
@@ -121,28 +119,12 @@ public class OpsProperties {
         this.autoRegister = autoRegister;
     }
 
-    public String getDefaultStationCode() {
-        return defaultStationCode;
-    }
-
-    public void setDefaultStationCode(String defaultStationCode) {
-        this.defaultStationCode = defaultStationCode;
-    }
-
-    public String getDefaultStationName() {
-        return defaultStationName;
-    }
-
     public String getLokiUrl() {
         return lokiUrl;
     }
 
     public void setLokiUrl(String lokiUrl) {
         this.lokiUrl = lokiUrl;
-    }
-
-    public void setDefaultStationName(String defaultStationName) {
-        this.defaultStationName = defaultStationName;
     }
 
     public Model getModel() {

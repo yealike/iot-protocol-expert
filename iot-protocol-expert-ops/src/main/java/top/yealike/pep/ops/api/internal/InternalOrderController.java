@@ -31,10 +31,10 @@ public class InternalOrderController {
             throw new IllegalArgumentException("枪号不属于设备");
         }
         if (!device.allowWork) {
-            return new OpsDtos.StartResult(false, null, 0x05, "设备已停用");
+            return new OpsDtos.StartResult(false, null, null, 0x05, "设备已停用");
         }
         if (orders.active(device.id, gunNo) != null) {
-            return new OpsDtos.StartResult(false, null, 0x0A, "枪已在充电");
+            return new OpsDtos.StartResult(false, null, null, 0x0A, "枪已在充电");
         }
         ChargeOrder order = orders.create(
                 device.id,
@@ -44,7 +44,7 @@ public class InternalOrderController {
                 "00000000",
                 device.protocol,
                 "OCPP16J".equals(device.protocol));
-        return new OpsDtos.StartResult(true, order.orderNo, 0x00, "启动通过");
+        return new OpsDtos.StartResult(true, order.orderNo, orders.transactionNo(order), 0x00, "启动通过");
     }
 
     @GetMapping("/active")
@@ -69,6 +69,13 @@ public class InternalOrderController {
         return order == null ? null : orders.view(order);
     }
 
+    @GetMapping("/by-transaction")
+    public OpsDtos.OrderView byTransaction(
+            @RequestParam String protocol, @RequestParam String protocolDeviceId, @RequestParam String transactionNo) {
+        ChargeOrder order = orders.requireExternal(protocol, protocolDeviceId, transactionNo);
+        return orders.view(order);
+    }
+
     @PostMapping("/{orderNo}/bind-ocpp")
     public OpsDtos.BindOcppResult bindOcpp(
             @PathVariable String orderNo, @RequestBody(required = false) OpsDtos.BindOcppRequest request) {
@@ -86,6 +93,19 @@ public class InternalOrderController {
         orders.markCharging(orderNo, startTime == null ? null : java.time.LocalDateTime.parse(startTime));
     }
 
+    @PostMapping("/by-transaction/{transactionNo}/charging")
+    public void chargingByTransaction(
+            @PathVariable String transactionNo,
+            @RequestParam String protocol,
+            @RequestParam String protocolDeviceId,
+            @RequestParam(required = false) String startTime) {
+        orders.markChargingByTransaction(
+                protocol,
+                protocolDeviceId,
+                transactionNo,
+                startTime == null ? null : java.time.LocalDateTime.parse(startTime));
+    }
+
     @PostMapping("/{orderNo}/stop")
     public void stop(@PathVariable String orderNo, @RequestBody OpsDtos.StopRequest request) {
         orders.stop(orderNo, request.stopReason());
@@ -96,12 +116,24 @@ public class InternalOrderController {
         orders.fail(orderNo, request.reason());
     }
 
+    @PostMapping("/by-transaction/{transactionNo}/fail")
+    public void failByTransaction(
+            @PathVariable String transactionNo,
+            @RequestParam String protocol,
+            @RequestParam String protocolDeviceId,
+            @RequestBody OpsDtos.FailRequest request) {
+        orders.failByTransaction(protocol, protocolDeviceId, transactionNo, request.reason());
+    }
+
     @PostMapping("/{orderNo}/settle")
     public void settle(@PathVariable String orderNo, @RequestBody OpsDtos.SettleRequest request) {
         orders.settle(
                 orderNo,
                 request.energy(),
+                request.electricityFee(),
+                request.serviceFee(),
                 request.amount(),
+                request.lossEnergy(),
                 request.startTime(),
                 request.endTime(),
                 request.stopReason(),

@@ -80,11 +80,12 @@ public final class ChargingLedger {
             BigDecimal delta = powerKw.multiply(
                             BigDecimal.valueOf(Duration.between(from, end).toNanos()))
                     .divide(HOUR_NANOS, 16, RoundingMode.HALF_UP);
-            BigDecimal loss = delta.multiply(BigDecimal.ONE.add(BigDecimal.valueOf(model.lossRatio(), 2)));
+            BigDecimal loss = delta.multiply(BigDecimal.valueOf(model.lossRatio(), 2));
+            BigDecimal billableEnergy = delta.add(loss);
             energy[p] = energy[p].add(delta);
             lossEnergy[p] = lossEnergy[p].add(loss);
-            electricity[p] = electricity[p].add(loss.multiply(energyPrice(model, p)));
-            service[p] = service[p].add(loss.multiply(servicePrice(model, p)));
+            electricity[p] = electricity[p].add(billableEnergy.multiply(energyPrice(model, p)));
+            service[p] = service[p].add(billableEnergy.multiply(servicePrice(model, p)));
             from = end;
         }
     }

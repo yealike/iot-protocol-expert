@@ -57,6 +57,8 @@ public class PlatformProxyController {
                 return bad("不支持的平台操作");
             }
             return deviceCommand(p, request.getMethod(), body);
+        } catch (IllegalArgumentException e) {
+            return bad(e.getMessage());
         } catch (Exception e) {
             if (Thread.currentThread().isInterrupted()) {
                 return ResponseEntity.status(503).body("{\"message\":\"平台请求中断\"}");
@@ -79,7 +81,9 @@ public class PlatformProxyController {
             return bad("请先从设备列表选择一台设备");
         }
         long deviceId = ((Number) deviceIdValue).longValue();
-        if (state.get("pileCode") != null && !code.equals(String.valueOf(state.get("pileCode")))) {
+        String protocolDeviceId = String.valueOf(state.get("pileCode"));
+        String deviceSn = String.valueOf(state.get("deviceSn"));
+        if (state.get("pileCode") != null && !code.equals(protocolDeviceId) && !code.equals(deviceSn)) {
             return bad("设备编号与当前选中设备不一致");
         }
         String action = parts[3];
@@ -96,7 +100,7 @@ public class PlatformProxyController {
         if ("start".equals(action)) {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("deviceId", deviceId);
-            payload.put("gunNo", text(body, "gunNo", "01"));
+            payload.put("gunNo", platformGunNo(body, state));
             boolean ocpp = "ocpp16j".equalsIgnoreCase(String.valueOf(state.get("protocol")));
             payload.put("idTag", text(body, "logicalCard", ocpp ? text(body, "physicalCard", "IPE-APP") : "0"));
             payload.put("physicalCard", text(body, "physicalCard", null));
@@ -107,7 +111,7 @@ public class PlatformProxyController {
         if ("stop".equals(action)) {
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("deviceId", deviceId);
-            payload.put("gunNo", text(body, "gunNo", "01"));
+            payload.put("gunNo", platformGunNo(body, state));
             return forward(
                     HttpMethod.POST, opsBase() + "/api/ops/simulator/commands/stop", json.writeValueAsString(payload));
         }
@@ -154,6 +158,18 @@ public class PlatformProxyController {
     private static String text(Map<String, Object> body, String key, String fallback) {
         Object value = body.get(key);
         return value == null ? fallback : String.valueOf(value);
+    }
+
+    private static String platformGunNo(Map<String, Object> body, Map<String, Object> state) {
+        String value = text(body, "gunNo", "01").trim();
+        String sn = state.get("deviceSn") == null ? null : String.valueOf(state.get("deviceSn"));
+        if (sn != null && value.matches("[0-9]{10}") && value.startsWith(sn)) {
+            value = value.substring(8);
+        }
+        if (!value.matches("0[1-9]|[1-9][0-9]")) {
+            throw new IllegalArgumentException("枪号须为两位平台枪号或完整平台枪号");
+        }
+        return value;
     }
 
     private ResponseEntity<String> forward(HttpMethod method, String url, String body) {

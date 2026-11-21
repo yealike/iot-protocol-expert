@@ -9,18 +9,12 @@
         <result property="deviceCode" column="device_code"/>
         <result property="name" column="name"/>
         <result property="productId" column="product_id"/>
-        <result property="deviceType" column="device_type"/>
         <result property="protocol" column="protocol"/>
-        <result property="protocolDeviceId" column="protocol_device_id"/>
-        <result property="stationId" column="station_id"/>
-        <result property="parentId" column="parent_id"/>
         <result property="state" column="state"/>
         <result property="enabled" column="enabled"/>
         <result property="allowSimulate" column="allow_simulate"/>
         <result property="allowWork" column="allow_work"/>
-        <result property="deriveMetadata" column="derive_metadata"/>
         <result property="configuration" column="configuration"/>
-        <result property="sceneAnchor" column="scene_anchor"/>
         <result property="sessionId" column="session_id"/>
         <result property="lastSeen" column="last_seen"/>
         <result property="onlineAt" column="online_at"/>
@@ -31,23 +25,35 @@
     </resultMap>
 
     <sql id="columns">
-        id, device_code, name, product_id, device_type, protocol, protocol_device_id, station_id,
-        parent_id, state, enabled, allow_simulate, allow_work, derive_metadata::text as derive_metadata,
-        configuration::text as configuration, scene_anchor::text as scene_anchor, session_id,
-        last_seen, online_at, registry_time, remark, created_at, updated_at
+        id, device_code, name, product_id, protocol, state, enabled, allow_simulate,
+        allow_work, configuration::text as configuration, session_id, last_seen, online_at,
+        registry_time, remark, created_at, updated_at
+    </sql>
+
+    <sql id="deviceColumns">
+        d.id, d.device_code, d.name, d.product_id, d.protocol, d.state, d.enabled,
+        d.allow_simulate, d.allow_work, d.configuration::text as configuration, d.session_id,
+        d.last_seen, d.online_at, d.registry_time, d.remark, d.created_at, d.updated_at
     </sql>
 
     <sql id="searchWhere">
         <where>
             <if test="keyword != null and keyword != ''">
                 and (
-                    lower(d.device_code) like lower(concat('%', #{keyword}, '%'))
-                    or lower(d.name) like lower(concat('%', #{keyword}, '%'))
-                    or lower(d.protocol_device_id) like lower(concat('%', #{keyword}, '%'))
+                    lower(d.name) like lower(concat('%', #{keyword}, '%'))
+                    or d.device_code like concat('%', #{keyword}, '%')
                 )
             </if>
-            <if test="deviceType != null and deviceType != ''">
-                and d.device_type = #{deviceType}
+            <if test="deviceSn != null and deviceSn != ''">
+                and d.device_code = #{deviceSn}
+            </if>
+            <if test="platformGunNo != null and platformGunNo != ''">
+                and exists (
+                    select 1
+                    from pep_domain.device_channel c
+                    where c.device_id = d.id
+                      and c.platform_gun_no = #{platformGunNo}
+                )
             </if>
             <if test="states != null and states.size() > 0">
                 and d.state in
@@ -55,25 +61,11 @@
                     #{state}
                 </foreach>
             </if>
-            <if test="stationId != null">
-                and d.station_id = #{stationId}
-            </if>
             <if test="productId != null">
                 and d.product_id = #{productId}
             </if>
             <if test="enabled != null">
                 and d.enabled = #{enabled}
-            </if>
-            <if test="tagFilters != null and tagFilters.size() > 0">
-                <foreach collection="tagFilters" index="tagKey" item="tagValue">
-                    and exists (
-                        select 1
-                        from pep_domain.device_tag t
-                        where t.device_id = d.id
-                          and t.tag_key = #{tagKey}
-                          and t.tag_value = #{tagValue}
-                    )
-                </foreach>
             </if>
         </where>
     </sql>
@@ -90,11 +82,11 @@
         where device_code = #{deviceCode}
     </select>
 
-    <select id="selectByProtocolAndProtocolDeviceId" resultMap="DeviceInstanceMap">
-        select <include refid="columns"/>
-        from pep_domain.device_instance
-        where protocol = #{protocol}
-          and protocol_device_id = #{protocolDeviceId}
+    <select id="selectByPlatformGunNo" resultMap="DeviceInstanceMap">
+        select <include refid="deviceColumns"/>
+        from pep_domain.device_instance d
+        join pep_domain.device_channel c on c.device_id = d.id
+        where c.platform_gun_no = #{platformGunNo}
     </select>
 
     <select id="selectAll" resultMap="DeviceInstanceMap">
@@ -113,24 +105,10 @@
         order by id
     </select>
 
-    <select id="selectByStationId" resultMap="DeviceInstanceMap">
-        select <include refid="columns"/>
-        from pep_domain.device_instance
-        where station_id = #{stationId}
-        order by id
-    </select>
-
     <select id="selectByProductId" resultMap="DeviceInstanceMap">
         select <include refid="columns"/>
         from pep_domain.device_instance
         where product_id = #{productId}
-        order by id
-    </select>
-
-    <select id="selectByDeviceType" resultMap="DeviceInstanceMap">
-        select <include refid="columns"/>
-        from pep_domain.device_instance
-        where device_type = #{deviceType}
         order by id
     </select>
 
@@ -152,6 +130,21 @@
         select count(*) from pep_domain.device_instance where product_id = #{productId}
     </select>
 
+    <select id="selectNextDeviceSnCandidate" resultType="string">
+        select nextval('pep_domain.device_sn_seq')::text
+    </select>
+
+    <select id="selectMappingSnapshotToken" resultType="string">
+        select concat(
+            (select count(*) from pep_domain.device_protocol_mapping), ':',
+            coalesce((select max(updated_at)::text from pep_domain.device_protocol_mapping), ''), ':',
+            (select count(*) from pep_domain.device_instance), ':',
+            coalesce((select max(updated_at)::text from pep_domain.device_instance), ''), ':',
+            (select count(*) from pep_domain.device_channel), ':',
+            coalesce((select max(updated_at)::text from pep_domain.device_channel), '')
+        )
+    </select>
+
     <update id="expireGatewayDevices">
         update pep_domain.device_instance
         set state = 'OFFLINE',
@@ -164,47 +157,33 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         insert into pep_domain.device_instance
-            (device_code, name, product_id, device_type, protocol, protocol_device_id, station_id,
-             parent_id, state, enabled, allow_simulate, allow_work, derive_metadata, configuration,
-             scene_anchor, session_id, last_seen, online_at, registry_time, remark, created_at, updated_at)
+            (device_code, name, product_id, protocol, state, enabled, allow_simulate, allow_work,
+             configuration, session_id, last_seen, online_at, registry_time, remark, created_at, updated_at)
         values
-            (#{deviceCode}, #{name}, #{productId}, #{deviceType}, #{protocol}, #{protocolDeviceId},
-             #{stationId}, #{parentId}, #{state}, #{enabled}, #{allowSimulate}, #{allowWork},
-             cast(#{deriveMetadata} as jsonb), cast(#{configuration} as jsonb),
-             cast(#{sceneAnchor} as jsonb), #{sessionId}, #{lastSeen}, #{onlineAt}, #{registryTime},
-             #{remark}, #{createdAt}, #{updatedAt})
+            (#{deviceCode}, #{name}, #{productId}, #{protocol}, #{state}, #{enabled},
+             #{allowSimulate}, #{allowWork}, cast(#{configuration} as jsonb), #{sessionId},
+             #{lastSeen}, #{onlineAt}, #{registryTime}, #{remark}, #{createdAt}, #{updatedAt})
     </insert>
 
     <update id="update">
         update pep_domain.device_instance
-        set device_code = #{deviceCode},
-            name = #{name},
-            product_id = #{productId},
-            device_type = #{deviceType},
-            protocol = #{protocol},
-            protocol_device_id = #{protocolDeviceId},
-            station_id = #{stationId},
-            parent_id = #{parentId},
+        set name = #{name},
             state = #{state},
             enabled = #{enabled},
             allow_simulate = #{allowSimulate},
             allow_work = #{allowWork},
-            derive_metadata = cast(#{deriveMetadata} as jsonb),
             configuration = cast(#{configuration} as jsonb),
-            scene_anchor = cast(#{sceneAnchor} as jsonb),
             session_id = #{sessionId},
             last_seen = #{lastSeen},
             online_at = #{onlineAt},
             registry_time = #{registryTime},
             remark = #{remark},
-            created_at = #{createdAt},
             updated_at = #{updatedAt}
         where id = #{id}
     </update>
 
     <select id="hasDeletionBlockers" resultType="boolean">
-        select exists (select 1 from pep_domain.device_instance where parent_id = #{id})
-            or exists (select 1 from pep_domain.charge_order where device_id = #{id})
+        select exists (select 1 from pep_domain.charge_order where device_id = #{id})
             or exists (select 1 from pep_domain.bill where device_id = #{id})
             or exists (select 1 from pep_domain.device_property_ts where device_id = #{id})
             or exists (select 1 from pep_domain.device_event_log where device_id = #{id})
@@ -215,10 +194,6 @@
 
     <delete id="deleteTags">
         delete from pep_domain.device_tag where device_id = #{id}
-    </delete>
-
-    <delete id="deleteChannels">
-        delete from pep_domain.device_channel where device_id = #{id}
     </delete>
 
     <delete id="deleteLatestProperties">

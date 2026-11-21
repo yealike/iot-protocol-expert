@@ -12,8 +12,6 @@ public class Bill {
 
     public Long deviceId;
 
-    public Long stationId;
-
     public String protocol;
 
     public String sourceType;
@@ -22,7 +20,21 @@ public class Bill {
 
     public BigDecimal energy = BigDecimal.ZERO;
 
+    public BigDecimal electricityFee;
+
+    public BigDecimal serviceFee;
+
     public BigDecimal amount = BigDecimal.ZERO;
+
+    public BigDecimal lossEnergy;
+
+    public String rateModelNo;
+
+    public String rateSnapshot;
+
+    public String feeBreakdown;
+
+    public boolean partial;
 
     public String currency = "CNY";
 

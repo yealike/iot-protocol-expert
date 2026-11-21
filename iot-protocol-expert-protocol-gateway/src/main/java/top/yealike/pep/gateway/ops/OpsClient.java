@@ -75,6 +75,17 @@ public class OpsClient {
                 .body(OpsDtos.DeviceView.class);
     }
 
+    public OpsDtos.DeviceMappingPage deviceMappings(long afterId, int limit) {
+        return client.get()
+                .uri(uri -> uri.path("/internal/device-mappings")
+                        .queryParam("afterId", Math.max(afterId, 0))
+                        .queryParam("limit", Math.max(limit, 1))
+                        .build())
+                .header("X-Ops-Service-Token", token)
+                .retrieve()
+                .body(OpsDtos.DeviceMappingPage.class);
+    }
+
     public void touch(String protocol, String code) {
         postNoBody("/internal/devices/touch?protocol={p}&protocolDeviceId={c}", protocol, code);
     }
@@ -159,12 +170,42 @@ public class OpsClient {
                 .toBodilessEntity();
     }
 
+    public void chargingByTransaction(
+            String protocol, String protocolDeviceId, String transactionNo, LocalDateTime startTime) {
+        client.post()
+                .uri(uri -> {
+                    var builder = uri.path("/internal/orders/by-transaction/{transactionNo}/charging")
+                            .queryParam("protocol", protocol)
+                            .queryParam("protocolDeviceId", protocolDeviceId);
+                    if (startTime != null) {
+                        builder.queryParam("startTime", startTime);
+                    }
+                    return builder.build(transactionNo);
+                })
+                .header("X-Ops-Service-Token", token)
+                .retrieve()
+                .toBodilessEntity();
+    }
+
     public void stop(String orderNo, int reason) {
         postBody("/internal/orders/{orderNo}/stop", new OpsDtos.StopRequest(reason), orderNo);
     }
 
     public void fail(String orderNo, String reason) {
         postBody("/internal/orders/{orderNo}/fail", new OpsDtos.FailRequest(reason), orderNo);
+    }
+
+    public void failByTransaction(String protocol, String protocolDeviceId, String transactionNo, String reason) {
+        client.post()
+                .uri(uri -> uri.path("/internal/orders/by-transaction/{transactionNo}/fail")
+                        .queryParam("protocol", protocol)
+                        .queryParam("protocolDeviceId", protocolDeviceId)
+                        .build(transactionNo))
+                .header("X-Ops-Service-Token", token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .body(new OpsDtos.FailRequest(reason))
+                .retrieve()
+                .toBodilessEntity();
     }
 
     public OpsDtos.BillResult acceptYkc(OpsDtos.BillRequest request) {

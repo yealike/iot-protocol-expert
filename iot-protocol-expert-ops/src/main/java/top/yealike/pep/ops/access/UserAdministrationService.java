@@ -51,13 +51,7 @@ public class UserAdministrationService {
     private final IdentityService identities;
     private final AuditLogMapper audits;
 
-    public record Change(
-            String username,
-            String password,
-            boolean enabled,
-            List<String> roles,
-            boolean allStations,
-            List<Long> stationIds) {}
+    public record Change(String username, String password, boolean enabled, List<String> roles) {}
 
     public UserAdministrationService(
             IdentityMapper iam, PasswordEncoder passwords, IdentityService identities, AuditLogMapper audits) {
@@ -105,7 +99,7 @@ public class UserAdministrationService {
         user.passwordHash = passwords.encode(change.password());
         user.enabled = change.enabled();
         user.createdAt = LocalDateTime.now();
-        iam.insertUser(user, change.allStations());
+        iam.insertUser(user);
         long id = user.id;
         iam.insertMemberships(id);
         assign(id, change);
@@ -120,13 +114,11 @@ public class UserAdministrationService {
         if (!target.username().equals(change.username())) throw bad("用户名不能修改");
         if (target.username().equals(actor)
                 && target.roles().contains("PLATFORM_ADMIN")
-                && (!change.enabled() || !change.roles().contains("PLATFORM_ADMIN") || !change.allStations()))
-            throw bad("不能停用或移除自己的管理员权限");
-        iam.updateUserAccess(id, change.enabled(), change.allStations());
+                && (!change.enabled() || !change.roles().contains("PLATFORM_ADMIN"))) throw bad("不能停用或移除自己的管理员权限");
+        iam.updateUserAccess(id, change.enabled());
         if (change.password() != null && !change.password().isBlank())
             iam.updatePassword(id, passwords.encode(change.password()));
         iam.deleteUserRoles(id);
-        iam.deleteUserStations(id);
         assign(id, change);
         audit(actor, "USER_UPDATE", "USER", String.valueOf(id));
         return identities.byId(id).orElseThrow();
@@ -134,8 +126,6 @@ public class UserAdministrationService {
 
     private void assign(long id, Change change) {
         for (String role : Set.copyOf(change.roles())) iam.insertUserRole(id, role);
-        if (!change.allStations())
-            for (Long station : Set.copyOf(change.stationIds())) iam.insertUserStation(id, station);
     }
 
     private void validate(Change c, boolean creating) {
@@ -147,9 +137,6 @@ public class UserAdministrationService {
                         || c.password().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72))
             throw bad("密码长度须为 8 至 72 位");
         if (c.roles() == null || c.roles().isEmpty() || !ROLES.containsAll(c.roles())) throw bad("角色无效");
-        if (c.stationIds() == null || c.stationIds().stream().anyMatch(id -> id == null || id <= 0))
-            throw bad("站点范围无效");
-        for (Long id : c.stationIds()) if (!iam.stationExists(id)) throw bad("站点不存在: " + id);
     }
 
     private void audit(String actor, String action, String targetType, String targetId) {

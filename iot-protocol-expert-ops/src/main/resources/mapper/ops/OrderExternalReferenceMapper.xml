@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.ops.charging.mapper.OrderExternalReferenceMapper">
+
+    <resultMap id="OrderExternalReferenceMap"
+               type="top.yealike.pep.ops.charging.domain.OrderExternalReference">
+        <id property="id" column="id"/>
+        <result property="orderId" column="order_id"/>
+        <result property="deviceId" column="device_id"/>
+        <result property="protocol" column="protocol"/>
+        <result property="referenceType" column="reference_type"/>
+        <result property="externalReference" column="external_reference"/>
+        <result property="createdAt" column="created_at"/>
+    </resultMap>
+
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
+        insert into pep_domain.order_external_reference
+            (order_id, device_id, protocol, reference_type, external_reference, created_at)
+        values
+            (#{orderId}, #{deviceId}, #{protocol}, #{referenceType}, #{externalReference},
+             coalesce(#{createdAt}, now()))
+    </insert>
+
+    <select id="selectByExternal" resultMap="OrderExternalReferenceMap">
+        select id, order_id, device_id, protocol, reference_type, external_reference, created_at
+        from pep_domain.order_external_reference
+        where device_id = #{deviceId}
+          and protocol = #{protocol}
+          and reference_type = #{referenceType}
+          and external_reference = #{externalReference}
+    </select>
+
+    <select id="selectByOrder" resultMap="OrderExternalReferenceMap">
+        select id, order_id, device_id, protocol, reference_type, external_reference, created_at
+        from pep_domain.order_external_reference
+        where order_id = #{orderId}
+          and protocol = #{protocol}
+          and reference_type = #{referenceType}
+    </select>
+
+    <select id="nextOcppTransactionId" resultType="long">
+        select nextval('pep_domain.ocpp_transaction_seq')
+    </select>
+</mapper>

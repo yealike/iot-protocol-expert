@@ -9,7 +9,6 @@
         <result property="productCode" column="product_code"/>
         <result property="name" column="name"/>
         <result property="categoryCode" column="category_code"/>
-        <result property="deviceType" column="device_type"/>
         <result property="protocol" column="protocol"/>
         <result property="protocolDocumentId" column="protocol_document_id"/>
         <result property="transport" column="transport"/>
@@ -17,7 +16,7 @@
         <result property="model" column="model"/>
         <result property="metadata" column="metadata"/>
         <result property="configuration" column="configuration"/>
-        <result property="sceneModel" column="scene_model"/>
+        <result property="connectorCount" column="connector_count"/>
         <result property="description" column="description"/>
         <result property="state" column="state"/>
         <result property="createdAt" column="created_at"/>
@@ -25,9 +24,9 @@
     </resultMap>
 
     <sql id="columns">
-        id, product_code, name, category_code, device_type, protocol, protocol_document_id,
-        transport, vendor, model, metadata::text as metadata, configuration::text as configuration,
-        scene_model, description, state, created_at, updated_at
+        id, product_code, name, category_code, protocol, protocol_document_id, transport,
+        vendor, model, metadata::text as metadata, configuration::text as configuration,
+        connector_count, description, state, created_at, updated_at
     </sql>
 
     <sql id="searchWhere">
@@ -38,9 +37,6 @@
                     or lower(name) like lower(concat('%', #{keyword}, '%'))
                     or lower(model) like lower(concat('%', #{keyword}, '%'))
                 )
-            </if>
-            <if test="deviceType != null and deviceType != ''">
-                and device_type = #{deviceType}
             </if>
             <if test="categoryCode != null and categoryCode != ''">
                 and category_code = #{categoryCode}
@@ -104,32 +100,29 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         insert into pep_domain.product
-            (product_code, name, category_code, device_type, protocol, protocol_document_id,
-             transport, vendor, model, metadata, configuration, scene_model, description, state,
+            (product_code, name, category_code, protocol, protocol_document_id, transport,
+             vendor, model, metadata, configuration, connector_count, description, state,
              created_at, updated_at)
         values
-            (#{productCode}, #{name}, #{categoryCode}, #{deviceType}, #{protocol}, #{protocolDocumentId},
-             #{transport}, #{vendor}, #{model}, cast(#{metadata} as jsonb), cast(#{configuration} as jsonb),
-             #{sceneModel}, #{description}, #{state}, #{createdAt}, #{updatedAt})
+            (#{productCode}, #{name}, #{categoryCode}, #{protocol}, #{protocolDocumentId},
+             #{transport}, #{vendor}, #{model}, cast(#{metadata} as jsonb),
+             cast(#{configuration} as jsonb), #{connectorCount}, #{description}, #{state},
+             #{createdAt}, #{updatedAt})
     </insert>
 
     <update id="update">
         update pep_domain.product
-        set product_code = #{productCode},
-            name = #{name},
+        set name = #{name},
             category_code = #{categoryCode},
-            device_type = #{deviceType},
-            protocol = #{protocol},
             protocol_document_id = #{protocolDocumentId},
             transport = #{transport},
             vendor = #{vendor},
             model = #{model},
             metadata = cast(#{metadata} as jsonb),
             configuration = cast(#{configuration} as jsonb),
-            scene_model = #{sceneModel},
+            connector_count = #{connectorCount},
             description = #{description},
             state = #{state},
-            created_at = #{createdAt},
             updated_at = #{updatedAt}
         where id = #{id}
     </update>

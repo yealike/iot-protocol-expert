@@ -56,6 +56,30 @@
         returning id
     </select>
 
+    <update id="linkProductsByProtocolIdentity">
+        update pep_domain.product p
+        set protocol_document_id = #{id},
+            updated_at = now()
+        where (
+                (p.protocol = 'YKC16'
+                    and upper(#{protocolNameEn}) = 'YKC'
+                    and lower(#{documentVersion}) = '1.6')
+                or
+                (p.protocol = 'OCPP16J'
+                    and upper(#{protocolNameEn}) = 'OCPP'
+                    and lower(#{documentVersion}) = '1.6j')
+            )
+          and p.protocol_document_id is distinct from #{id}
+          and not exists (
+              select 1
+              from pep_domain.protocol_document d
+              where d.status = 'ACTIVE'
+                and d.id != #{id}
+                and upper(d.protocol_name_en) = upper(#{protocolNameEn})
+                and lower(d.document_version) = lower(#{documentVersion})
+          )
+    </update>
+
     <select id="selectFileInfo" resultMap="FileInfoMap">
         select storage_key, original_filename, content_type
         from pep_domain.protocol_document

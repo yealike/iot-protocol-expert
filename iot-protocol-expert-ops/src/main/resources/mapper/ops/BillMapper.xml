@@ -9,12 +9,18 @@
         <result property="orderId" column="order_id"/>
         <result property="orderNo" column="order_no"/>
         <result property="deviceId" column="device_id"/>
-        <result property="stationId" column="station_id"/>
         <result property="protocol" column="protocol"/>
         <result property="sourceType" column="source_type"/>
         <result property="sourceTransactionNo" column="source_transaction_no"/>
         <result property="energy" column="energy"/>
+        <result property="electricityFee" column="electricity_fee"/>
+        <result property="serviceFee" column="service_fee"/>
         <result property="amount" column="amount"/>
+        <result property="lossEnergy" column="loss_energy"/>
+        <result property="rateModelNo" column="rate_model_no"/>
+        <result property="rateSnapshot" column="rate_snapshot"/>
+        <result property="feeBreakdown" column="fee_breakdown"/>
+        <result property="partial" column="partial"/>
         <result property="currency" column="currency"/>
         <result property="amountType" column="amount_type"/>
         <result property="stopReason" column="stop_reason"/>
@@ -26,17 +32,11 @@
         <result property="createdAt" column="created_at"/>
     </resultMap>
 
-    <resultMap id="BillSummaryMap" type="top.yealike.pep.ops.charging.mapper.BillMapper$BillSummary">
-        <constructor>
-            <arg column="c" javaType="_long"/>
-            <arg column="a" javaType="java.math.BigDecimal"/>
-        </constructor>
-    </resultMap>
-
     <sql id="columns">
-        id, order_id, order_no, device_id, station_id, protocol, source_type, source_transaction_no,
-        energy, amount, currency, amount_type, stop_reason, ended_at, received_at, accepted,
-        reject_reason, raw_payload, created_at
+        id, order_id, order_no, device_id, protocol, source_type, source_transaction_no,
+        energy, electricity_fee, service_fee, amount, loss_energy, rate_model_no, rate_snapshot,
+        fee_breakdown, partial, currency, amount_type, stop_reason, ended_at, received_at,
+        accepted, reject_reason, raw_payload, created_at
     </sql>
 
     <select id="selectById" resultMap="BillMap">
@@ -48,7 +48,8 @@
     <select id="selectBySource" resultMap="BillMap">
         select <include refid="columns"/>
         from pep_domain.bill
-        where protocol = #{protocol}
+        where device_id = #{deviceId}
+          and protocol = #{protocol}
           and source_type = #{sourceType}
           and source_transaction_no = #{sourceTransactionNo}
     </select>
@@ -57,9 +58,6 @@
         select <include refid="columns"/>
         from pep_domain.bill
         <where>
-            <if test="stationId != null">
-                and station_id = #{stationId}
-            </if>
             <if test="deviceId != null">
                 and device_id = #{deviceId}
             </if>
@@ -94,30 +92,28 @@
         select count(*) from pep_domain.bill where order_id = #{orderId}
     </select>
 
-    <select id="summarizeStation" resultMap="BillSummaryMap">
-        select count(*) as c,
-               coalesce(sum(amount), 0) as a
-        from pep_domain.bill
-        where station_id = #{stationId}
-          and accepted = true
-          and amount_type = #{amountType}
-          and ended_at &gt;= #{from}
-          and ended_at &lt; #{to}
-    </select>
-
-    <select id="countByStationIdIsNull" resultType="long">
-        select count(*) from pep_domain.bill where station_id is null
+    <select id="lockSourceTransaction" resultType="int">
+        select 1
+        from (
+            select pg_advisory_xact_lock(hashtextextended(concat(
+                #{deviceId}, ':', #{protocol}, ':', #{sourceType}, ':', #{sourceTransactionNo}
+            ), 0))
+        ) as advisory_lock
     </select>
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         insert into pep_domain.bill
-            (order_id, order_no, device_id, station_id, protocol, source_type, source_transaction_no,
-             energy, amount, currency, amount_type, stop_reason, ended_at, received_at, accepted,
-             reject_reason, raw_payload, created_at)
+            (order_id, order_no, device_id, protocol, source_type, source_transaction_no,
+             energy, electricity_fee, service_fee, amount, loss_energy, rate_model_no,
+             rate_snapshot, fee_breakdown, partial, currency, amount_type, stop_reason,
+             ended_at, received_at, accepted, reject_reason, raw_payload, created_at)
         values
-            (#{orderId}, #{orderNo}, #{deviceId}, #{stationId}, #{protocol}, #{sourceType},
-             #{sourceTransactionNo}, #{energy}, #{amount}, #{currency}, #{amountType}, #{stopReason},
-             #{endedAt}, #{receivedAt}, #{accepted}, #{rejectReason}, #{rawPayload}, #{createdAt})
+            (#{orderId}, #{orderNo}, #{deviceId}, #{protocol}, #{sourceType},
+             #{sourceTransactionNo}, #{energy}, #{electricityFee}, #{serviceFee}, #{amount},
+             #{lossEnergy}, #{rateModelNo}, cast(#{rateSnapshot} as jsonb),
+             cast(#{feeBreakdown} as jsonb), #{partial}, #{currency}, #{amountType},
+             #{stopReason}, #{endedAt}, #{receivedAt}, #{accepted}, #{rejectReason},
+             #{rawPayload}, #{createdAt})
     </insert>
 
     <update id="update">
@@ -125,12 +121,18 @@
         set order_id = #{orderId},
             order_no = #{orderNo},
             device_id = #{deviceId},
-            station_id = #{stationId},
             protocol = #{protocol},
             source_type = #{sourceType},
             source_transaction_no = #{sourceTransactionNo},
             energy = #{energy},
+            electricity_fee = #{electricityFee},
+            service_fee = #{serviceFee},
             amount = #{amount},
+            loss_energy = #{lossEnergy},
+            rate_model_no = #{rateModelNo},
+            rate_snapshot = cast(#{rateSnapshot} as jsonb),
+            fee_breakdown = cast(#{feeBreakdown} as jsonb),
+            partial = #{partial},
             currency = #{currency},
             amount_type = #{amountType},
             stop_reason = #{stopReason},

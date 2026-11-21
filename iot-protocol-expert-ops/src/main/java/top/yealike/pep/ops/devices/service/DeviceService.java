@@ -10,24 +10,13 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.pep.ops.api.dto.OpsDtos;
-import top.yealike.pep.ops.charging.service.StationService;
-import top.yealike.pep.ops.config.OpsProperties;
-import top.yealike.pep.ops.devices.entity.DeviceChannel;
 import top.yealike.pep.ops.devices.entity.DeviceInstance;
 import top.yealike.pep.ops.devices.entity.DeviceTag;
-import top.yealike.pep.ops.devices.entity.Product;
 import top.yealike.pep.ops.devices.mapper.DeviceChannelMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceTagMapper;
-import top.yealike.pep.ops.devices.mapper.ProductMapper;
 
-/**
- * 协议侧设备服务：登录、心跳、离线与协议专属字段的落位。
- *
- * <p>和 {@link DeviceInstanceService} 的分工：这里是「协议通道看到的设备」， 只做定位、准入与运行状态维护；档案的增删改查在设备实例服务里。
- *
- * <p>协议专属字段（桩类型、SIM 卡号、厂商型号、连接器数）写进 {@link DeviceTag}， 不再污染主表——这是本次模型改造最直接的一条收益。
- */
+/** 协议通道看到的充电桩：只做准入、运行状态与协议观测信息维护。 */
 @Service
 public class DeviceService {
 
@@ -37,47 +26,41 @@ public class DeviceService {
     private final DeviceInstanceMapper devices;
     private final DeviceTagMapper tags;
     private final DeviceChannelMapper channels;
-    private final ProductMapper products;
     private final DevicePropertyService properties;
-    private final StationService stations;
-    private final OpsProperties options;
 
     public DeviceService(
             DeviceInstanceService instances,
             DeviceInstanceMapper devices,
             DeviceTagMapper tags,
             DeviceChannelMapper channels,
-            ProductMapper products,
-            DevicePropertyService properties,
-            StationService stations,
-            OpsProperties options) {
+            DevicePropertyService properties) {
         this.instances = instances;
         this.devices = devices;
         this.tags = tags;
         this.channels = channels;
-        this.products = products;
         this.properties = properties;
-        this.stations = stations;
-        this.options = options;
     }
 
     public DeviceInstance get(Long id) {
         return instances.get(id);
     }
 
-    public DeviceInstance resolve(String protocol, String protocolDeviceId) {
-        return instances.resolve(protocol, protocolDeviceId);
+    public DeviceInstance resolve(String protocol, String identifier) {
+        try {
+            return instances.resolve(protocol, identifier);
+        } catch (DeviceInstanceService.DeviceRejectedException e) {
+            throw new DeviceRejectedException(e.getMessage());
+        }
     }
 
-    /** 按平台编码模糊匹配（排障入口用）。 */
     public List<DeviceInstance> searchByCode(String code) {
-        String key = code == null ? "" : code.trim().toLowerCase(java.util.Locale.ROOT);
-        if (key.isEmpty()) {
+        String keyword = code == null ? "" : code.trim().toLowerCase(java.util.Locale.ROOT);
+        if (keyword.isEmpty()) {
             return List.of();
         }
         return devices.findAll().stream()
                 .filter(device -> device.deviceCode != null
-                        && device.deviceCode.toLowerCase(java.util.Locale.ROOT).contains(key))
+                        && device.deviceCode.toLowerCase(java.util.Locale.ROOT).contains(keyword))
                 .toList();
     }
 
@@ -85,37 +68,30 @@ public class DeviceService {
         return instances.simulatorDevices();
     }
 
-    /** 协议通道登录事件：以协议编码 + 协议侧编号定位档案，返回平台设备。 */
+    /** 协议登录：已有映射或平台 SN 才能进入，绝不自动建档。 */
     @Transactional
     public DeviceInstance login(OpsDtos.LoginRequest request) {
         String protocol = DeviceInstanceService.normalizeProtocol(request.protocol());
-        String code =
+        String identifier =
                 request.protocolDeviceId() == null || request.protocolDeviceId().isBlank()
                         ? request.pileCode()
                         : request.protocolDeviceId();
-        if (code == null || code.isBlank()) {
-            throw new DeviceRejectedException("协议侧设备编号为空");
-        }
-        DeviceInstance device =
-                devices.findByProtocolAndProtocolDeviceId(protocol, code).orElseGet(() -> autoRegister(protocol, code));
-
+        DeviceInstance device = resolve(protocol, identifier);
         if (!device.enabled) {
             throw new DeviceRejectedException("设备已停用: " + device.deviceCode);
         }
-        if (!device.protocol.equals(protocol)) {
-            device.protocol = protocol;
-        }
-        if (request.protocolDeviceId() != null && !request.protocolDeviceId().isBlank()) {
-            device.protocolDeviceId = code;
+        int expectedGuns = gunCount(device.id);
+        int reportedGuns = request.gunCount() > 0 ? request.gunCount() : request.connectorCount();
+        if (reportedGuns > 0 && reportedGuns != expectedGuns) {
+            throw new DeviceRejectedException("设备枪数与产品标准枪数不一致: 上报 " + reportedGuns + "，平台 " + expectedGuns);
         }
         applyProtocolTags(device, request);
         DeviceInstance saved = instances.markOnline(device, request.sessionId());
         properties.write(saved.id, "", "state", "idle");
-        ensureChannelCount(saved, request.gunCount() > 0 ? request.gunCount() : 1);
+        log.info("充电桩 {} 登录，协议 {}", saved.deviceCode, saved.protocol);
         return saved;
     }
 
-    /** OCPP BootNotification 建档或更新运行信息。 */
     @Transactional
     public DeviceInstance bootOcpp(OpsDtos.LoginRequest request) {
         DeviceInstance device = login(request);
@@ -124,36 +100,8 @@ public class DeviceService {
         put(extra, "chargePointModel", request.model());
         put(extra, "chargePointSerialNumber", request.serialNumber());
         put(extra, "programVersion", request.firmwareVersion());
-        put(extra, "connectorCount", String.valueOf(Math.max(request.connectorCount(), 1)));
         writeTags(device.id, extra);
-        ensureChannelCount(device, Math.max(request.connectorCount(), 1));
         return devices.findById(device.id).orElse(device);
-    }
-
-    private DeviceInstance autoRegister(String protocol, String code) {
-        if (!options.isAutoRegister()) {
-            throw new DeviceRejectedException("未登记设备: " + protocol + "/" + code);
-        }
-        Product product = products.findByProtocolAndState(protocol, "PUBLISHED").stream()
-                .findFirst()
-                .or(() -> products.findAll().stream()
-                        .filter(item -> protocol.equals(item.protocol))
-                        .findFirst())
-                .orElseThrow(() -> new DeviceRejectedException("没有用于 " + protocol + " 的产品模板，无法自动登记设备 " + code));
-        DeviceInstance device = new DeviceInstance();
-        device.deviceCode = "AUTO-" + protocol + "-" + code;
-        device.name = "自动登记 " + protocol + " " + code;
-        device.productId = product.id;
-        device.deviceType = product.deviceType;
-        device.protocol = protocol;
-        device.protocolDeviceId = code;
-        device.stationId = stations.ensureDefault(options.getDefaultStationCode(), options.getDefaultStationName()).id;
-        device.state = DeviceInstance.STATE_OFFLINE;
-        device.registryTime = LocalDateTime.now();
-        device.createdAt = LocalDateTime.now();
-        device.updatedAt = LocalDateTime.now();
-        log.info("自动登记设备 {} / {}", protocol, code);
-        return devices.save(device);
     }
 
     private void applyProtocolTags(DeviceInstance device, OpsDtos.LoginRequest request) {
@@ -165,17 +113,10 @@ public class DeviceService {
             values.put("protocolVersion", String.valueOf(request.protocolVersion()));
         }
         put(values, "programVersion", request.programVersion());
-        values.put("networkType", String.valueOf(request.networkType()));
         put(values, "simCard", request.simCard());
-        values.put("operator", String.valueOf(request.operator()));
         put(values, "chargePointVendor", request.vendor());
         put(values, "chargePointModel", request.model());
         put(values, "chargePointSerialNumber", request.serialNumber());
-        if (request.gunCount() > 0) {
-            values.put("gunCount", String.valueOf(request.gunCount()));
-        } else if (request.connectorCount() > 0) {
-            values.put("gunCount", String.valueOf(request.connectorCount()));
-        }
         writeTags(device.id, values);
     }
 
@@ -198,57 +139,33 @@ public class DeviceService {
         }
     }
 
-    private void ensureChannelCount(DeviceInstance device, int count) {
-        int target = Math.max(count, 1);
-        for (int i = 1; i <= target; i++) {
-            String channelNo = String.format("%02d", i);
-            if (channels.findByDeviceIdAndChannelNo(device.id, channelNo).isPresent()) {
-                continue;
-            }
-            DeviceChannel channel = new DeviceChannel();
-            channel.deviceId = device.id;
-            channel.channelNo = channelNo;
-            channel.channelType = "CONNECTOR";
-            channel.name = "充电枪 " + channelNo;
-            channel.createdAt = LocalDateTime.now();
-            channel.updatedAt = LocalDateTime.now();
-            channels.save(channel);
-        }
+    public void touch(String protocol, String identifier) {
+        instances.touch(protocol, identifier);
     }
 
-    public void touch(String protocol, String protocolDeviceId) {
-        instances.touch(protocol, protocolDeviceId);
-    }
-
-    public void markOffline(String protocol, String protocolDeviceId, String sessionId) {
-        instances.markOffline(protocol, protocolDeviceId, sessionId);
+    public void markOffline(String protocol, String identifier, String sessionId) {
+        instances.markOffline(protocol, identifier, sessionId);
     }
 
     @Transactional
-    public DeviceInstance patch(String protocol, String protocolDeviceId, OpsDtos.DevicePatch patch) {
-        DeviceInstance device = resolve(protocol, protocolDeviceId);
+    public DeviceInstance patch(String protocol, String identifier, OpsDtos.DevicePatch patch) {
+        DeviceInstance device = resolve(protocol, identifier);
         return instances.setAllowWork(device.id, patch.allowWork(), patch.maxPowerPercent());
     }
 
-    /** 充电枪数：只数 CONNECTOR 通道。 */
     public int gunCount(Long deviceId) {
-        return (int) channels.countByDeviceIdAndChannelType(deviceId, "CONNECTOR");
+        return (int) channels.countByDeviceId(deviceId);
     }
 
-    /** 内部契约视图：字段名与协议通道的 {@code OpsDtos.DeviceView} 保持一致。 */
     public OpsDtos.DeviceView view(DeviceInstance device) {
         Map<String, String> tagValues = new LinkedHashMap<>();
         for (DeviceTag tag : tags.findByDeviceIdOrderByTagKeyAsc(device.id)) {
             tagValues.put(tag.tagKey, tag.tagValue);
         }
-        String stationName = device.stationId == null ? null : stations.get(device.stationId).name;
         return new OpsDtos.DeviceView(
                 device.id,
                 device.deviceCode,
                 device.protocol,
-                device.protocolDeviceId,
-                device.stationId,
-                stationName,
                 gunCount(device.id),
                 device.enabled,
                 device.allowSimulate,

@@ -4,6 +4,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.transaction.jdbc.JdbcTransactionFactory;
 import org.junit.jupiter.api.Test;
@@ -18,20 +19,23 @@ import top.yealike.pep.ops.audit.AuditLog;
 import top.yealike.pep.ops.audit.mapper.AuditLogMapper;
 import top.yealike.pep.ops.charging.domain.Bill;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
+import top.yealike.pep.ops.charging.domain.ChargeOrderSegment;
 import top.yealike.pep.ops.charging.domain.CommandRecord;
+import top.yealike.pep.ops.charging.domain.OrderExternalReference;
 import top.yealike.pep.ops.charging.domain.RateModel;
-import top.yealike.pep.ops.charging.domain.Station;
 import top.yealike.pep.ops.charging.mapper.BillMapper;
 import top.yealike.pep.ops.charging.mapper.ChargeOrderMapper;
+import top.yealike.pep.ops.charging.mapper.ChargeOrderSegmentMapper;
 import top.yealike.pep.ops.charging.mapper.CommandRecordMapper;
+import top.yealike.pep.ops.charging.mapper.OrderExternalReferenceMapper;
 import top.yealike.pep.ops.charging.mapper.RateModelMapper;
-import top.yealike.pep.ops.charging.mapper.StationMapper;
 import top.yealike.pep.ops.devices.domain.FrameLog;
 import top.yealike.pep.ops.devices.entity.DeviceChannel;
 import top.yealike.pep.ops.devices.entity.DeviceEventLog;
 import top.yealike.pep.ops.devices.entity.DeviceInstance;
 import top.yealike.pep.ops.devices.entity.DevicePropertyLatest;
 import top.yealike.pep.ops.devices.entity.DevicePropertyTs;
+import top.yealike.pep.ops.devices.entity.DeviceProtocolMapping;
 import top.yealike.pep.ops.devices.entity.DeviceTag;
 import top.yealike.pep.ops.devices.entity.Product;
 import top.yealike.pep.ops.devices.mapper.DeviceChannelMapper;
@@ -39,6 +43,7 @@ import top.yealike.pep.ops.devices.mapper.DeviceEventLogMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
 import top.yealike.pep.ops.devices.mapper.DevicePropertyLatestMapper;
 import top.yealike.pep.ops.devices.mapper.DevicePropertyTsMapper;
+import top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceTagMapper;
 import top.yealike.pep.ops.devices.mapper.FrameLogMapper;
 import top.yealike.pep.ops.devices.mapper.ProductMapper;
@@ -62,31 +67,20 @@ class MapperWriteSmokeTest {
         factoryBean.setMapperLocations(
                 new PathMatchingResourcePatternResolver().getResources("classpath*:mapper/ops/*.xml"));
         String suffix = Long.toString(System.nanoTime());
+        String orderNo = String.format("%021d", Math.abs(System.nanoTime()));
+        String rateModelNo = String.format("%08d", Math.abs(System.nanoTime()) % 100_000_000);
         LocalDateTime now = LocalDateTime.now();
         try (SqlSession session = factoryBean.getObject().openSession()) {
             try {
-                StationMapper stations = session.getMapper(StationMapper.class);
-                Station station = new Station();
-                station.stationCode = "T-" + suffix;
-                station.name = "test";
-                station.timezone = "Asia/Shanghai";
-                station.status = "ENABLED";
-                station.createdAt = now;
-                station.updatedAt = now;
-                assertEquals(1, stations.insert(station));
-                assertNotNull(station.id);
-                station.name = "test-updated";
-                assertEquals(1, stations.update(station));
-
                 ProductMapper products = session.getMapper(ProductMapper.class);
                 Product product = new Product();
                 product.productCode = "T-" + suffix;
                 product.name = "test";
                 product.categoryCode = "charging";
-                product.deviceType = "CHARGER";
                 product.protocol = "YKC16";
                 product.transport = "TCP";
                 product.metadata = "{}";
+                product.connectorCount = 2;
                 product.state = "DRAFT";
                 product.createdAt = now;
                 product.updatedAt = now;
@@ -97,14 +91,12 @@ class MapperWriteSmokeTest {
 
                 DeviceInstanceMapper devices = session.getMapper(DeviceInstanceMapper.class);
                 DeviceInstance device = new DeviceInstance();
-                device.deviceCode = "T-" + suffix;
+                device.deviceCode = devices.selectNextDeviceSnCandidate();
                 device.name = "test";
                 device.productId = product.id;
-                device.deviceType = product.deviceType;
                 device.protocol = product.protocol;
-                device.protocolDeviceId = "T-" + suffix;
-                device.stationId = station.id;
                 device.state = DeviceInstance.STATE_OFFLINE;
+                device.configuration = "{}";
                 device.createdAt = now;
                 device.updatedAt = now;
                 assertEquals(1, devices.insert(device));
@@ -123,7 +115,8 @@ class MapperWriteSmokeTest {
                 DeviceChannel channel = new DeviceChannel();
                 channel.deviceId = device.id;
                 channel.channelNo = "01";
-                channel.channelType = "CONNECTOR";
+                channel.platformGunNo = device.deviceCode + channel.channelNo;
+                channel.protocolConnectorNo = "1";
                 channel.name = "gun";
                 channel.createdAt = now;
                 channel.updatedAt = now;
@@ -131,6 +124,20 @@ class MapperWriteSmokeTest {
                 assertNotNull(channel.id);
                 channel.name = "gun-updated";
                 assertEquals(1, channels.update(channel));
+
+                DeviceProtocolMappingMapper protocolMappings = session.getMapper(DeviceProtocolMappingMapper.class);
+                DeviceProtocolMapping mapping = new DeviceProtocolMapping();
+                mapping.deviceId = device.id;
+                mapping.protocol = "YKC16";
+                mapping.thirdPartyDeviceId = "T-" + suffix;
+                mapping.enabled = true;
+                mapping.createdAt = now;
+                mapping.updatedAt = now;
+                assertEquals(1, protocolMappings.insert(mapping));
+                assertNotNull(mapping.id);
+                mapping.thirdPartyDeviceId = "T-" + suffix + "-updated";
+                mapping.updatedAt = now.plusSeconds(1);
+                assertEquals(1, protocolMappings.update(mapping));
 
                 DevicePropertyLatestMapper latest = session.getMapper(DevicePropertyLatestMapper.class);
                 DevicePropertyLatest row = new DevicePropertyLatest(device.id, "", "soc", "int");
@@ -153,11 +160,19 @@ class MapperWriteSmokeTest {
 
                 ChargeOrderMapper orders = session.getMapper(ChargeOrderMapper.class);
                 ChargeOrder order = new ChargeOrder();
-                order.orderNo = "T-" + suffix;
+                order.orderNo = orderNo;
                 order.deviceId = device.id;
+                order.deviceSn = device.deviceCode;
                 order.gunNo = "01";
-                order.stationId = station.id;
+                order.platformGunNo = channel.platformGunNo;
                 order.protocol = "YKC16";
+                order.electricityFee = new BigDecimal("1.2000");
+                order.serviceFee = new BigDecimal("0.4000");
+                order.amount = new BigDecimal("1.6000");
+                order.lossEnergy = BigDecimal.ZERO;
+                order.rateModelNo = rateModelNo;
+                order.rateSnapshot = "{}";
+                order.feeBreakdown = "[]";
                 order.status = ChargeOrder.Status.PENDING;
                 order.createdAt = now;
                 order.updatedAt = now;
@@ -166,15 +181,50 @@ class MapperWriteSmokeTest {
                 order.status = ChargeOrder.Status.CHARGING;
                 assertEquals(1, orders.update(order));
 
+                OrderExternalReferenceMapper references = session.getMapper(OrderExternalReferenceMapper.class);
+                OrderExternalReference reference = new OrderExternalReference();
+                reference.orderId = order.id;
+                reference.deviceId = device.id;
+                reference.protocol = order.protocol;
+                reference.referenceType = "YKC_TRANSACTION";
+                reference.externalReference = suffix;
+                reference.createdAt = now;
+                assertEquals(1, references.insert(reference));
+                assertNotNull(reference.id);
+                assertNotNull(references.selectByExternal(device.id, order.protocol, "YKC_TRANSACTION", suffix));
+                assertNotNull(references.selectByOrder(order.id, order.protocol, "YKC_TRANSACTION"));
+                assertNotNull(references.nextOcppTransactionId());
+
+                ChargeOrderSegmentMapper segments = session.getMapper(ChargeOrderSegmentMapper.class);
+                ChargeOrderSegment segment = new ChargeOrderSegment();
+                segment.orderId = order.id;
+                segment.period = 0;
+                segment.energy = new BigDecimal("1.0000");
+                segment.electricityPrice = new BigDecimal("1.20000");
+                segment.servicePrice = new BigDecimal("0.40000");
+                segment.electricityFee = new BigDecimal("1.2000");
+                segment.serviceFee = new BigDecimal("0.4000");
+                segment.totalAmount = new BigDecimal("1.6000");
+                segment.source = ChargeOrder.AMOUNT_SOURCE_DEVICE;
+                segment.createdAt = now;
+                assertEquals(1, segments.insertBatch(List.of(segment)));
+                assertEquals(1, segments.selectByOrderId(order.id).size());
+
                 BillMapper bills = session.getMapper(BillMapper.class);
                 Bill bill = new Bill();
                 bill.orderId = order.id;
                 bill.orderNo = order.orderNo;
                 bill.deviceId = device.id;
-                bill.stationId = station.id;
                 bill.protocol = "YKC16";
                 bill.sourceType = "TEST";
                 bill.sourceTransactionNo = suffix;
+                bill.electricityFee = new BigDecimal("1.2000");
+                bill.serviceFee = new BigDecimal("0.4000");
+                bill.amount = new BigDecimal("1.6000");
+                bill.lossEnergy = BigDecimal.ZERO;
+                bill.rateModelNo = rateModelNo;
+                bill.rateSnapshot = "{}";
+                bill.feeBreakdown = "[]";
                 bill.amountType = ChargeOrder.AMOUNT_SOURCE_DEVICE;
                 bill.endedAt = now;
                 bill.receivedAt = now;
@@ -186,19 +236,19 @@ class MapperWriteSmokeTest {
 
                 RateModelMapper rates = session.getMapper(RateModelMapper.class);
                 RateModel rate = new RateModel();
-                rate.modelNo = suffix.substring(Math.max(0, suffix.length() - 8));
+                rate.modelNo = rateModelNo;
                 rate.segments = "2,2,2,2";
                 rate.updatedAt = now;
                 assertEquals(1, rates.insert(rate));
                 assertNotNull(rate.id);
-                rate.active = true;
+                rate.lossRatio = 1;
                 assertEquals(1, rates.update(rate));
 
                 FrameLogMapper frames = session.getMapper(FrameLogMapper.class);
                 FrameLog frame = new FrameLog();
                 frame.deviceId = device.id;
                 frame.protocol = "YKC16";
-                frame.protocolDeviceId = device.protocolDeviceId;
+                frame.protocolDeviceId = mapping.thirdPartyDeviceId;
                 frame.direction = "IN";
                 frame.createdAt = now;
                 assertEquals(1, frames.insert(frame));
@@ -245,12 +295,12 @@ class MapperWriteSmokeTest {
                 managed.username = "m-" + suffix;
                 managed.passwordHash = "hash";
                 managed.createdAt = now;
-                assertEquals(1, identities.insertUser(managed, false));
+                assertEquals(1, identities.insertUser(managed));
                 assertNotNull(managed.id);
-                assertEquals(1, identities.updateUserAccess(managed.id, false, true));
+                assertEquals(1, identities.insertMemberships(managed.id));
+                assertEquals(1, identities.updateUserAccess(managed.id, false));
                 assertEquals(1, identities.updatePassword(managed.id, "hash2"));
                 identities.deleteUserRoles(managed.id);
-                identities.deleteUserStations(managed.id);
                 String testRole = "T" + suffix;
                 try (var statement = session.getConnection()
                         .prepareStatement("insert into pep_platform.role(id, code, name, scope_type, built_in) "
@@ -260,7 +310,6 @@ class MapperWriteSmokeTest {
                     assertEquals(1, statement.executeUpdate());
                 }
                 identities.insertUserRole(managed.id, testRole);
-                identities.insertUserStation(managed.id, station.id);
                 identities.deleteRolePermissions(testRole);
                 identities.insertRolePermission(testRole, "iam:user:manage");
                 assertEquals(1, identities.incrementAuthVersionByRole(testRole));
@@ -304,8 +353,7 @@ class MapperWriteSmokeTest {
                         telemetry.lockPendingSamples().getFirst().id());
 
                 identities.deleteUserRoles(managed.id);
-                identities.deleteUserStations(managed.id);
-                assertEquals(1, stations.deleteById(station.id));
+                assertEquals(1, segments.deleteByOrderId(order.id));
             } finally {
                 session.rollback();
             }

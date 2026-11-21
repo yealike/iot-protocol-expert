@@ -2,12 +2,14 @@ package top.yealike.pep.ops.devices.service;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.pep.ops.api.dto.OpsDtos;
 import top.yealike.pep.ops.devices.domain.FrameLog;
 import top.yealike.pep.ops.devices.entity.DeviceInstance;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
+import top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper;
 import top.yealike.pep.ops.devices.mapper.FrameLogMapper;
 
 @Service
@@ -15,10 +17,12 @@ public class FrameLogService {
 
     private final FrameLogMapper frames;
     private final DeviceInstanceMapper devices;
+    private final DeviceProtocolMappingMapper mappings;
 
-    public FrameLogService(FrameLogMapper frames, DeviceInstanceMapper devices) {
+    public FrameLogService(FrameLogMapper frames, DeviceInstanceMapper devices, DeviceProtocolMappingMapper mappings) {
         this.frames = frames;
         this.devices = devices;
+        this.mappings = mappings;
     }
 
     /** 协议通道转交的原始报文与解析摘要。平台事务内留存，未知设备也保留协议侧编号。 */
@@ -59,9 +63,35 @@ public class FrameLogService {
         return deviceId == null ? frames.selectRecent(200) : frames.findTop200ByDeviceIdOrderByCreatedAtDesc(deviceId);
     }
 
+    /** AI 只读工具使用的严格设备范围查询；默认最多 50 条，不向模型暴露整段报文。 */
+    public List<FrameLog> searchForAi(
+            Long deviceId,
+            String direction,
+            Integer frameType,
+            String frameLabel,
+            LocalDateTime from,
+            LocalDateTime to,
+            int limit) {
+        if (deviceId == null) {
+            throw new IllegalArgumentException("deviceId 不能为空");
+        }
+        return frames.searchForAi(
+                deviceId, direction, frameType, frameLabel, from, to, Math.min(Math.max(limit, 1), 50));
+    }
+
+    /** 只允许读取归属于指定设备的帧，避免模型通过 frameId 探测其他设备报文。 */
+    public Optional<FrameLog> findForDevice(Long deviceId, Long frameId) {
+        if (deviceId == null || frameId == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(frames.selectByIdAndDeviceId(frameId, deviceId));
+    }
+
     private java.util.Optional<DeviceInstance> deviceOf(String protocol, String code) {
         if (code == null || code.isBlank()) return java.util.Optional.empty();
-        return devices.findByProtocolAndProtocolDeviceId(protocol, code);
+        return mappings.findByProtocolAndThirdPartyDeviceId(protocol, code)
+                .filter(mapping -> mapping.enabled)
+                .flatMap(mapping -> devices.findById(mapping.deviceId));
     }
 
     private static String truncate(String value, int max) {

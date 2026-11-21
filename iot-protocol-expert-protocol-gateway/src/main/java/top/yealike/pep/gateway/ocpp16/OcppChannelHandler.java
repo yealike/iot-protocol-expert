@@ -19,6 +19,8 @@ import top.yealike.pep.codec.ocpp16.OcppConstants;
 import top.yealike.pep.codec.ocpp16.OcppException;
 import top.yealike.pep.codec.ocpp16.OcppMessage;
 import top.yealike.pep.codec.ocpp16.OcppMessageCodec;
+import top.yealike.pep.gateway.core.DeviceIdentityRegistry;
+import top.yealike.pep.gateway.core.ProtocolType;
 import top.yealike.pep.gateway.ops.OpsClient;
 
 /** OCPP WebSocket 连接入口。握手完成后绑定桩号，文本帧进入分发器。 */
@@ -31,6 +33,7 @@ public class OcppChannelHandler extends SimpleChannelInboundHandler<WebSocketFra
     private final OcppDispatcher dispatcher;
     private final OcppTelemetry telemetry;
     private final OpsClient ops;
+    private final DeviceIdentityRegistry identities;
 
     private String chargePointId;
 
@@ -39,12 +42,14 @@ public class OcppChannelHandler extends SimpleChannelInboundHandler<WebSocketFra
             OcppSessionRegistry sessions,
             OcppDispatcher dispatcher,
             OcppTelemetry telemetry,
-            OpsClient ops) {
+            OpsClient ops,
+            DeviceIdentityRegistry identities) {
         this.path = path;
         this.sessions = sessions;
         this.dispatcher = dispatcher;
         this.telemetry = telemetry;
         this.ops = ops;
+        this.identities = identities;
     }
 
     @Override
@@ -57,9 +62,18 @@ public class OcppChannelHandler extends SimpleChannelInboundHandler<WebSocketFra
                 ctx.close();
                 return;
             }
-            sessions.bind(chargePointId, ctx.channel());
+            DeviceIdentityRegistry.Device identity;
+            try {
+                identity = identities.resolveExternal(ProtocolType.OCPP16J, chargePointId);
+            } catch (RuntimeException e) {
+                log.warn("OCPP chargePointId {} 未在设备映射中登记，关闭连接: {}", chargePointId, e.getMessage());
+                ctx.close();
+                return;
+            }
+            sessions.bind(identity.deviceSn(), chargePointId, ctx.channel());
             log.info(
-                    "OCPP 桩 {} 已连接，协议版本 {}，来自 {}",
+                    "OCPP 设备 {}（chargePointId {}）已连接，协议版本 {}，来自 {}",
+                    identity.deviceSn(),
                     chargePointId,
                     handshake.selectedSubprotocol(),
                     ctx.channel().remoteAddress());
@@ -96,7 +110,8 @@ public class OcppChannelHandler extends SimpleChannelInboundHandler<WebSocketFra
     }
 
     private void handleText(ChannelHandlerContext ctx, String text) {
-        String pileCode = sessions.chargePointOf(ctx.channel());
+        String deviceSn = sessions.chargePointOf(ctx.channel());
+        String externalChargePointId = sessions.externalChargePointOf(ctx.channel());
         try (var operation = telemetry.start("platform", "receive", null, null, null, null)) {
             OcppMessage message;
             try {
@@ -104,18 +119,19 @@ public class OcppChannelHandler extends SimpleChannelInboundHandler<WebSocketFra
             } catch (OcppException e) {
                 operation.fail(e);
                 sessions.logInbound(
-                        pileCode, OcppMessage.error("-1", e.errorCode(), e.getMessage(), OcppMessageCodec.object()));
+                        externalChargePointId,
+                        OcppMessage.error("-1", e.errorCode(), e.getMessage(), OcppMessageCodec.object()));
                 sessions.sendError(ctx.channel(), "-1", "Unknown", e.errorCode(), e.getMessage());
                 return;
             }
-            if (pileCode != null) {
-                sessions.logInbound(pileCode, message);
+            if (externalChargePointId != null) {
+                sessions.logInbound(externalChargePointId, message);
             }
             if (!message.isCall()) {
                 sessions.complete(message);
                 return;
             }
-            dispatchCall(ctx, pileCode, message);
+            dispatchCall(ctx, deviceSn, message);
         }
     }
 
@@ -145,14 +161,14 @@ public class OcppChannelHandler extends SimpleChannelInboundHandler<WebSocketFra
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
-        String pileCode = sessions.unbind(ctx.channel());
-        if (pileCode != null) {
+        String deviceSn = sessions.unbind(ctx.channel());
+        if (deviceSn != null) {
             try {
-                ops.offline("OCPP16J", pileCode, ctx.channel().id().asLongText());
+                ops.offline("OCPP16J", deviceSn, ctx.channel().id().asLongText());
             } catch (RuntimeException e) {
-                log.warn("OCPP 桩 {} 离线状态同步失败: {}", pileCode, e.getMessage());
+                log.warn("OCPP 设备 {} 离线状态同步失败: {}", deviceSn, e.getMessage());
             }
-            log.info("OCPP 桩 {} 连接关闭", pileCode);
+            log.info("OCPP 设备 {} 连接关闭", deviceSn);
         }
     }
 

@@ -43,6 +43,7 @@ public class ProtocolDocumentController {
 
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     @PreAuthorize("hasAuthority('ops:manage')")
+    @Transactional
     public Map<String, Object> upload(
             @RequestParam String protocolCode,
             @RequestParam String protocolNameEn,
@@ -109,7 +110,8 @@ public class ProtocolDocumentController {
                     file.getSize(),
                     HexFormat.of().formatHex(hash),
                     principal.getName());
-            return Map.of("id", id);
+            int linkedProducts = documents.linkProductsByProtocolIdentity(id, protocolNameEn, documentVersion.trim());
+            return Map.of("id", id, "linkedProducts", linkedProducts);
         } catch (Exception e) {
             Files.deleteIfExists(temp);
             Files.deleteIfExists(target);

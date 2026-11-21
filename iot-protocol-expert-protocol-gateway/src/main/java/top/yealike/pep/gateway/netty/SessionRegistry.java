@@ -35,6 +35,7 @@ public class SessionRegistry implements OnlineDeviceDirectory {
 
     private final Map<String, Session> sessions = new ConcurrentHashMap<>();
     private final Map<ChannelId, String> pileByChannel = new ConcurrentHashMap<>();
+    private final Map<ChannelId, String> externalPileByChannel = new ConcurrentHashMap<>();
     private final Map<String, Pending> pendings = new ConcurrentHashMap<>();
     private final AtomicInteger sequence = new AtomicInteger();
 
@@ -56,9 +57,10 @@ public class SessionRegistry implements OnlineDeviceDirectory {
         this.cryptoKey = TripleDes.keyFromHex(properties.getCryptoKeyHex());
     }
 
-    public record Session(Channel channel, String pileCode, boolean encrypted, AtomicInteger sequence) {
-        public Session(Channel channel, String pileCode, boolean encrypted) {
-            this(channel, pileCode, encrypted, new AtomicInteger());
+    public record Session(
+            Channel channel, String deviceSn, String externalPileCode, boolean encrypted, AtomicInteger sequence) {
+        public Session(Channel channel, String deviceSn, String externalPileCode, boolean encrypted) {
+            this(channel, deviceSn, externalPileCode, encrypted, new AtomicInteger());
         }
 
         public int next() {
@@ -67,16 +69,27 @@ public class SessionRegistry implements OnlineDeviceDirectory {
     }
 
     public void bind(String pileCode, Channel channel, boolean encrypted) {
-        Session previous = sessions.put(pileCode, new Session(channel, pileCode, encrypted));
-        pileByChannel.put(channel.id(), pileCode);
+        bind(pileCode, pileCode, channel, encrypted);
+    }
+
+    public void bind(String deviceSn, String externalPileCode, Channel channel, boolean encrypted) {
+        Session previous = sessions.put(deviceSn, new Session(channel, deviceSn, externalPileCode, encrypted));
+        pileByChannel.put(channel.id(), deviceSn);
+        externalPileByChannel.put(channel.id(), externalPileCode);
         if (previous != null && previous.channel() != channel) {
             previous.channel().close();
         }
-        log.info("桩 {} 已绑定会话 {}，加密={}", pileCode, channel.id().asShortText(), encrypted);
+        log.info(
+                "设备 {}（协议设备号 {}）已绑定会话 {}，加密={}",
+                deviceSn,
+                externalPileCode,
+                channel.id().asShortText(),
+                encrypted);
     }
 
     public String unbind(Channel channel) {
         String pileCode = pileByChannel.remove(channel.id());
+        externalPileByChannel.remove(channel.id());
         if (pileCode != null) {
             Session current = sessions.get(pileCode);
             if (current == null || current.channel() != channel) return null;
@@ -95,6 +108,10 @@ public class SessionRegistry implements OnlineDeviceDirectory {
         return pileByChannel.get(channel.id());
     }
 
+    public String externalPileOf(Channel channel) {
+        return externalPileByChannel.get(channel.id());
+    }
+
     public boolean isOnline(String pileCode) {
         Session session = sessions.get(pileCode);
         return session != null && session.channel().isActive();
@@ -108,7 +125,14 @@ public class SessionRegistry implements OnlineDeviceDirectory {
     public void setEncrypted(String pileCode, boolean encrypted) {
         Session session = sessions.get(pileCode);
         if (session != null) {
-            sessions.put(pileCode, new Session(session.channel(), pileCode, encrypted, session.sequence()));
+            sessions.put(
+                    pileCode,
+                    new Session(
+                            session.channel(),
+                            session.deviceSn(),
+                            session.externalPileCode(),
+                            encrypted,
+                            session.sequence()));
         }
     }
 
@@ -125,7 +149,7 @@ public class SessionRegistry implements OnlineDeviceDirectory {
         try (var operation = telemetry.start("platform", "send", frame, telemetry.capture())) {
             try {
                 byte[] wire = FrameCodec.encode(frame, session.encrypted(), cryptoKey);
-                logFrame("OUT", frame, pileCode, FrameCodec.hex(wire), null);
+                logFrame("OUT", frame, session.externalPileCode(), FrameCodec.hex(wire), null);
                 operation.completeOn(session.channel().writeAndFlush(Unpooled.wrappedBuffer(wire)));
             } catch (RuntimeException e) {
                 operation.fail(e);
@@ -167,7 +191,7 @@ public class SessionRegistry implements OnlineDeviceDirectory {
 
         try {
             byte[] wire = FrameCodec.encode(frame, session.encrypted(), cryptoKey);
-            logFrame("OUT", frame, pileCode, FrameCodec.hex(wire), null);
+            logFrame("OUT", frame, session.externalPileCode(), FrameCodec.hex(wire), null);
             session.channel().writeAndFlush(Unpooled.wrappedBuffer(wire)).addListener(write -> {
                 if (!write.isSuccess())
                     pending.future()
@@ -214,6 +238,23 @@ public class SessionRegistry implements OnlineDeviceDirectory {
         if (pileCode == null || type == null) return null;
         Pending pending = pendings.get(pendingKey(pileCode, type, frame.sequence()));
         return pending == null ? null : pending.context();
+    }
+
+    /** 登录被拒绝时尚未建立可信会话，直接向当前 TCP 通道写应答。 */
+    public void sendUnauthenticated(
+            Channel channel,
+            String externalPileCode,
+            boolean encrypted,
+            FrameType type,
+            byte[] body,
+            int responseSequence) {
+        if (channel == null || !channel.isActive()) {
+            return;
+        }
+        Frame frame = new Frame(responseSequence, encrypted, type.code(), body);
+        byte[] wire = FrameCodec.encode(frame, encrypted, cryptoKey);
+        logFrame("OUT", frame, externalPileCode, FrameCodec.hex(wire), null);
+        channel.writeAndFlush(Unpooled.wrappedBuffer(wire));
     }
 
     private record Pending(String key, CompletableFuture<Frame> future, TraceContext context) {}

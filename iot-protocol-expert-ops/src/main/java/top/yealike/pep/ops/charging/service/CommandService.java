@@ -15,6 +15,7 @@ import top.yealike.pep.ops.charging.domain.CommandRecord;
 import top.yealike.pep.ops.charging.mapper.CommandRecordMapper;
 import top.yealike.pep.ops.config.OpsProperties;
 import top.yealike.pep.ops.devices.entity.DeviceInstance;
+import top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper;
 import top.yealike.pep.ops.devices.service.DeviceService;
 import top.yealike.pep.ops.devices.service.ProtocolClient;
 
@@ -25,6 +26,7 @@ public class CommandService {
 
     private final CommandRecordMapper commands;
     private final DeviceService devices;
+    private final DeviceProtocolMappingMapper mappings;
     private final OrderService orders;
     private final ProtocolClient protocol;
     private final OpsProperties properties;
@@ -34,6 +36,7 @@ public class CommandService {
     public CommandService(
             CommandRecordMapper commands,
             DeviceService devices,
+            DeviceProtocolMappingMapper mappings,
             OrderService orders,
             ProtocolClient protocol,
             OpsProperties properties,
@@ -41,6 +44,7 @@ public class CommandService {
             ObjectMapper json) {
         this.commands = commands;
         this.devices = devices;
+        this.mappings = mappings;
         this.orders = orders;
         this.protocol = protocol;
         this.properties = properties;
@@ -54,6 +58,7 @@ public class CommandService {
         if (!device.enabled) {
             throw new IllegalArgumentException("设备已停用: " + device.deviceCode);
         }
+        String protocolDeviceId = protocolDeviceId(deviceId);
         CommandRecord record = new CommandRecord();
         record.deviceId = device.id;
         record.protocol = device.protocol;
@@ -68,11 +73,7 @@ public class CommandService {
         try {
             OpsDtos.CommandResult result = protocol.execute(
                     new OpsDtos.CommandRequest(
-                            device.protocol,
-                            device.protocolDeviceId,
-                            type,
-                            params == null ? Map.of() : params,
-                            operator),
+                            device.protocol, protocolDeviceId, type, params == null ? Map.of() : params, operator),
                     properties.getServiceToken());
             record.sentAt = LocalDateTime.now();
             record.ackAt = LocalDateTime.now();
@@ -111,6 +112,7 @@ public class CommandService {
         ChargeOrder order = orders.create(device.id, gunNo, 1, physicalCard, normalizedIdTag, device.protocol, ocpp);
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("orderNo", order.orderNo);
+        params.put("transactionNo", orders.transactionNo(order));
         params.put("gunNo", gunNo);
         params.put("idTag", normalizedIdTag);
         params.put("physicalCard", physicalCard);
@@ -145,8 +147,12 @@ public class CommandService {
         Map<String, Object> params = new LinkedHashMap<>();
         params.put("orderNo", order.orderNo);
         params.put("gunNo", gunNo);
-        if (order.ocppTransactionId != null) {
-            params.put("transactionId", order.ocppTransactionId);
+        String transactionNo = orders.transactionNo(order);
+        if (transactionNo != null) {
+            params.put("transactionNo", transactionNo);
+            if ("OCPP16J".equals(device.protocol)) {
+                params.put("transactionId", Integer.parseInt(transactionNo));
+            }
         }
         CommandRecord record = submit(device.id, "remote-stop", params, operator);
         if (record.status == CommandRecord.Status.SUCCESS && !"OCPP16J".equals(device.protocol)) {
@@ -187,6 +193,13 @@ public class CommandService {
         } catch (RuntimeException e) {
             return String.valueOf(value);
         }
+    }
+
+    private String protocolDeviceId(Long deviceId) {
+        return mappings.findByDeviceId(deviceId)
+                .filter(mapping -> mapping.enabled)
+                .map(mapping -> mapping.thirdPartyDeviceId)
+                .orElseThrow(() -> new IllegalArgumentException("设备未配置第三方协议设备号: " + deviceId));
     }
 
     private static CommandRecord.Status classify(OpsDtos.CommandResult result) {

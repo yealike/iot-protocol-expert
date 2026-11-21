@@ -8,11 +8,10 @@
         <id property="id" column="id"/>
         <result property="orderNo" column="order_no"/>
         <result property="deviceId" column="device_id"/>
+        <result property="deviceSn" column="device_sn"/>
         <result property="gunNo" column="gun_no"/>
-        <result property="stationId" column="station_id"/>
+        <result property="platformGunNo" column="platform_gun_no"/>
         <result property="protocol" column="protocol"/>
-        <result property="protocolTransactionId" column="protocol_transaction_id"/>
-        <result property="ocppTransactionId" column="ocpp_transaction_id"/>
         <result property="meterStartWh" column="meter_start_wh"/>
         <result property="status" column="status"/>
         <result property="startType" column="start_type"/>
@@ -21,7 +20,13 @@
         <result property="startTime" column="start_time"/>
         <result property="endTime" column="end_time"/>
         <result property="energy" column="energy"/>
+        <result property="electricityFee" column="electricity_fee"/>
+        <result property="serviceFee" column="service_fee"/>
         <result property="amount" column="amount"/>
+        <result property="lossEnergy" column="loss_energy"/>
+        <result property="rateModelNo" column="rate_model_no"/>
+        <result property="rateSnapshot" column="rate_snapshot"/>
+        <result property="feeBreakdown" column="fee_breakdown"/>
         <result property="amountSource" column="amount_source"/>
         <result property="stopReason" column="stop_reason"/>
         <result property="failReason" column="fail_reason"/>
@@ -38,17 +43,14 @@
     </resultMap>
 
     <sql id="columns">
-        id, order_no, device_id, gun_no, station_id, protocol, protocol_transaction_id,
-        ocpp_transaction_id, meter_start_wh, status, start_type, physical_card, logical_card,
-        start_time, end_time, energy, amount, amount_source, stop_reason, fail_reason,
-        created_at, updated_at
+        id, order_no, device_id, device_sn, gun_no, platform_gun_no, protocol, meter_start_wh,
+        status, start_type, physical_card, logical_card, start_time, end_time, energy,
+        electricity_fee, service_fee, amount, loss_energy, rate_model_no, rate_snapshot,
+        fee_breakdown, amount_source, stop_reason, fail_reason, created_at, updated_at
     </sql>
 
     <sql id="searchWhere">
         <where>
-            <if test="stationId != null">
-                and station_id = #{stationId}
-            </if>
             <if test="deviceId != null">
                 and device_id = #{deviceId}
             </if>
@@ -59,7 +61,7 @@
                 and protocol = #{protocol}
             </if>
             <if test="orderNo != null and orderNo != ''">
-                and order_no = #{orderNo}
+                and strpos(order_no, #{orderNo}) &gt; 0
             </if>
             <if test="from != null">
                 and created_at &gt;= #{from}
@@ -108,36 +110,6 @@
         limit 1
     </select>
 
-    <select id="selectTopByOcppTransaction" resultMap="ChargeOrderMap">
-        select <include refid="columns"/>
-        from pep_domain.charge_order
-        where ocpp_transaction_id = #{ocppTransactionId}
-          and protocol = #{protocol}
-        order by created_at desc
-        limit 1
-    </select>
-
-    <select id="selectTopByDeviceAndOcppTransaction" resultMap="ChargeOrderMap">
-        select <include refid="columns"/>
-        from pep_domain.charge_order
-        where device_id = #{deviceId}
-          and ocpp_transaction_id = #{ocppTransactionId}
-          and protocol = #{protocol}
-        order by created_at desc
-        limit 1
-    </select>
-
-    <select id="selectByDeviceAndOcppTransactionForUpdate" resultMap="ChargeOrderMap">
-        select <include refid="columns"/>
-        from pep_domain.charge_order
-        where device_id = #{deviceId}
-          and ocpp_transaction_id = #{ocppTransactionId}
-          and protocol = #{protocol}
-        order by created_at desc
-        limit 1
-        for update
-    </select>
-
     <select id="selectTopByDevice" resultMap="ChargeOrderMap">
         select <include refid="columns"/>
         from pep_domain.charge_order
@@ -176,17 +148,6 @@
         <include refid="searchWhere"/>
     </select>
 
-    <select id="maxOcppTransactionId" resultType="long">
-        select coalesce(max(ocpp_transaction_id), 0)
-        from pep_domain.charge_order
-        where protocol = 'OCPP16J'
-    </select>
-
-    <select id="lockOcppTransactionSequence" resultType="int">
-        select 1
-        from (select pg_advisory_xact_lock(741852963)) locked
-    </select>
-
     <select id="countByStatusIn" resultType="long">
         select count(*)
         from pep_domain.charge_order
@@ -194,17 +155,6 @@
         <foreach collection="statuses" item="status" open="(" separator="," close=")">
             #{status}
         </foreach>
-    </select>
-
-    <select id="summarizeStation" resultMap="OrderSummaryMap">
-        select count(*) as c,
-               coalesce(sum(energy), 0) as e,
-               coalesce(sum(amount), 0) as a
-        from pep_domain.charge_order
-        where station_id = #{stationId}
-          and status = #{status}
-          and end_time &gt;= #{from}
-          and end_time &lt; #{to}
     </select>
 
     <select id="summarizeDevice" resultMap="OrderSummaryMap">
@@ -238,14 +188,16 @@
 
     <insert id="insert" useGeneratedKeys="true" keyProperty="id" keyColumn="id">
         insert into pep_domain.charge_order
-            (order_no, device_id, gun_no, station_id, protocol, protocol_transaction_id,
-             ocpp_transaction_id, meter_start_wh, status, start_type, physical_card, logical_card,
-             start_time, end_time, energy, amount, amount_source, stop_reason, fail_reason,
-             created_at, updated_at)
+            (order_no, device_id, device_sn, gun_no, platform_gun_no, protocol, meter_start_wh,
+             status, start_type, physical_card, logical_card, start_time, end_time, energy,
+             electricity_fee, service_fee, amount, loss_energy, rate_model_no, rate_snapshot,
+             fee_breakdown, amount_source, stop_reason, fail_reason, created_at, updated_at)
         values
-            (#{orderNo}, #{deviceId}, #{gunNo}, #{stationId}, #{protocol}, #{protocolTransactionId},
-             #{ocppTransactionId}, #{meterStartWh}, #{status}, #{startType}, #{physicalCard}, #{logicalCard},
-             #{startTime}, #{endTime}, #{energy}, #{amount}, #{amountSource}, #{stopReason}, #{failReason},
+            (#{orderNo}, #{deviceId}, #{deviceSn}, #{gunNo}, #{platformGunNo}, #{protocol},
+             #{meterStartWh}, #{status}, #{startType}, #{physicalCard}, #{logicalCard},
+             #{startTime}, #{endTime}, #{energy}, #{electricityFee}, #{serviceFee}, #{amount},
+             #{lossEnergy}, #{rateModelNo}, cast(#{rateSnapshot} as jsonb),
+             cast(#{feeBreakdown} as jsonb), #{amountSource}, #{stopReason}, #{failReason},
              #{createdAt}, #{updatedAt})
     </insert>
 
@@ -253,11 +205,10 @@
         update pep_domain.charge_order
         set order_no = #{orderNo},
             device_id = #{deviceId},
+            device_sn = #{deviceSn},
             gun_no = #{gunNo},
-            station_id = #{stationId},
+            platform_gun_no = #{platformGunNo},
             protocol = #{protocol},
-            protocol_transaction_id = #{protocolTransactionId},
-            ocpp_transaction_id = #{ocppTransactionId},
             meter_start_wh = #{meterStartWh},
             status = #{status},
             start_type = #{startType},
@@ -266,7 +217,13 @@
             start_time = #{startTime},
             end_time = #{endTime},
             energy = #{energy},
+            electricity_fee = #{electricityFee},
+            service_fee = #{serviceFee},
             amount = #{amount},
+            loss_energy = #{lossEnergy},
+            rate_model_no = #{rateModelNo},
+            rate_snapshot = cast(#{rateSnapshot} as jsonb),
+            fee_breakdown = cast(#{feeBreakdown} as jsonb),
             amount_source = #{amountSource},
             stop_reason = #{stopReason},
             fail_reason = #{failReason},

@@ -70,17 +70,7 @@ public class OpsIdentityController {
         data.put("roles", identity.roles());
         data.put("permissions", identity.permissions());
         data.put("authVersion", identity.authVersion());
-        data.put("allStations", identity.allStations());
-        data.put("stationIds", identity.stationIds());
-        data.put("stationScope", stationScope(identity));
         return data;
-    }
-
-    private static String stationScope(IdentityService.Identity identity) {
-        if (identity.allStations()) {
-            return "*";
-        }
-        return identity.stationIds().stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(","));
     }
 
     private static String sessionId(String cookieHeader) {

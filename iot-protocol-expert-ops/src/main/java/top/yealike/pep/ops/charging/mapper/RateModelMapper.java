@@ -15,6 +15,10 @@ public interface RateModelMapper {
 
     List<RateModel> selectAll();
 
+    List<RateModel> selectAllForUpdate();
+
+    int deactivateAllExcept(@Param("modelNo") String modelNo);
+
     int insert(RateModel model);
 
     int update(RateModel model);
@@ -33,6 +37,10 @@ public interface RateModelMapper {
 
     default List<RateModel> findAll() {
         return selectAll();
+    }
+
+    default List<RateModel> findAllForUpdate() {
+        return selectAllForUpdate();
     }
 
     default RateModel save(RateModel model) {

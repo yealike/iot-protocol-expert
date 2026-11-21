@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import top.yealike.pep.ops.api.dto.OpsDtos;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
 import top.yealike.pep.ops.charging.service.BillService;
+import top.yealike.pep.ops.charging.service.ChargeBillingService;
 import top.yealike.pep.ops.charging.service.OrderService;
 
 @RestController
@@ -21,18 +22,22 @@ public class OrderController {
     private final top.yealike.pep.ops.telemetry.OrderTelemetryService telemetry;
     private final OrderService orders;
     private final BillService bills;
+    private final ChargeBillingService billing;
 
     public OrderController(
-            OrderService orders, BillService bills, top.yealike.pep.ops.telemetry.OrderTelemetryService telemetry) {
+            OrderService orders,
+            BillService bills,
+            ChargeBillingService billing,
+            top.yealike.pep.ops.telemetry.OrderTelemetryService telemetry) {
         this.telemetry = telemetry;
         this.orders = orders;
         this.bills = bills;
+        this.billing = billing;
     }
 
     @GetMapping("/orders")
     @Operation(summary = "查询充电订单")
     public java.util.List<top.yealike.pep.ops.api.dto.OpsDtos.OrderView> orders(
-            @RequestParam(required = false) Long stationId,
             @RequestParam(required = false) Long deviceId,
             @RequestParam(required = false) String gunNo,
             @RequestParam(required = false) String protocol,
@@ -40,7 +45,7 @@ public class OrderController {
             @RequestParam(required = false) LocalDateTime from,
             @RequestParam(required = false) LocalDateTime to,
             @RequestParam(required = false) List<ChargeOrder.Status> status) {
-        return orders.search(stationId, deviceId, gunNo, protocol, orderNo, from, to, status).stream()
+        return orders.search(deviceId, gunNo, protocol, orderNo, from, to, status).stream()
                 .map(orders::view)
                 .toList();
     }
@@ -48,7 +53,6 @@ public class OrderController {
     @GetMapping("/orders/page")
     @Operation(summary = "分页查询充电订单")
     public top.yealike.pep.ops.support.page.PageResult<OpsDtos.OrderView> orderPage(
-            @RequestParam(required = false) Long stationId,
             @RequestParam(required = false) Long deviceId,
             @RequestParam(required = false) String gunNo,
             @RequestParam(required = false) String protocol,
@@ -58,7 +62,7 @@ public class OrderController {
             @RequestParam(required = false) List<ChargeOrder.Status> status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        var result = orders.searchPage(stationId, deviceId, gunNo, protocol, orderNo, from, to, status, page, size);
+        var result = orders.searchPage(deviceId, gunNo, protocol, orderNo, from, to, status, page, size);
         return top.yealike.pep.ops.support.page.PageResult.of(
                 result.content(), result.page(), result.size(), result.total(), orders::view);
     }
@@ -70,6 +74,7 @@ public class OrderController {
         Map<String, Object> detail = new LinkedHashMap<>();
         detail.put("order", orders.view(order));
         detail.put("bills", bills.byOrder(order.id).stream().map(bills::view).toList());
+        detail.put("feeSegments", billing.segments(order.id));
         return detail;
     }
 
@@ -82,17 +87,15 @@ public class OrderController {
 
     @GetMapping("/bills")
     @Operation(summary = "查询充电账单")
-    public List<Object> bills(
-            @RequestParam(required = false) Long stationId,
+    public List<OpsDtos.BillView> bills(
             @RequestParam(required = false) Long deviceId,
             @RequestParam(required = false) String protocol,
             @RequestParam(required = false) String sourceTransactionNo,
             @RequestParam(required = false) LocalDateTime from,
             @RequestParam(required = false) LocalDateTime to,
             @RequestParam(required = false) Boolean accepted) {
-        return bills.search(stationId, deviceId, protocol, sourceTransactionNo, from, to, accepted).stream()
+        return bills.search(deviceId, protocol, sourceTransactionNo, from, to, accepted).stream()
                 .map(bills::view)
-                .map(o -> (Object) o)
                 .toList();
     }
 }

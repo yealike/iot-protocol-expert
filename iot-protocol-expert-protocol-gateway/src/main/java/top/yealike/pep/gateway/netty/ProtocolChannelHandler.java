@@ -31,11 +31,12 @@ public class ProtocolChannelHandler extends SimpleChannelInboundHandler<InboundF
 
     @Override
     protected void channelRead0(ChannelHandlerContext ctx, InboundFrame inbound) {
-        String pileCode = sessions.pileOf(ctx.channel());
+        String deviceSn = sessions.pileOf(ctx.channel());
+        String externalPileCode = sessions.externalPileOf(ctx.channel());
         try (var operation = telemetry.start(
-                "platform", "receive", inbound.frame(), sessions.pendingContext(pileCode, inbound.frame()))) {
+                "platform", "receive", inbound.frame(), sessions.pendingContext(deviceSn, inbound.frame()))) {
             try {
-                handleFrame(ctx, inbound, pileCode);
+                handleFrame(ctx, inbound, deviceSn, externalPileCode);
             } catch (RuntimeException e) {
                 operation.fail(e);
                 throw e;
@@ -43,8 +44,9 @@ public class ProtocolChannelHandler extends SimpleChannelInboundHandler<InboundF
         }
     }
 
-    private void handleFrame(ChannelHandlerContext ctx, InboundFrame inbound, String pileCode) {
-        if (pileCode == null) {
+    private void handleFrame(
+            ChannelHandlerContext ctx, InboundFrame inbound, String deviceSn, String externalPileCode) {
+        if (deviceSn == null) {
             if (inbound.frame().frameType() != 0x01) {
                 telemetry.failure(new IllegalStateException("unauthenticated frame"));
                 log.warn(
@@ -57,17 +59,17 @@ public class ProtocolChannelHandler extends SimpleChannelInboundHandler<InboundF
             dispatcher.onLogin(ctx.channel(), inbound);
             return;
         }
-        dispatcher.dispatch(pileCode, inbound);
+        dispatcher.dispatch(deviceSn, externalPileCode, inbound);
     }
 
     @Override
     public void channelInactive(ChannelHandlerContext ctx) {
-        String pileCode = sessions.unbind(ctx.channel());
-        if (pileCode != null) {
+        String deviceSn = sessions.unbind(ctx.channel());
+        if (deviceSn != null) {
             try {
-                ops.offline("YKC16", pileCode, ctx.channel().id().asLongText());
+                ops.offline("YKC16", deviceSn, ctx.channel().id().asLongText());
             } catch (RuntimeException e) {
-                log.warn("桩 {} 离线状态同步失败: {}", pileCode, e.getMessage());
+                log.warn("设备 {} 离线状态同步失败: {}", deviceSn, e.getMessage());
             }
         }
     }

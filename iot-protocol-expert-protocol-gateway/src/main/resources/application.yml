@@ -40,7 +40,6 @@ ipe:
     ocpp-enabled: true
     ocpp-port: 8769
     ocpp-path: /ocpp
-    ocpp-default-connector-count: 2
     ocpp-idle-timeout-seconds: 300
     boss-threads: 1
     worker-threads: 8

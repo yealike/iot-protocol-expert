@@ -55,6 +55,36 @@
         limit #{limit}
     </select>
 
+    <select id="searchForAi" resultMap="FrameLogMap">
+        select <include refid="columns"/>
+        from pep_domain.frame_log
+        where device_id = #{deviceId}
+        <if test="direction != null and direction != ''">
+            and direction = #{direction}
+        </if>
+        <if test="frameType != null">
+            and frame_type = #{frameType}
+        </if>
+        <if test="frameLabel != null and frameLabel != ''">
+            and frame_label = #{frameLabel}
+        </if>
+        <if test="from != null">
+            and created_at &gt;= #{from}
+        </if>
+        <if test="to != null">
+            and created_at &lt; #{to}
+        </if>
+        order by id desc
+        limit #{limit}
+    </select>
+
+    <select id="selectByIdAndDeviceId" resultMap="FrameLogMap">
+        select <include refid="columns"/>
+        from pep_domain.frame_log
+        where id = #{id}
+          and device_id = #{deviceId}
+    </select>
+
     <select id="selectRecent" resultMap="FrameLogMap">
         select <include refid="columns"/>
         from pep_domain.frame_log

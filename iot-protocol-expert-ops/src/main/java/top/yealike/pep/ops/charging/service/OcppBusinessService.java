@@ -3,6 +3,7 @@ package top.yealike.pep.ops.charging.service;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -26,7 +27,7 @@ public class OcppBusinessService {
     private final OrderService orders;
     private final DevicePropertyService properties;
     private final BillService bills;
-    private final RateModelService rateModels;
+    private final ChargeBillingService billing;
 
     public OcppBusinessService(
             top.yealike.pep.ops.telemetry.OrderTelemetryService telemetry,
@@ -34,13 +35,13 @@ public class OcppBusinessService {
             OrderService orders,
             DevicePropertyService properties,
             BillService bills,
-            RateModelService rateModels) {
+            ChargeBillingService billing) {
         this.telemetry = telemetry;
         this.devices = devices;
         this.orders = orders;
         this.properties = properties;
         this.bills = bills;
-        this.rateModels = rateModels;
+        this.billing = billing;
     }
 
     @Transactional
@@ -149,8 +150,8 @@ public class OcppBusinessService {
         if (request.connectorId() <= 0) return;
         String gunNo = String.format("%02d", request.connectorId());
         ChargeOrder order = request.transactionId() == null
-                ? orders.active(device.id, gunNo)
-                : orders.byOcppTransactionId(device.id, request.transactionId());
+                ? lockActive(device.id, gunNo)
+                : orders.lockOcppTransactionId(device.id, request.transactionId());
         if (order == null) {
             return;
         }
@@ -185,17 +186,26 @@ public class OcppBusinessService {
                         .subtract(meterStart)
                         .max(BigDecimal.ZERO)
                         .divide(THOUSAND, 4, RoundingMode.HALF_UP);
-        BigDecimal amount =
-                energyKwh.multiply(rateModels.pricePerKwh(LocalDateTime.now())).setScale(4, RoundingMode.HALF_UP);
-        if (!orders.applyMeter(order.orderNo, energyKwh, amount)) {
-            return;
-        }
+        ChargeBillingService.FeeTotal fee =
+                billing.applyOcppMeter(order, energyKwh, LocalDateTime.ofInstant(sampleTime, ZoneId.systemDefault()));
         properties.writeBatch(
                 device.id,
                 gunNo,
                 ChargerConnectorMapper.fromOcpp(
-                        3, 1, request.voltage(), request.current(), request.soc(), energyKwh, amount, order.orderNo),
+                        3,
+                        1,
+                        request.voltage(),
+                        request.current(),
+                        request.soc(),
+                        fee.energy(),
+                        fee.amount(),
+                        order.orderNo),
                 null);
+    }
+
+    private ChargeOrder lockActive(Long deviceId, String gunNo) {
+        ChargeOrder active = orders.active(deviceId, gunNo);
+        return active == null ? null : orders.lockByOrderNo(active.orderNo);
     }
 
     @Transactional
@@ -221,6 +231,8 @@ public class OcppBusinessService {
                     true,
                     order.orderNo,
                     order.energy == null ? BigDecimal.ZERO : order.energy,
+                    order.electricityFee == null ? BigDecimal.ZERO : order.electricityFee,
+                    order.serviceFee == null ? BigDecimal.ZERO : order.serviceFee,
                     order.amount == null ? BigDecimal.ZERO : order.amount,
                     "订单已结算，重复上报已忽略");
         }
@@ -236,18 +248,21 @@ public class OcppBusinessService {
             energy = order.energy;
         }
         LocalDateTime endedAt = request.endedAt() == null ? LocalDateTime.now() : request.endedAt();
-        BigDecimal amount = energy.multiply(rateModels.pricePerKwh(endedAt)).setScale(4, RoundingMode.HALF_UP);
         int stopReason = mapStopReason(request.reason());
+        ChargeBillingService.FeeTotal fee = billing.applyOcppMeter(order, energy, endedAt);
         orders.settle(
                 order.orderNo,
-                energy,
-                amount,
+                fee.energy(),
+                fee.electricityFee(),
+                fee.serviceFee(),
+                fee.amount(),
+                fee.lossEnergy(),
                 order.startTime,
                 endedAt,
                 stopReason,
                 ChargeOrder.AMOUNT_SOURCE_ESTIMATE);
         ChargeOrder settled = orders.require(order.orderNo);
-        bills.recordOcppSettlement(settled, rateModels.active().modelNo);
+        bills.recordOcppSettlement(settled, String.valueOf(request.transactionId()));
         properties.writeBatch(
                 device.id,
                 order.gunNo,
@@ -257,22 +272,24 @@ public class OcppBusinessService {
                         BigDecimal.ZERO,
                         BigDecimal.ZERO,
                         null,
-                        energy,
-                        amount,
+                        settled.energy,
+                        settled.amount,
                         order.orderNo),
                 null);
         log.info(
                 "OCPP 设备 {} 交易 {} 结束：{} kWh，{} 元，原因 {}",
                 device.deviceCode,
                 order.orderNo,
-                energy,
-                amount,
+                settled.energy,
+                settled.amount,
                 request.reason());
-        return new OpsDtos.StopTransactionResult(true, order.orderNo, energy, amount, "已结算");
+        return new OpsDtos.StopTransactionResult(
+                true, order.orderNo, settled.energy, settled.electricityFee, settled.serviceFee, settled.amount, "已结算");
     }
 
     private static OpsDtos.StopTransactionResult rejectedStop(String message) {
-        return new OpsDtos.StopTransactionResult(false, null, BigDecimal.ZERO, BigDecimal.ZERO, message);
+        return new OpsDtos.StopTransactionResult(
+                false, null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, message);
     }
 
     private boolean ownsValidGun(DeviceInstance device, String gunNo) {

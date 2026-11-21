@@ -10,29 +10,25 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.yealike.pep.ops.charging.mapper.ChargeOrderMapper;
-import top.yealike.pep.ops.charging.service.StationService;
 import top.yealike.pep.ops.devices.dto.DeviceDtos;
 import top.yealike.pep.ops.devices.service.DeviceInstanceService;
-import top.yealike.pep.ops.devices.thingmodel.DeviceTypeCatalog;
 
-/** 运维总览：首页与 3D 大屏共用。 */
+/** 运维总览：充电桩与订单业务统计。 */
 @RestController
 @RequestMapping("/api/ops/overview")
-@Tag(name = "运营总览", description = "首页与大屏使用的设备、订单和站点统计")
+@Tag(name = "运营总览", description = "首页使用的充电桩和订单统计")
 public class OverviewController {
 
     private final DeviceInstanceService devices;
-    private final StationService stations;
     private final ChargeOrderMapper orders;
 
-    public OverviewController(DeviceInstanceService devices, StationService stations, ChargeOrderMapper orders) {
+    public OverviewController(DeviceInstanceService devices, ChargeOrderMapper orders) {
         this.orders = orders;
         this.devices = devices;
-        this.stations = stations;
     }
 
     @GetMapping
-    @Operation(summary = "查询设备运营总览")
+    @Operation(summary = "查询充电桩运营总览")
     public DeviceDtos.Overview overview() {
         return devices.overview();
     }
@@ -71,32 +67,5 @@ public class OverviewController {
                         top.yealike.pep.ops.charging.domain.ChargeOrder.Status.PENDING,
                         top.yealike.pep.ops.charging.domain.ChargeOrder.Status.CHARGING)));
         return response;
-    }
-
-    /** 设备类型目录 + 在线/故障/离线计数，供导航与筛选器使用。 */
-    @GetMapping("/device-types")
-    @Operation(summary = "查询设备类型统计")
-    public List<Map<String, Object>> deviceTypes() {
-        Map<String, DeviceDtos.DeviceTypeSummary> summary = new LinkedHashMap<>();
-        for (DeviceDtos.DeviceTypeSummary item : devices.overview().byType()) {
-            summary.put(item.deviceType(), item);
-        }
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (DeviceTypeCatalog type : DeviceTypeCatalog.values()) {
-            Map<String, Object> item = new LinkedHashMap<>(type.describe());
-            DeviceDtos.DeviceTypeSummary value = summary.get(type.name());
-            item.put("total", value == null ? 0 : value.total());
-            item.put("online", value == null ? 0 : value.online());
-            item.put("fault", value == null ? 0 : value.fault());
-            item.put("offline", value == null ? 0 : value.offline());
-            result.add(item);
-        }
-        return result;
-    }
-
-    @GetMapping("/stations")
-    @Operation(summary = "查询站点数量")
-    public long stationCount() {
-        return stations.list().size();
     }
 }

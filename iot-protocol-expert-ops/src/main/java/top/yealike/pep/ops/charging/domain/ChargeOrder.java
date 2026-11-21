@@ -21,15 +21,13 @@ public class ChargeOrder {
 
     public Long deviceId;
 
+    public String deviceSn;
+
     public String gunNo;
 
-    public Long stationId;
+    public String platformGunNo;
 
     public String protocol;
-
-    public String protocolTransactionId;
-
-    public Integer ocppTransactionId;
 
     public BigDecimal meterStartWh;
 
@@ -47,7 +45,19 @@ public class ChargeOrder {
 
     public BigDecimal energy = BigDecimal.ZERO;
 
+    public BigDecimal electricityFee;
+
+    public BigDecimal serviceFee;
+
     public BigDecimal amount = BigDecimal.ZERO;
+
+    public BigDecimal lossEnergy;
+
+    public String rateModelNo;
+
+    public String rateSnapshot;
+
+    public String feeBreakdown;
 
     public String amountSource = AMOUNT_SOURCE_ESTIMATE;
 

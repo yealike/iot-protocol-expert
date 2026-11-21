@@ -16,7 +16,8 @@ import top.yealike.pep.codec.ocpp16.OcppConstants;
 import top.yealike.pep.codec.ocpp16.OcppException;
 import top.yealike.pep.codec.ocpp16.OcppMessage;
 import top.yealike.pep.codec.ocpp16.OcppMessageCodec;
-import top.yealike.pep.gateway.config.ProtocolProperties;
+import top.yealike.pep.gateway.core.DeviceIdentityRegistry;
+import top.yealike.pep.gateway.core.ProtocolType;
 import top.yealike.pep.gateway.ops.OpsClient;
 import top.yealike.pep.gateway.ops.OpsDtos;
 
@@ -29,26 +30,27 @@ public class OcppDispatcher {
 
     private final OpsClient ops;
     private final OcppConfigurationStore configurationStore;
-    private final ProtocolProperties properties;
+    private final DeviceIdentityRegistry identities;
 
-    public OcppDispatcher(OpsClient ops, OcppConfigurationStore configurationStore, ProtocolProperties properties) {
+    public OcppDispatcher(OpsClient ops, OcppConfigurationStore configurationStore, DeviceIdentityRegistry identities) {
         this.ops = ops;
         this.configurationStore = configurationStore;
-        this.properties = properties;
+        this.identities = identities;
     }
 
-    public JsonNode handle(String chargePointId, OcppMessage message, String sessionId) {
+    public JsonNode handle(String deviceSn, OcppMessage message, String sessionId) {
         String action = message.action();
         JsonNode payload = message.payload() == null ? OcppMessageCodec.object() : message.payload();
         try {
+            DeviceIdentityRegistry.Device identity = identities.resolvePlatform(ProtocolType.OCPP16J, deviceSn);
             return switch (action) {
-                case OcppConstants.BOOT_NOTIFICATION -> bootNotification(chargePointId, payload, sessionId);
-                case OcppConstants.HEARTBEAT -> heartbeat(chargePointId);
-                case OcppConstants.STATUS_NOTIFICATION -> statusNotification(chargePointId, payload);
+                case OcppConstants.BOOT_NOTIFICATION -> bootNotification(identity, payload, sessionId);
+                case OcppConstants.HEARTBEAT -> heartbeat(deviceSn);
+                case OcppConstants.STATUS_NOTIFICATION -> statusNotification(identity, payload);
                 case OcppConstants.AUTHORIZE -> authorize(payload);
-                case OcppConstants.START_TRANSACTION -> startTransaction(chargePointId, payload);
-                case OcppConstants.METER_VALUES -> meterValues(chargePointId, payload);
-                case OcppConstants.STOP_TRANSACTION -> stopTransaction(chargePointId, payload);
+                case OcppConstants.START_TRANSACTION -> startTransaction(identity, payload);
+                case OcppConstants.METER_VALUES -> meterValues(identity, payload);
+                case OcppConstants.STOP_TRANSACTION -> stopTransaction(deviceSn, payload);
                 case OcppConstants.DATA_TRANSFER -> dataTransfer();
                 case OcppConstants.DIAGNOSTICS_STATUS_NOTIFICATION, OcppConstants.FIRMWARE_STATUS_NOTIFICATION ->
                     OcppMessageCodec.object();
@@ -57,22 +59,22 @@ public class OcppDispatcher {
         } catch (OcppException e) {
             throw e;
         } catch (RuntimeException e) {
-            log.warn("处理 OCPP 桩 {} 动作 {} 失败: {}", chargePointId, action, e.getMessage(), e);
+            log.warn("处理 OCPP 设备 {} 动作 {} 失败: {}", deviceSn, action, e.getMessage(), e);
             throw new OcppException(OcppConstants.ERROR_INTERNAL, e.getMessage(), e);
         }
     }
 
-    private JsonNode bootNotification(String chargePointId, JsonNode payload, String sessionId) {
+    private JsonNode bootNotification(DeviceIdentityRegistry.Device identity, JsonNode payload, String sessionId) {
         String vendor = text(payload, "chargePointVendor", "未知厂商");
         String model = text(payload, "chargePointModel", "未知型号");
-        String serial = text(payload, "chargePointSerialNumber", chargePointId);
+        String serial = text(payload, "chargePointSerialNumber", identity.thirdPartyDeviceId());
         String firmware = text(payload, "firmwareVersion", null);
         ops.bootOcpp(new OpsDtos.LoginRequest(
                 "OCPP16J",
-                chargePointId,
-                chargePointId,
+                identity.deviceSn(),
+                identity.thirdPartyDeviceId(),
                 0,
-                Math.max(properties.getOcppDefaultConnectorCount(), 1),
+                identity.connectorCount(),
                 16,
                 firmware,
                 0,
@@ -82,29 +84,35 @@ public class OcppDispatcher {
                 model,
                 serial,
                 firmware,
-                Math.max(properties.getOcppDefaultConnectorCount(), 1),
+                identity.connectorCount(),
                 sessionId));
-        configurationStore.remove(chargePointId);
+        configurationStore.remove(identity.deviceSn());
         ObjectNode response = OcppMessageCodec.object();
         response.put("status", OcppConstants.ACCEPTED);
         response.put("currentTime", Instant.now().toString());
         response.put("interval", 300);
-        log.info("OCPP 桩 {} BootNotification 通过（{} / {}）", chargePointId, vendor, model);
+        log.info(
+                "OCPP 设备 {}（chargePointId {}）BootNotification 通过（{} / {}）",
+                identity.deviceSn(),
+                identity.thirdPartyDeviceId(),
+                vendor,
+                model);
         return response;
     }
 
-    private JsonNode heartbeat(String chargePointId) {
-        ops.ocppHeartbeat(chargePointId);
+    private JsonNode heartbeat(String deviceSn) {
+        ops.ocppHeartbeat(deviceSn);
         ObjectNode response = OcppMessageCodec.object();
         response.put("currentTime", Instant.now().toString());
         return response;
     }
 
-    private JsonNode statusNotification(String chargePointId, JsonNode payload) {
-        int connectorId = intValue(payload, "connectorId", 0);
+    private JsonNode statusNotification(DeviceIdentityRegistry.Device identity, JsonNode payload) {
+        int protocolConnectorId = intValue(payload, "connectorId", 0);
+        int connectorId = platformConnectorId(identity, protocolConnectorId);
         String status = text(payload, "status", OcppConstants.STATUS_AVAILABLE);
         String errorCode = text(payload, "errorCode", "NoError");
-        ops.ocppStatus(new OpsDtos.StatusRequest(chargePointId, connectorId, status, errorCode));
+        ops.ocppStatus(new OpsDtos.StatusRequest(identity.deviceSn(), connectorId, status, errorCode));
         return OcppMessageCodec.object();
     }
 
@@ -121,8 +129,9 @@ public class OcppDispatcher {
         return response;
     }
 
-    private JsonNode startTransaction(String chargePointId, JsonNode payload) {
-        int connectorId = intValue(payload, "connectorId", 0);
+    private JsonNode startTransaction(DeviceIdentityRegistry.Device identity, JsonNode payload) {
+        int protocolConnectorId = intValue(payload, "connectorId", 0);
+        int connectorId = platformConnectorId(identity, protocolConnectorId);
         String idTag = text(payload, "idTag", null);
         if (idTag == null || idTag.isBlank()) {
             throw new OcppException(OcppConstants.ERROR_PROPERTY, "idTag 不能为空");
@@ -130,7 +139,7 @@ public class OcppDispatcher {
         BigDecimal meterStart = decimal(payload, "meterStart", BigDecimal.ZERO);
         LocalDateTime startedAt = timestamp(payload, "timestamp");
         OpsDtos.StartTransactionResult result = ops.startTransaction(
-                new OpsDtos.StartTransactionRequest(chargePointId, connectorId, idTag, meterStart, startedAt));
+                new OpsDtos.StartTransactionRequest(identity.deviceSn(), connectorId, idTag, meterStart, startedAt));
         if (!result.accepted()) {
             throw new OcppException(
                     result.errorCode() == null ? OcppConstants.ERROR_OCCURRENCE : result.errorCode(), result.message());
@@ -141,16 +150,17 @@ public class OcppDispatcher {
         response.put("transactionId", result.transactionId());
         response.set("idTagInfo", idTagInfo);
         log.info(
-                "OCPP 桩 {} 枪 {} 开始交易 {}（整数交易号 {}）",
-                chargePointId,
-                connectorId,
+                "OCPP 设备 {} 枪 {} 开始交易 {}（整数交易号 {}）",
+                identity.deviceSn(),
+                String.format(java.util.Locale.ROOT, "%02d", connectorId),
                 result.orderNo(),
                 result.transactionId());
         return response;
     }
 
-    private JsonNode meterValues(String chargePointId, JsonNode payload) {
-        int connectorId = intValue(payload, "connectorId", 0);
+    private JsonNode meterValues(DeviceIdentityRegistry.Device identity, JsonNode payload) {
+        int protocolConnectorId = intValue(payload, "connectorId", 0);
+        int connectorId = platformConnectorId(identity, protocolConnectorId);
         Integer transactionId =
                 payload.has("transactionId") && !payload.get("transactionId").isNull()
                         ? payload.get("transactionId").asInt()
@@ -160,7 +170,7 @@ public class OcppDispatcher {
             for (JsonNode meterValue : values) {
                 MeterSample sample = readMeterSample(meterValue);
                 ops.meterValues(new OpsDtos.MeterValuesRequest(
-                        chargePointId,
+                        identity.deviceSn(),
                         connectorId,
                         transactionId,
                         sample.energyWh(),
@@ -175,18 +185,37 @@ public class OcppDispatcher {
         return OcppMessageCodec.object();
     }
 
-    private JsonNode stopTransaction(String chargePointId, JsonNode payload) {
+    private JsonNode stopTransaction(String deviceSn, JsonNode payload) {
         int transactionId = intValue(payload, "transactionId", -1);
         BigDecimal meterStop = decimal(payload, "meterStop", BigDecimal.ZERO);
         LocalDateTime endedAt = timestamp(payload, "timestamp");
         String reason = text(payload, "reason", "Local");
         OpsDtos.StopTransactionResult result = ops.stopTransaction(
-                new OpsDtos.StopTransactionRequest(chargePointId, transactionId, meterStop, endedAt, reason));
+                new OpsDtos.StopTransactionRequest(deviceSn, transactionId, meterStop, endedAt, reason));
         if (!result.accepted()) {
             throw new OcppException(OcppConstants.ERROR_OCCURRENCE, result.message());
         }
-        log.info("OCPP 桩 {} 交易 {} 结束：{} kWh，{} 元", chargePointId, result.orderNo(), result.energy(), result.amount());
+        log.info("OCPP 设备 {} 交易 {} 结束：{} kWh，{} 元", deviceSn, result.orderNo(), result.energy(), result.amount());
         return acceptedIdTagInfo();
+    }
+
+    private static int platformConnectorId(DeviceIdentityRegistry.Device identity, int protocolConnectorId) {
+        if (protocolConnectorId <= 0) {
+            return protocolConnectorId;
+        }
+        try {
+            DeviceIdentityRegistry.Connector connector = identity.connectorByOcppExternalId(protocolConnectorId);
+            return Integer.parseInt(connector.gunNo());
+        } catch (RuntimeException e) {
+            throw new OcppException(OcppConstants.ERROR_PROPERTY, e.getMessage());
+        }
+    }
+
+    private static String platformGunNo(DeviceIdentityRegistry.Device identity, int connectorId) {
+        if (connectorId <= 0) {
+            return "00";
+        }
+        return identity.connectorByOcppExternalId(connectorId).gunNo();
     }
 
     private JsonNode dataTransfer() {

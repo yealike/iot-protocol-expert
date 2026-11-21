@@ -16,6 +16,17 @@ public interface FrameLogMapper {
             @Param("to") LocalDateTime to,
             @Param("limit") int limit);
 
+    List<FrameLog> searchForAi(
+            @Param("deviceId") Long deviceId,
+            @Param("direction") String direction,
+            @Param("frameType") Integer frameType,
+            @Param("frameLabel") String frameLabel,
+            @Param("from") LocalDateTime from,
+            @Param("to") LocalDateTime to,
+            @Param("limit") int limit);
+
+    FrameLog selectByIdAndDeviceId(@Param("id") Long id, @Param("deviceId") Long deviceId);
+
     List<FrameLog> selectRecent(@Param("limit") int limit);
 
     List<FrameLog> selectRecentByDevice(@Param("deviceId") Long deviceId, @Param("limit") int limit);

@@ -20,6 +20,8 @@ import top.yealike.pep.ops.config.OpsProperties;
 import top.yealike.pep.ops.devices.domain.FrameLog;
 import top.yealike.pep.ops.devices.domain.ProtocolDocSection;
 import top.yealike.pep.ops.devices.entity.DeviceInstance;
+import top.yealike.pep.ops.devices.entity.DeviceProtocolMapping;
+import top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper;
 import top.yealike.pep.ops.devices.mapper.ProtocolDocSectionMapper;
 import top.yealike.pep.ops.devices.service.DeviceService;
 import top.yealike.pep.ops.devices.service.FrameLogService;
@@ -34,6 +36,7 @@ public class DiagnosticService {
     private final FrameLogService frames;
     private final FrameDecodeService decoder;
     private final ProtocolDocSectionMapper docs;
+    private final DeviceProtocolMappingMapper mappings;
     private final ModelSummaryService model;
     private final TroubleCaseMapper cases;
     private final OpsProperties properties;
@@ -46,6 +49,7 @@ public class DiagnosticService {
             FrameLogService frames,
             FrameDecodeService decoder,
             ProtocolDocSectionMapper docs,
+            DeviceProtocolMappingMapper mappings,
             ModelSummaryService model,
             TroubleCaseMapper cases,
             OpsProperties properties,
@@ -56,6 +60,7 @@ public class DiagnosticService {
         this.frames = frames;
         this.decoder = decoder;
         this.docs = docs;
+        this.mappings = mappings;
         this.model = model;
         this.cases = cases;
         this.properties = properties;
@@ -117,6 +122,8 @@ public class DiagnosticService {
         Object decoded = request.raw() == null || request.raw().isBlank()
                 ? null
                 : decoder.decode(request.raw(), device.protocol);
+        DeviceProtocolMapping mapping = mappings.findByDeviceId(device.id).orElse(null);
+        String protocolDeviceId = mapping == null ? "" : mapping.thirdPartyDeviceId;
 
         LocalDateTime from = request.from() == null ? LocalDateTime.now().minusDays(7) : request.from();
         LocalDateTime to = request.to() == null ? LocalDateTime.now().plusMinutes(1) : request.to();
@@ -131,7 +138,8 @@ public class DiagnosticService {
                 "CONFIRMED",
                 null,
                 "device:" + device.id,
-                device.deviceCode + " / " + device.protocol + " / " + device.protocolDeviceId));
+                device.deviceCode + " / " + device.protocol + " / "
+                        + (protocolDeviceId.isBlank() ? "-" : protocolDeviceId)));
         timeline.add(new Step("协议判定", "CONFIRMED", null, "device:" + device.id, device.protocol));
         if (decoded != null) {
             Map<?, ?> decodedMap = decoded instanceof Map<?, ?> map ? map : Map.of();
@@ -241,7 +249,7 @@ public class DiagnosticService {
                             "protocol",
                             device.protocol,
                             "protocolDeviceId",
-                            device.protocolDeviceId,
+                            protocolDeviceId,
                             "online",
                             device.isOnline()));
             facts.put("decoded", decoded);

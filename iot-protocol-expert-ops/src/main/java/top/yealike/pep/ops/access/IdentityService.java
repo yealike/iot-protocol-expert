@@ -17,22 +17,11 @@ public class IdentityService {
     }
 
     public record Identity(
-            long id,
-            String username,
-            boolean enabled,
-            boolean allStations,
-            long authVersion,
-            List<String> roles,
-            List<String> permissions,
-            List<Long> stationIds) {
+            long id, String username, boolean enabled, long authVersion, List<String> roles, List<String> permissions) {
         public List<SimpleGrantedAuthority> authorities() {
             return java.util.stream.Stream.concat(roles.stream().map(r -> "ROLE_" + r), permissions.stream())
                     .map(SimpleGrantedAuthority::new)
                     .toList();
-        }
-
-        public boolean canAccessStation(Long stationId) {
-            return allStations || (stationId != null && stationIds.contains(stationId));
         }
     }
 
@@ -60,8 +49,6 @@ public class IdentityService {
         long id = row.id();
         List<String> roles = identities.selectRoleCodes(id);
         List<String> permissions = identities.selectPermissions(id);
-        List<Long> stations = identities.selectStationIds(id);
-        return new Identity(
-                id, row.username(), row.enabled(), row.allStations(), row.authVersion(), roles, permissions, stations);
+        return new Identity(id, row.username(), row.enabled(), row.authVersion(), roles, permissions);
     }
 }

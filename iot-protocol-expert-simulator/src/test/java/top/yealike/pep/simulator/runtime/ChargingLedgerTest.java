@@ -44,6 +44,9 @@ class ChargingLedgerTest {
         eq("1", l.segment(1).energy());
         eq("2.45", l.amount());
         eq("2", l.energy());
+        eq("0", l.lossEnergy());
+        eq("1.8", sumElectricity(l));
+        eq(".65", sumService(l));
     }
 
     @Test
@@ -69,8 +72,10 @@ class ChargingLedgerTest {
                 new BigDecimal("60"));
         eq("1", l.segment(3).energy());
         eq("1", l.segment(0).energy());
-        eq("2.2", l.lossEnergy());
+        eq(".2", l.lossEnergy());
         eq("2.53", l.amount());
+        eq("1.87", sumElectricity(l));
+        eq(".66", sumService(l));
     }
 
     @Test
@@ -80,5 +85,17 @@ class ChargingLedgerTest {
         for (int i = 0; i < 3600; i++) l.integrate(t.plusSeconds(i), t.plusSeconds(i + 1), new BigDecimal("75"));
         eq("75", l.energy());
         eq("82.5", l.amount());
+    }
+
+    private static BigDecimal sumElectricity(ChargingLedger ledger) {
+        return ledger.view().stream()
+                .map(row -> (BigDecimal) row.get("electricityFee"))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    private static BigDecimal sumService(ChargingLedger ledger) {
+        return ledger.view().stream()
+                .map(row -> (BigDecimal) row.get("serviceFee"))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
     }
 }

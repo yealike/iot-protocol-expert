@@ -5,6 +5,8 @@ import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -60,7 +62,7 @@ public class SecurityConfig {
                         .authenticated()
                         .anyRequest()
                         .authenticated())
-                // 前端是独立站点：未认证返回 401，而不是把 fetch 重定向到框架默认登录页
+                // 前端独立部署：未认证返回 401，而不是把 fetch 重定向到框架默认登录页
                 .exceptionHandling(exception -> exception.authenticationEntryPoint(
                         (request, response, authException) -> response.sendError(HttpStatus.UNAUTHORIZED.value())))
                 // 登录成功/失败都以 JSON 响应，前端只关心状态码，不再由后端转发 SPA 路由
@@ -141,13 +143,6 @@ public class SecurityConfig {
                         principal, null, current.authorities());
                 updated.setDetails(auth.getDetails());
                 context.setAuthentication(updated);
-                // OPS queries do not yet apply row-level station filters. Fail closed for restricted users.
-                if (!identity.get().allStations()
-                        && request.getRequestURI().startsWith("/api/ops/")
-                        && !request.getRequestURI().startsWith("/api/ops/auth/")) {
-                    response.sendError(HttpStatus.FORBIDDEN.value(), "受限站点账号暂不支持访问运营数据");
-                    return;
-                }
             }
             chain.doFilter(request, response);
         }
@@ -165,15 +160,15 @@ public class SecurityConfig {
         @Override
         protected boolean shouldNotFilter(HttpServletRequest request) {
             String uri = request.getRequestURI();
-            return uri.startsWith("/internal/ai/rest/")
-                    || (!uri.startsWith("/internal/") && !uri.startsWith("/api/ops/simulator/"));
+            boolean internal = "/internal".equals(uri) || uri.startsWith("/internal/");
+            return !internal && !uri.startsWith("/api/ops/simulator/");
         }
 
         @Override
         protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
                 throws ServletException, IOException {
             String uri = request.getRequestURI();
-            boolean internal = uri.startsWith("/internal/");
+            boolean internal = "/internal".equals(uri) || uri.startsWith("/internal/");
             String expected = internal ? properties.getServiceToken() : properties.getSimulatorToken();
             String header = internal ? "X-Ops-Service-Token" : "X-Ops-Simulator-Token";
             String provided = request.getHeader(header);
@@ -187,14 +182,11 @@ public class SecurityConfig {
         }
 
         private static boolean constantTimeEquals(String expected, String provided) {
-            if (provided == null || expected.length() != provided.length()) {
+            if (provided == null) {
                 return false;
             }
-            int result = 0;
-            for (int i = 0; i < expected.length(); i++) {
-                result |= expected.charAt(i) ^ provided.charAt(i);
-            }
-            return result == 0;
+            return MessageDigest.isEqual(
+                    expected.getBytes(StandardCharsets.UTF_8), provided.getBytes(StandardCharsets.UTF_8));
         }
     }
 }

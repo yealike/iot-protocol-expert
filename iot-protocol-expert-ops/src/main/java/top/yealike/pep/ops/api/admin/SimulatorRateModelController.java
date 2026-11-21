@@ -5,7 +5,7 @@ import org.springframework.web.bind.annotation.*;
 import top.yealike.pep.ops.api.dto.OpsDtos;
 import top.yealike.pep.ops.charging.service.RateModelService;
 
-/** 模拟器读取与保存平台费率模型；设备下发仍走命令通道。 */
+/** 模拟器只读兼容入口；费率管理统一走 /api/ops/rate-models。 */
 @RestController
 @RequestMapping("/api/ops/simulator/rate-models")
 public class SimulatorRateModelController {
@@ -19,10 +19,5 @@ public class SimulatorRateModelController {
     @GetMapping
     public List<OpsDtos.RateModelView> list() {
         return rates.list().stream().map(rates::view).toList();
-    }
-
-    @PostMapping
-    public OpsDtos.RateModelView save(@RequestBody OpsDtos.RateModelView request) {
-        return rates.view(rates.save(request));
     }
 }

@@ -35,19 +35,6 @@ public interface ChargeOrderMapper {
             @Param("gunNo") String gunNo,
             @Param("statuses") Collection<ChargeOrder.Status> statuses);
 
-    ChargeOrder selectTopByOcppTransaction(
-            @Param("ocppTransactionId") Integer ocppTransactionId, @Param("protocol") String protocol);
-
-    ChargeOrder selectTopByDeviceAndOcppTransaction(
-            @Param("deviceId") Long deviceId,
-            @Param("ocppTransactionId") Integer ocppTransactionId,
-            @Param("protocol") String protocol);
-
-    ChargeOrder selectByDeviceAndOcppTransactionForUpdate(
-            @Param("deviceId") Long deviceId,
-            @Param("ocppTransactionId") Integer ocppTransactionId,
-            @Param("protocol") String protocol);
-
     ChargeOrder selectTopByDevice(@Param("deviceId") Long deviceId);
 
     List<ChargeOrder> selectTop200();
@@ -55,7 +42,6 @@ public interface ChargeOrderMapper {
     List<ChargeOrder> selectPendingBefore(@Param("cutoff") LocalDateTime cutoff, @Param("limit") int limit);
 
     List<ChargeOrder> search(
-            @Param("stationId") Long stationId,
             @Param("deviceId") Long deviceId,
             @Param("gunNo") String gunNo,
             @Param("protocol") String protocol,
@@ -67,7 +53,6 @@ public interface ChargeOrderMapper {
             @Param("offset") int offset);
 
     long countSearch(
-            @Param("stationId") Long stationId,
             @Param("deviceId") Long deviceId,
             @Param("gunNo") String gunNo,
             @Param("protocol") String protocol,
@@ -76,17 +61,7 @@ public interface ChargeOrderMapper {
             @Param("to") LocalDateTime to,
             @Param("statuses") Collection<ChargeOrder.Status> statuses);
 
-    long maxOcppTransactionId();
-
-    int lockOcppTransactionSequence();
-
     long countByStatusIn(@Param("statuses") Collection<ChargeOrder.Status> statuses);
-
-    OrderSummary summarizeStation(
-            @Param("stationId") Long stationId,
-            @Param("status") ChargeOrder.Status status,
-            @Param("from") LocalDateTime from,
-            @Param("to") LocalDateTime to);
 
     OrderSummary summarizeDevice(
             @Param("deviceId") Long deviceId,
@@ -123,21 +98,6 @@ public interface ChargeOrderMapper {
         return statuses == null || statuses.isEmpty()
                 ? Optional.empty()
                 : Optional.ofNullable(selectTopActive(deviceId, gunNo, statuses));
-    }
-
-    default Optional<ChargeOrder> findTopByOcppTransactionIdAndProtocolOrderByCreatedAtDesc(
-            Integer transactionId, String protocol) {
-        return Optional.ofNullable(selectTopByOcppTransaction(transactionId, protocol));
-    }
-
-    default Optional<ChargeOrder> findTopByDeviceIdAndOcppTransactionIdAndProtocolOrderByCreatedAtDesc(
-            Long deviceId, Integer transactionId, String protocol) {
-        return Optional.ofNullable(selectTopByDeviceAndOcppTransaction(deviceId, transactionId, protocol));
-    }
-
-    default Optional<ChargeOrder> lockByDeviceIdAndOcppTransactionId(
-            Long deviceId, Integer transactionId, String protocol) {
-        return Optional.ofNullable(selectByDeviceAndOcppTransactionForUpdate(deviceId, transactionId, protocol));
     }
 
     default Optional<ChargeOrder> findTopByDeviceIdOrderByIdDesc(Long deviceId) {

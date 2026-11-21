@@ -3,7 +3,9 @@ package top.yealike.pep.simulator.runtime;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
+import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -23,10 +25,11 @@ class ChargerFleetTest {
         OpsDeviceClient directory = mock(OpsDeviceClient.class);
         when(directory.get(1L))
                 .thenReturn(new OpsDeviceClient.SimulatorDevice(
-                        1L, "A", 1L, "S", "YKC16", "32010600000001", 1, false, true, true));
+                        1L, "10000001", "A", "YKC16", "32010600000001", 1, false, "OFFLINE", true, true));
         when(directory.get(2L))
                 .thenReturn(new OpsDeviceClient.SimulatorDevice(
-                        2L, "B", 1L, "S", "OCPP16J", "OCPP-B", 2, false, true, true));
+                        2L, "10000002", "B", "OCPP16J", "OCPP-B", 2, false, "OFFLINE", true, true));
+        when(directory.rates()).thenReturn(List.of(platformRate()));
         SimulatorRuntime interactive = mock(SimulatorRuntime.class);
         when(interactive.state()).thenReturn(Map.of());
         ProtocolTelemetry telemetry = new ProtocolTelemetry(
@@ -138,10 +141,11 @@ class ChargerFleetTest {
             OpsDeviceClient directory = mock(OpsDeviceClient.class);
             when(directory.get(11L))
                     .thenReturn(new OpsDeviceClient.SimulatorDevice(
-                            11L, "A", 1L, "S", "YKC16", "32010600000011", 1, false, true, true));
+                            11L, "10000011", "A", "YKC16", "32010600000011", 1, false, "OFFLINE", true, true));
             when(directory.get(12L))
                     .thenReturn(new OpsDeviceClient.SimulatorDevice(
-                            12L, "B", 1L, "S", "YKC16", "32010600000012", 1, false, true, true));
+                            12L, "10000012", "B", "YKC16", "32010600000012", 1, false, "OFFLINE", true, true));
+            when(directory.rates()).thenReturn(List.of(platformRate()));
             SimulatorRuntime interactive = mock(SimulatorRuntime.class);
             when(interactive.state()).thenReturn(Map.of());
             var fleet = new ChargerFleet(
@@ -177,5 +181,21 @@ class ChargerFleetTest {
                 workers.shutdownNow();
             }
         }
+    }
+
+    private static OpsDeviceClient.RateModel platformRate() {
+        return new OpsDeviceClient.RateModel(
+                "0001",
+                new BigDecimal("1.20000"),
+                new BigDecimal("0.40000"),
+                new BigDecimal("1.00000"),
+                new BigDecimal("0.35000"),
+                new BigDecimal("0.80000"),
+                new BigDecimal("0.30000"),
+                new BigDecimal("0.50000"),
+                new BigDecimal("0.20000"),
+                0,
+                java.util.Collections.nCopies(48, 2),
+                true);
     }
 }

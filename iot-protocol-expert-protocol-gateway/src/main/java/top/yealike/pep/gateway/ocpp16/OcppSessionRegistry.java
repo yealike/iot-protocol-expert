@@ -32,6 +32,7 @@ public class OcppSessionRegistry implements OnlineDeviceDirectory {
 
     private final Map<String, Session> sessions = new ConcurrentHashMap<>();
     private final Map<ChannelId, String> chargePointByChannel = new ConcurrentHashMap<>();
+    private final Map<ChannelId, String> externalChargePointByChannel = new ConcurrentHashMap<>();
     private final Map<String, PendingCall> pendings = new ConcurrentHashMap<>();
     private final AtomicLong uniqueIds = new AtomicLong(System.currentTimeMillis() % 100_000);
     private final OpsClient ops;
@@ -42,44 +43,58 @@ public class OcppSessionRegistry implements OnlineDeviceDirectory {
         this.tracer = tracer;
     }
 
-    public record Session(Channel channel, String chargePointId) {}
+    public record Session(Channel channel, String deviceSn, String externalChargePointId) {}
 
     public void bind(String chargePointId, Channel channel) {
-        Session previous = sessions.put(chargePointId, new Session(channel, chargePointId));
-        chargePointByChannel.put(channel.id(), chargePointId);
+        bind(chargePointId, chargePointId, channel);
+    }
+
+    public void bind(String deviceSn, String externalChargePointId, Channel channel) {
+        Session previous = sessions.put(deviceSn, new Session(channel, deviceSn, externalChargePointId));
+        chargePointByChannel.put(channel.id(), deviceSn);
+        externalChargePointByChannel.put(channel.id(), externalChargePointId);
         if (previous != null
                 && previous.channel() != channel
                 && previous.channel().isActive()) {
             log.info(
-                    "OCPP 桩 {} 重复连接，关闭旧通道 {}",
-                    chargePointId,
+                    "OCPP 设备 {} 重复连接，关闭旧通道 {}",
+                    deviceSn,
                     previous.channel().id().asShortText());
             previous.channel().close();
         }
-        log.info("OCPP 桩 {} 已绑定通道 {}", chargePointId, channel.id().asShortText());
+        log.info(
+                "OCPP 设备 {}（chargePointId {}）已绑定通道 {}",
+                deviceSn,
+                externalChargePointId,
+                channel.id().asShortText());
     }
 
     public String unbind(Channel channel) {
-        String chargePointId = chargePointByChannel.remove(channel.id());
-        if (chargePointId == null) {
+        String deviceSn = chargePointByChannel.remove(channel.id());
+        externalChargePointByChannel.remove(channel.id());
+        if (deviceSn == null) {
             return null;
         }
-        Session current = sessions.get(chargePointId);
+        Session current = sessions.get(deviceSn);
         if (current == null || current.channel() != channel) {
             return null;
         }
-        sessions.remove(chargePointId, current);
+        sessions.remove(deviceSn, current);
         pendings.forEach((id, pending) -> {
-            if (pending.chargePointId().equals(chargePointId)) {
+            if (pending.chargePointId().equals(deviceSn)) {
                 pending.future().completeExceptionally(new IllegalStateException("设备连接断开"));
             }
         });
-        log.info("OCPP 桩 {} 会话断开", chargePointId);
-        return chargePointId;
+        log.info("OCPP 设备 {} 会话断开", deviceSn);
+        return deviceSn;
     }
 
     public String chargePointOf(Channel channel) {
         return chargePointByChannel.get(channel.id());
+    }
+
+    public String externalChargePointOf(Channel channel) {
+        return externalChargePointByChannel.get(channel.id());
     }
 
     public Channel channelOf(String chargePointId) {
@@ -110,7 +125,7 @@ public class OcppSessionRegistry implements OnlineDeviceDirectory {
         PendingCall pending = new PendingCall(chargePointId, action, new CompletableFuture<>());
         pendings.put(uniqueId, pending);
         String json = OcppMessageCodec.encode(message);
-        logFrame(chargePointId, "OUT", message, payloadNode.toString(), json, action + " 下行");
+        logFrame(session.externalChargePointId(), "OUT", message, payloadNode.toString(), json, action + " 下行");
         try {
             session.channel().writeAndFlush(new TextWebSocketFrame(json)).addListener(write -> {
                 if (!write.isSuccess()) {
@@ -159,7 +174,7 @@ public class OcppSessionRegistry implements OnlineDeviceDirectory {
         }
         OcppMessage message = OcppMessage.result(uniqueId, payload == null ? OcppMessageCodec.object() : payload);
         logFrame(
-                chargePointOf(channel),
+                externalChargePointOf(channel),
                 "OUT",
                 message,
                 message.payload() == null ? "" : message.payload().toString(),
@@ -173,7 +188,13 @@ public class OcppSessionRegistry implements OnlineDeviceDirectory {
             return;
         }
         OcppMessage message = OcppMessage.error(uniqueId, errorCode, description, OcppMessageCodec.object());
-        logFrame(chargePointOf(channel), "OUT", message, description, OcppMessageCodec.encode(message), action + " 异常");
+        logFrame(
+                externalChargePointOf(channel),
+                "OUT",
+                message,
+                description,
+                OcppMessageCodec.encode(message),
+                action + " 异常");
         channel.writeAndFlush(new TextWebSocketFrame(OcppMessageCodec.encode(message)));
     }
 

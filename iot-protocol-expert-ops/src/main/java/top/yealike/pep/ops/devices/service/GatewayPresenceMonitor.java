@@ -7,7 +7,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
 
-/** Expire only non-charger sessions created by the gateway telemetry endpoint. */
+/** Expire only charger sessions created by the gateway telemetry endpoint. */
 @Component
 public class GatewayPresenceMonitor {
     private final DeviceInstanceMapper devices;

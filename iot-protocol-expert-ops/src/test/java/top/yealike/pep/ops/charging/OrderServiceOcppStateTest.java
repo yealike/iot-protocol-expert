@@ -14,8 +14,12 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
+import top.yealike.pep.ops.charging.domain.OrderExternalReference;
 import top.yealike.pep.ops.charging.mapper.ChargeOrderMapper;
+import top.yealike.pep.ops.charging.mapper.OrderExternalReferenceMapper;
+import top.yealike.pep.ops.charging.service.ChargeBillingService;
 import top.yealike.pep.ops.charging.service.OrderService;
 import top.yealike.pep.ops.devices.service.DeviceService;
 
@@ -45,13 +49,32 @@ class OrderServiceOcppStateTest {
     @Test
     void startTransactionCannotReviveFailedOrder() {
         Fixture fixture = fixture(ChargeOrder.Status.FAILED);
-        when(fixture.mapper.maxOcppTransactionId()).thenReturn(4L);
 
         Assertions.assertThrows(
                 IllegalStateException.class, () -> fixture.service.bindOcppTransactionId("ORDER-1", BigDecimal.ZERO));
 
         assertEquals(ChargeOrder.Status.FAILED, fixture.order.status);
         verify(fixture.mapper, never()).save(any());
+    }
+
+    @Test
+    void bindOcppTransactionIdStoresSequenceValueInExternalReference() {
+        Fixture fixture = fixture(ChargeOrder.Status.PENDING);
+        when(fixture.references.nextOcppTransactionId()).thenReturn(42L);
+
+        int transactionId = fixture.service.bindOcppTransactionId("ORDER-1", new BigDecimal("1000"));
+
+        assertEquals(42, transactionId);
+        ArgumentCaptor<OrderExternalReference> captor = ArgumentCaptor.forClass(OrderExternalReference.class);
+        verify(fixture.references).save(captor.capture());
+        OrderExternalReference reference = captor.getValue();
+        assertEquals(1L, reference.orderId);
+        assertEquals(1L, reference.deviceId);
+        assertEquals("OCPP16J", reference.protocol);
+        assertEquals(OrderService.OCPP_TRANSACTION, reference.referenceType);
+        assertEquals("42", reference.externalReference);
+        assertEquals(new BigDecimal("1000"), fixture.order.meterStartWh);
+        verify(fixture.mapper).save(fixture.order);
     }
 
     @Test
@@ -75,7 +98,11 @@ class OrderServiceOcppStateTest {
         when(mapper.findPendingBefore(any(), eq(200))).thenReturn(List.of(order));
         when(mapper.lockByOrderNo("ORDER-1")).thenReturn(Optional.of(order));
         when(mapper.save(order)).thenReturn(order);
-        OrderService service = new OrderService(mapper, mock(DeviceService.class));
+        OrderService service = new OrderService(
+                mapper,
+                mock(OrderExternalReferenceMapper.class),
+                mock(DeviceService.class),
+                mock(ChargeBillingService.class));
 
         service.expirePending();
 
@@ -86,14 +113,28 @@ class OrderServiceOcppStateTest {
 
     private static Fixture fixture(ChargeOrder.Status status) {
         ChargeOrderMapper mapper = mock(ChargeOrderMapper.class);
+        OrderExternalReferenceMapper references = mock(OrderExternalReferenceMapper.class);
         ChargeOrder order = new ChargeOrder();
+        order.id = 1L;
         order.orderNo = "ORDER-1";
+        order.deviceId = 1L;
+        order.protocol = "OCPP16J";
         order.status = status;
         when(mapper.selectByOrderNoForUpdate("ORDER-1")).thenReturn(order);
         when(mapper.lockByOrderNo("ORDER-1")).thenReturn(Optional.of(order));
         when(mapper.save(order)).thenReturn(order);
-        return new Fixture(new OrderService(mapper, mock(DeviceService.class)), mapper, order);
+        when(references.findByOrder(1L, "OCPP16J", OrderService.OCPP_TRANSACTION))
+                .thenReturn(Optional.empty());
+        return new Fixture(
+                new OrderService(mapper, references, mock(DeviceService.class), mock(ChargeBillingService.class)),
+                mapper,
+                references,
+                order);
     }
 
-    private record Fixture(OrderService service, ChargeOrderMapper mapper, ChargeOrder order) {}
+    private record Fixture(
+            OrderService service,
+            ChargeOrderMapper mapper,
+            OrderExternalReferenceMapper references,
+            ChargeOrder order) {}
 }

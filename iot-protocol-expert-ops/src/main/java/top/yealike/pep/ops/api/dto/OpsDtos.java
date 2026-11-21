@@ -32,9 +32,6 @@ public final class OpsDtos {
             Long id,
             String sn,
             String protocol,
-            String protocolDeviceId,
-            Long stationId,
-            String stationName,
             int gunCount,
             boolean enabled,
             boolean allowSimulate,
@@ -81,24 +78,31 @@ public final class OpsDtos {
             String logicalCard,
             String account) {}
 
-    public record StartResult(boolean accepted, String orderNo, Integer failReason, String message) {}
+    public record StartResult(
+            boolean accepted, String orderNo, String transactionNo, Integer failReason, String message) {}
 
     public record OrderView(
             Long id,
             String orderNo,
+            String transactionNo,
             Long deviceId,
-            String protocolDeviceId,
+            String deviceSn,
             String gunNo,
-            Long stationId,
+            String platformGunNo,
             String protocol,
             String status,
-            Integer ocppTransactionId,
             BigDecimal meterStartWh,
             LocalDateTime startTime,
             LocalDateTime endTime,
+            Long durationSeconds,
             BigDecimal energy,
+            BigDecimal electricityFee,
+            BigDecimal serviceFee,
             BigDecimal amount,
+            BigDecimal lossEnergy,
             String amountSource,
+            String rateModelNo,
+            String rateSnapshot,
             int stopReason,
             String failReason,
             LocalDateTime createdAt) {}
@@ -110,7 +114,14 @@ public final class OpsDtos {
     public record FailRequest(String reason) {}
 
     public record SettleRequest(
-            BigDecimal energy, BigDecimal amount, LocalDateTime startTime, LocalDateTime endTime, int stopReason) {}
+            BigDecimal energy,
+            BigDecimal electricityFee,
+            BigDecimal serviceFee,
+            BigDecimal amount,
+            BigDecimal lossEnergy,
+            LocalDateTime startTime,
+            LocalDateTime endTime,
+            int stopReason) {}
 
     public record BindOcppRequest(BigDecimal meterStartWh) {}
 
@@ -132,6 +143,8 @@ public final class OpsDtos {
             String traceId,
             LocalDateTime createdAt) {}
 
+    public record YkcEnergySegment(BigDecimal unitPrice, BigDecimal energy, BigDecimal lossEnergy, BigDecimal amount) {}
+
     public record BillRequest(
             String protocol,
             String protocolDeviceId,
@@ -143,6 +156,7 @@ public final class OpsDtos {
             BigDecimal totalEnergy,
             BigDecimal totalAmount,
             BigDecimal lossTotalEnergy,
+            List<YkcEnergySegment> segments,
             int stopReason,
             int tradeFlag,
             String physicalCard,
@@ -192,7 +206,13 @@ public final class OpsDtos {
             String protocolDeviceId, int transactionId, BigDecimal meterStop, LocalDateTime endedAt, String reason) {}
 
     public record StopTransactionResult(
-            boolean accepted, String orderNo, BigDecimal energy, BigDecimal amount, String message) {}
+            boolean accepted,
+            String orderNo,
+            BigDecimal energy,
+            BigDecimal electricityFee,
+            BigDecimal serviceFee,
+            BigDecimal amount,
+            String message) {}
 
     public record CommandRequest(
             String protocol, String protocolDeviceId, String type, Map<String, Object> params, String operator) {}
@@ -206,13 +226,17 @@ public final class OpsDtos {
             Long orderId,
             String orderNo,
             Long deviceId,
-            String protocolDeviceId,
-            Long stationId,
+            String deviceSn,
             String protocol,
             String sourceType,
             String sourceTransactionNo,
             BigDecimal energy,
+            BigDecimal electricityFee,
+            BigDecimal serviceFee,
             BigDecimal amount,
+            BigDecimal lossEnergy,
+            String rateModelNo,
+            boolean partial,
             String currency,
             String amountType,
             int stopReason,

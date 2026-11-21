@@ -19,11 +19,12 @@ import top.yealike.pep.ops.devices.entity.DeviceChannel;
 import top.yealike.pep.ops.devices.entity.DeviceInstance;
 import top.yealike.pep.ops.devices.entity.DevicePropertyLatest;
 import top.yealike.pep.ops.devices.entity.DevicePropertyTs;
+import top.yealike.pep.ops.devices.entity.DeviceProtocolMapping;
 import top.yealike.pep.ops.devices.mapper.DeviceChannelMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
 import top.yealike.pep.ops.devices.mapper.DevicePropertyLatestMapper;
 import top.yealike.pep.ops.devices.mapper.DevicePropertyTsMapper;
-import top.yealike.pep.ops.devices.thingmodel.DeviceTypeCatalog;
+import top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper;
 import top.yealike.pep.ops.devices.thingmodel.ThingModel;
 import top.yealike.pep.ops.devices.thingmodel.ThingValues;
 
@@ -48,6 +49,7 @@ public class DevicePropertyService {
     private final DevicePropertyTsMapper series;
     private final DeviceInstanceMapper devices;
     private final DeviceChannelMapper channels;
+    private final DeviceProtocolMappingMapper mappings;
     private final ThingModelResolver models;
 
     public DevicePropertyService(
@@ -55,11 +57,13 @@ public class DevicePropertyService {
             DevicePropertyTsMapper series,
             DeviceInstanceMapper devices,
             DeviceChannelMapper channels,
+            DeviceProtocolMappingMapper mappings,
             ThingModelResolver models) {
         this.latest = latest;
         this.series = series;
         this.devices = devices;
         this.channels = channels;
+        this.mappings = mappings;
         this.models = models;
     }
 
@@ -102,8 +106,7 @@ public class DevicePropertyService {
             String channelNo,
             Map<String, Object> values,
             LocalDateTime occurredAt) {
-        DeviceInstance device = devices.findByProtocolAndProtocolDeviceId(protocol, protocolDeviceId)
-                .orElseThrow(() -> new IllegalArgumentException("设备未登记: " + protocol + "/" + protocolDeviceId));
+        DeviceInstance device = resolve(protocol, protocolDeviceId);
         return writeBatchInternal(device, channelNo, values, occurredAt == null ? LocalDateTime.now() : occurredAt);
     }
 
@@ -115,9 +118,8 @@ public class DevicePropertyService {
             String channelNo,
             Map<String, Object> values,
             LocalDateTime occurredAt) {
-        DeviceInstance device = devices.findByProtocolAndProtocolDeviceId(protocol, protocolDeviceId)
-                .orElseThrow(() -> new IllegalArgumentException("设备未登记: " + protocol + "/" + protocolDeviceId));
-        if (!device.enabled || (device.protocolDeviceId.startsWith("SIM-") && !device.allowSimulate)) {
+        DeviceInstance device = resolve(protocol, protocolDeviceId);
+        if (!device.enabled) {
             throw new IllegalArgumentException("设备未启用或不允许模拟: " + device.deviceCode);
         }
         if (values == null || values.isEmpty() || values.size() > 100) {
@@ -135,7 +137,7 @@ public class DevicePropertyService {
         }
         int written =
                 writeBatchInternal(device, channelNo, values, occurredAt == null ? LocalDateTime.now() : occurredAt);
-        if (written > 0 && !"CHARGER".equals(device.deviceType)) {
+        if (written > 0) {
             LocalDateTime now = LocalDateTime.now();
             if (!device.isOnline()) {
                 device.state = DeviceInstance.STATE_ONLINE;
@@ -205,16 +207,7 @@ public class DevicePropertyService {
         if (channels.findByDeviceIdAndChannelNo(device.id, channelNo).isPresent()) {
             return;
         }
-        DeviceChannel channel = new DeviceChannel();
-        channel.deviceId = device.id;
-        channel.channelNo = channelNo;
-        channel.channelType = DeviceTypeCatalog.find(device.deviceType)
-                .map(DeviceTypeCatalog::channelType)
-                .orElse("CHANNEL");
-        channel.name = metadata == null ? channelNo : channelNo + " (自动创建)";
-        channel.createdAt = LocalDateTime.now();
-        channel.updatedAt = LocalDateTime.now();
-        channels.save(channel);
+        throw new IllegalArgumentException("充电枪未登记: " + device.deviceCode + "/" + channelNo);
     }
 
     private void appendSeries(
@@ -294,7 +287,8 @@ public class DevicePropertyService {
             }
             result.add(new DeviceDtos.ChannelView(
                     channel.channelNo,
-                    channel.channelType,
+                    channel.platformGunNo,
+                    channel.protocolConnectorNo,
                     channel.name == null ? channel.channelNo : channel.name,
                     channel.enabled,
                     values));
@@ -302,7 +296,7 @@ public class DevicePropertyService {
 
         // 有值但没有通道登记的情况（协议直接上报了未登记的枪号）
         Set<String> registered = new LinkedHashSet<>();
-        result.forEach(view -> registered.add(view.channelNo()));
+        result.forEach(view -> registered.add(view.gunNo()));
         for (DevicePropertyLatest row : stored.values()) {
             if (row.channelNo.isEmpty() || registered.contains(row.channelNo)) {
                 continue;
@@ -311,7 +305,8 @@ public class DevicePropertyService {
             for (ThingModel.PropertyMetadata property : channelProperties) {
                 values.add(toView(property, stored.get(row.channelNo + "|" + property.id())));
             }
-            result.add(new DeviceDtos.ChannelView(row.channelNo, "CHANNEL", row.channelNo, true, values));
+            result.add(new DeviceDtos.ChannelView(
+                    row.channelNo, device.deviceCode + row.channelNo, null, row.channelNo, true, values));
             registered.add(row.channelNo);
         }
         return result;
@@ -373,5 +368,23 @@ public class DevicePropertyService {
                         ? null
                         : metadata.valueType().unit(),
                 points);
+    }
+
+    private DeviceInstance resolve(String protocol, String identifier) {
+        String normalized = DeviceInstanceService.normalizeProtocol(protocol);
+        if (identifier != null && identifier.matches("[1-9][0-9]{7}")) {
+            return devices.findByDeviceCode(identifier)
+                    .filter(device -> normalized.equals(device.protocol))
+                    .orElseThrow(() -> new IllegalArgumentException("设备未登记: " + normalized + "/" + identifier));
+        }
+        return mappings.findByProtocolAndThirdPartyDeviceId(normalized, identifier)
+                .filter(DevicePropertyService::mappingEnabled)
+                .flatMap(mapping ->
+                        devices.findById(mapping.deviceId).filter(device -> normalized.equals(device.protocol)))
+                .orElseThrow(() -> new IllegalArgumentException("设备未登记: " + normalized + "/" + identifier));
+    }
+
+    private static boolean mappingEnabled(DeviceProtocolMapping mapping) {
+        return mapping != null && mapping.enabled;
     }
 }

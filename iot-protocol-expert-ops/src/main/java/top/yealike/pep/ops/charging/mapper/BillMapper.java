@@ -1,6 +1,5 @@
 package top.yealike.pep.ops.charging.mapper;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -9,25 +8,15 @@ import top.yealike.pep.ops.charging.domain.Bill;
 
 public interface BillMapper {
 
-    record BillSummary(long c, BigDecimal a) {
-        public Long getC() {
-            return c;
-        }
-
-        public BigDecimal getA() {
-            return a;
-        }
-    }
-
     Bill selectById(@Param("id") Long id);
 
     Bill selectBySource(
+            @Param("deviceId") Long deviceId,
             @Param("protocol") String protocol,
             @Param("sourceType") String sourceType,
             @Param("sourceTransactionNo") String sourceTransactionNo);
 
     List<Bill> search(
-            @Param("stationId") Long stationId,
             @Param("deviceId") Long deviceId,
             @Param("protocol") String protocol,
             @Param("sourceTransactionNo") String sourceTransactionNo,
@@ -40,21 +29,19 @@ public interface BillMapper {
 
     long countByOrderId(@Param("orderId") Long orderId);
 
-    BillSummary summarizeStation(
-            @Param("stationId") Long stationId,
-            @Param("amountType") String amountType,
-            @Param("from") LocalDateTime from,
-            @Param("to") LocalDateTime to);
-
-    long countByStationIdIsNull();
+    int lockSourceTransaction(
+            @Param("deviceId") Long deviceId,
+            @Param("protocol") String protocol,
+            @Param("sourceType") String sourceType,
+            @Param("sourceTransactionNo") String sourceTransactionNo);
 
     int insert(Bill bill);
 
     int update(Bill bill);
 
-    default Optional<Bill> findByProtocolAndSourceTypeAndSourceTransactionNo(
-            String protocol, String sourceType, String sourceTransactionNo) {
-        return Optional.ofNullable(selectBySource(protocol, sourceType, sourceTransactionNo));
+    default Optional<Bill> findByDeviceAndProtocolAndSourceTypeAndSourceTransactionNo(
+            Long deviceId, String protocol, String sourceType, String sourceTransactionNo) {
+        return Optional.ofNullable(selectBySource(deviceId, protocol, sourceType, sourceTransactionNo));
     }
 
     default List<Bill> findAllByOrderId(Long orderId) {

@@ -27,6 +27,11 @@ public interface ProtocolDocumentMapper {
             @Param("sha256") String sha256,
             @Param("uploadedBy") String uploadedBy);
 
+    int linkProductsByProtocolIdentity(
+            @Param("id") long id,
+            @Param("protocolNameEn") String protocolNameEn,
+            @Param("documentVersion") String documentVersion);
+
     FileInfo selectFileInfo(@Param("id") long id);
 
     Long selectActiveIdForUpdate(@Param("id") long id);

@@ -19,9 +19,11 @@ import java.time.LocalDateTime;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -117,6 +119,8 @@ public class SimulatorRuntime {
 
     public static final class Gun {
         private final String gunNo;
+        private final String platformGunNo;
+        private final String protocolConnectorNo;
         private boolean plugged = false;
         private String phase = "待机";
         private ChargingLedger ledger;
@@ -159,12 +163,22 @@ public class SimulatorRuntime {
         private long lastHeartbeatAt;
         private long heartbeatAckAt;
 
-        Gun(String gunNo) {
+        Gun(String gunNo, String platformGunNo, String protocolConnectorNo) {
             this.gunNo = gunNo;
+            this.platformGunNo = platformGunNo;
+            this.protocolConnectorNo = protocolConnectorNo;
         }
 
         public String getGunNo() {
             return gunNo;
+        }
+
+        public String getPlatformGunNo() {
+            return platformGunNo;
+        }
+
+        public String getProtocolConnectorNo() {
+            return protocolConnectorNo;
         }
 
         public boolean isPlugged() {
@@ -309,20 +323,17 @@ public class SimulatorRuntime {
     }
 
     void init(boolean restoreState) {
-        if (!properties.getPileCode().matches("\\d{14}")
-                || properties.getGunCount() < 1
-                || properties.getGunCount() > 99) throw new IllegalArgumentException("桩号须14位数字，枪数1~99");
+        protocol = Protocol.of(properties.getProtocol());
+        validateProtocolDeviceId(protocol, properties.getPileCode());
+        if (properties.getGunCount() < 1 || properties.getGunCount() > 99) throw new IllegalArgumentException("枪数1~99");
         if (!Double.isFinite(properties.getRatedVoltage())
                 || properties.getRatedVoltage() < 1
                 || properties.getRatedVoltage() > 1000
                 || !Double.isFinite(properties.getRatedCurrent())
                 || properties.getRatedCurrent() <= 0
                 || properties.getRatedCurrent() > 400) throw new IllegalArgumentException("额定电压1~1000V，电流0~400A");
-        protocol = Protocol.of(properties.getProtocol());
-        rateModel = defaultRateModel(properties.getPileCode());
-        for (int i = 1; i <= Math.max(properties.getGunCount(), 1); i++) {
-            guns.put(String.format("%02d", i), new Gun(String.format("%02d", i)));
-        }
+        rateModel = defaultRateModel(protocol == Protocol.YKC16 ? properties.getPileCode() : "00000000000000");
+        installGuns(defaultGunMappings(Math.max(properties.getGunCount(), 1)));
         // Hold reconnects until Spring's tracing and logging listeners are ready.
         manualDisconnect = true;
         if (restoreState) restore();
@@ -364,6 +375,7 @@ public class SimulatorRuntime {
         if (device == null) {
             throw new IllegalArgumentException("设备不存在: " + deviceId);
         }
+        validatePlatformSn(device.sn());
         if (!device.enabled()) {
             throw new IllegalArgumentException("设备已停用: " + device.sn());
         }
@@ -379,14 +391,8 @@ public class SimulatorRuntime {
         if (device.gunCount() < 1 || device.gunCount() > 99) {
             throw new IllegalArgumentException("枪数必须为 1~99");
         }
-        if (device.protocolDeviceId() == null || device.protocolDeviceId().isBlank()) {
-            throw new IllegalArgumentException("协议设备编号不能为空");
-        }
-        if (next == Protocol.YKC16
-                && (device.protocolDeviceId() == null
-                        || !device.protocolDeviceId().matches("\\d{14}"))) {
-            throw new IllegalArgumentException("云快充设备编号必须为14位数字: " + device.protocolDeviceId());
-        }
+        validateProtocolDeviceId(next, device.protocolDeviceId());
+        List<GunMapping> mappings = deviceGunMappings(device, next);
         if (guns.values().stream().anyMatch(g -> g.state == GunState.CHARGING)) {
             throw new IllegalStateException("当前设备有在充订单，请先结束充电后再切换");
         }
@@ -400,14 +406,11 @@ public class SimulatorRuntime {
         protocol = next;
         properties.setProtocol(next.code());
         properties.setPileCode(device.protocolDeviceId());
-        properties.setGunCount(Math.max(device.gunCount(), 1));
+        properties.setGunCount(mappings.size());
         properties.setStateFile(stateFileForDevice(properties.getStateFile(), device.id()));
-        rateModel = defaultRateModel(
-                device.protocolDeviceId().matches("\\d{14}") ? device.protocolDeviceId() : "00000000000000");
-        guns.clear();
-        for (int i = 1; i <= Math.max(device.gunCount(), 1); i++) {
-            guns.put(String.format("%02d", i), new Gun(String.format("%02d", i)));
-        }
+        String pileCode = next == Protocol.YKC16 ? device.protocolDeviceId() : "00000000000000";
+        rateModel = activePlatformRateModel(pileCode);
+        installGuns(mappings);
         history.clear();
         offlineCards.clear();
         pendingTransactions.clear();
@@ -433,9 +436,153 @@ public class SimulatorRuntime {
         return parent.resolve("simulator-state-" + deviceId + ".properties").toString();
     }
 
+    private record GunMapping(String channelNo, String platformGunNo, String protocolConnectorNo) {}
+
+    private static void validatePlatformSn(String sn) {
+        if (sn == null || !sn.matches("[1-9][0-9]{7}")) {
+            throw new IllegalArgumentException("平台设备 SN 必须为 8 位数字且从 10000000 开始: " + sn);
+        }
+    }
+
+    private static void validateProtocolDeviceId(Protocol protocol, String deviceId) {
+        if (deviceId == null || deviceId.isBlank()) {
+            throw new IllegalArgumentException("协议设备编号不能为空");
+        }
+        if (protocol == Protocol.YKC16 && !deviceId.matches("[0-9]{14}")) {
+            throw new IllegalArgumentException("云快充第三方设备号必须为14位数字: " + deviceId);
+        }
+        if (protocol == Protocol.OCPP16J && !deviceId.matches("[^\\s/?#]+")) {
+            throw new IllegalArgumentException("OCPP chargePointId 不能包含空白或 URL 分隔符: " + deviceId);
+        }
+    }
+
+    private static List<GunMapping> defaultGunMappings(int gunCount) {
+        List<GunMapping> mappings = new ArrayList<>();
+        for (int i = 1; i <= gunCount; i++) {
+            String channelNo = String.format("%02d", i);
+            mappings.add(new GunMapping(channelNo, channelNo, channelNo));
+        }
+        return mappings;
+    }
+
+    private List<GunMapping> deviceGunMappings(OpsDeviceClient.SimulatorDevice device, Protocol next) {
+        List<OpsDeviceClient.SimulatorConnector> connectors = device.connectors();
+        Map<String, String> connectorByPlatformGunNo = new LinkedHashMap<>();
+        for (OpsDeviceClient.SimulatorConnector connector : connectors) {
+            String platformGunNo = connector.platformGunNo();
+            if (platformGunNo == null
+                    || !platformGunNo.matches("[1-9][0-9]{7}(0[1-9]|[1-9][0-9])")
+                    || !platformGunNo.startsWith(device.sn())) {
+                throw new IllegalArgumentException("平台枪号必须为设备 SN 加两位枪号: " + platformGunNo);
+            }
+            String protocolConnectorNo = normalizeProtocolConnectorNo(connector.protocolConnectorNo());
+            if (connectorByPlatformGunNo.putIfAbsent(platformGunNo, protocolConnectorNo) != null) {
+                throw new IllegalArgumentException("平台枪号重复映射: " + platformGunNo);
+            }
+        }
+        if (connectors.isEmpty()) {
+            log.warn("Ops 设备 {} 未返回枪口映射，暂按平台两位枪号 {} 作为协议枪号", device.sn(), next.code());
+        }
+
+        List<GunMapping> mappings = new ArrayList<>();
+        Set<String> protocolConnectorNos = new HashSet<>();
+        for (int i = 1; i <= device.gunCount(); i++) {
+            String channelNo = String.format("%02d", i);
+            String platformGunNo = device.sn() + channelNo;
+            String rawConnectorNo = connectorByPlatformGunNo.get(platformGunNo);
+            if (connectors.isEmpty()) {
+                rawConnectorNo = channelNo;
+            } else if (rawConnectorNo == null) {
+                throw new IllegalArgumentException("Ops 设备缺少枪口映射: " + platformGunNo);
+            }
+            String protocolConnectorNo = normalizeProtocolConnectorNo(rawConnectorNo);
+            if (!protocolConnectorNos.add(protocolConnectorNo)) {
+                throw new IllegalArgumentException("第三方协议枪号重复: " + protocolConnectorNo);
+            }
+            mappings.add(new GunMapping(channelNo, platformGunNo, protocolConnectorNo));
+        }
+        if (connectorByPlatformGunNo.size() > mappings.size()) {
+            throw new IllegalArgumentException("Ops 设备返回了超出 gunCount 的枪口映射: " + device.sn());
+        }
+        return mappings;
+    }
+
+    private static String normalizeProtocolConnectorNo(String value) {
+        if (value == null || !value.trim().matches("[0-9]{1,2}")) {
+            throw new IllegalArgumentException("第三方协议枪号必须为 1~99: " + value);
+        }
+        int connector = Integer.parseInt(value.trim());
+        if (connector < 1 || connector > 99) {
+            throw new IllegalArgumentException("第三方协议枪号必须为 1~99: " + value);
+        }
+        return String.format("%02d", connector);
+    }
+
+    private void installGuns(List<GunMapping> mappings) {
+        guns.clear();
+        for (GunMapping mapping : mappings) {
+            guns.put(
+                    mapping.channelNo(),
+                    new Gun(mapping.channelNo(), mapping.platformGunNo(), mapping.protocolConnectorNo()));
+        }
+    }
+
     public synchronized String gunFaultCode(String gunNo) {
-        Gun gun = guns.get(gunNo);
+        Gun gun = findGun(gunNo);
         return gun != null && gun.fault ? gun.ocppFaultCode : "NoError";
+    }
+
+    synchronized String ocppGunNoForConnector(int connectorId) {
+        Gun gun = gunForProtocolConnector(connectorId);
+        return gun == null ? null : gun.gunNo;
+    }
+
+    synchronized int ocppConnectorIdForGun(String gunNo) {
+        return protocolConnectorId(requireGun(gunNo));
+    }
+
+    private Gun findGun(String identifier) {
+        if (identifier == null) {
+            return null;
+        }
+        Gun gun = guns.get(identifier);
+        if (gun != null) {
+            return gun;
+        }
+        for (Gun candidate : guns.values()) {
+            if (candidate.platformGunNo.equals(identifier)) {
+                return candidate;
+            }
+        }
+        return null;
+    }
+
+    private Gun gunForProtocolConnector(int connectorId) {
+        if (connectorId <= 0) {
+            return null;
+        }
+        for (Gun gun : guns.values()) {
+            if (protocolConnectorId(gun) == connectorId) {
+                return gun;
+            }
+        }
+        return null;
+    }
+
+    private Gun gunForProtocolConnector(String connectorNo) {
+        if (connectorNo == null || !connectorNo.matches("[0-9]{1,2}")) {
+            return null;
+        }
+        return gunForProtocolConnector(Integer.parseInt(connectorNo));
+    }
+
+    private static int protocolConnectorId(Gun gun) {
+        return Integer.parseInt(gun.protocolConnectorNo);
+    }
+
+    private String platformGunNo(String localGunNo) {
+        Gun gun = findGun(localGunNo);
+        return gun == null ? localGunNo : gun.platformGunNo;
     }
 
     synchronized void abort() {
@@ -587,7 +734,7 @@ public class SimulatorRuntime {
     }
 
     public synchronized void onOcppStartRejected(String gunNo, String reason) {
-        Gun gun = guns.get(gunNo);
+        Gun gun = findGun(gunNo);
         if (gun != null && "鉴权中".equals(gun.phase)) {
             gun.phase = gun.plugged ? "已插枪" : "待机";
         }
@@ -597,7 +744,7 @@ public class SimulatorRuntime {
 
     public synchronized void onOcppTransactionStarted(
             String gunNo, int transactionId, int startType, BigDecimal meterStartWh) {
-        Gun gun = guns.get(gunNo);
+        Gun gun = findGun(gunNo);
         if (gun == null) {
             return;
         }
@@ -605,7 +752,7 @@ public class SimulatorRuntime {
         gun.ocppMeterStartWh = meterStartWh == null ? BigDecimal.ZERO : meterStartWh;
         gun.phase = gun.plugged ? "已插枪" : "待机";
         String synthetic = properties.getPileCode()
-                + gunNo
+                + gun.protocolConnectorNo
                 + simulatedTime.format(java.time.format.DateTimeFormatter.ofPattern("yyMMddHHmmss"))
                 + String.format("%04d", Math.floorMod(transactionId, 10000));
         beginCharge(gun, synthetic, startType);
@@ -613,17 +760,17 @@ public class SimulatorRuntime {
     }
 
     public synchronized boolean ocppCanStart(String gunNo) {
-        Gun gun = guns.get(gunNo);
+        Gun gun = findGun(gunNo);
         return gun != null && loggedIn && gun.plugged && gun.allowWork && !gun.fault && gun.state != GunState.CHARGING;
     }
 
     public boolean ocppCanStop(String gunNo) {
-        Gun gun = guns.get(gunNo);
+        Gun gun = findGun(gunNo);
         return gun != null && gun.state == GunState.CHARGING;
     }
 
     public synchronized void ocppMarkAuthorizing(String gunNo) {
-        Gun gun = guns.get(gunNo);
+        Gun gun = findGun(gunNo);
         if (gun != null) {
             gun.phase = "鉴权中";
             gun.authDeadline = System.currentTimeMillis() + 15000;
@@ -631,12 +778,12 @@ public class SimulatorRuntime {
     }
 
     public synchronized BigDecimal ocppMeterWh(String gunNo) {
-        Gun gun = guns.get(gunNo);
+        Gun gun = findGun(gunNo);
         return gun == null ? BigDecimal.ZERO : gun.meter.multiply(new BigDecimal("1000"));
     }
 
     public synchronized String gunRuntimeStatus(String gunNo) {
-        Gun gun = guns.get(gunNo);
+        Gun gun = findGun(gunNo);
         if (gun == null) {
             return "Available";
         }
@@ -653,7 +800,7 @@ public class SimulatorRuntime {
     }
 
     public synchronized void ocppRemoteStop(String gunNo) {
-        Gun gun = guns.get(gunNo);
+        Gun gun = findGun(gunNo);
         if (gun == null || gun.state != GunState.CHARGING) {
             return;
         }
@@ -676,7 +823,7 @@ public class SimulatorRuntime {
     }
 
     public synchronized String ocppUnlock(int connectorId) {
-        Gun gun = guns.get(String.format("%02d", connectorId));
+        Gun gun = gunForProtocolConnector(connectorId);
         if (gun == null || gun.state == GunState.CHARGING) {
             return "NotSupported";
         }
@@ -688,14 +835,14 @@ public class SimulatorRuntime {
         if (connectorId <= 0) {
             guns.values().forEach(g -> g.allowWork = operative);
         } else {
-            Gun gun = guns.get(String.format("%02d", connectorId));
+            Gun gun = gunForProtocolConnector(connectorId);
             if (gun != null) {
                 gun.allowWork = operative;
             }
         }
         persist();
         guns.forEach((no, gun) ->
-                ocppClient.statusNotification(Integer.parseInt(no), gunRuntimeStatus(no), gunFaultCode(no)));
+                ocppClient.statusNotification(protocolConnectorId(gun), gunRuntimeStatus(no), gunFaultCode(no)));
     }
 
     public synchronized void ocppTrigger(String requestedMessage, Integer connectorId) {
@@ -706,13 +853,13 @@ public class SimulatorRuntime {
             ocppClient.heartbeat();
         } else if ("StatusNotification".equalsIgnoreCase(requestedMessage)) {
             if (connectorId != null && connectorId > 0) {
-                ocppClient.statusNotification(
-                        connectorId,
-                        gunRuntimeStatus(String.format("%02d", connectorId)),
-                        gunFaultCode(String.format("%02d", connectorId)));
+                Gun gun = gunForProtocolConnector(connectorId);
+                if (gun != null) {
+                    ocppClient.statusNotification(connectorId, gunRuntimeStatus(gun.gunNo), gunFaultCode(gun.gunNo));
+                }
             } else {
-                guns.forEach((no, gun) ->
-                        ocppClient.statusNotification(Integer.parseInt(no), gunRuntimeStatus(no), gunFaultCode(no)));
+                guns.forEach((no, gun) -> ocppClient.statusNotification(
+                        protocolConnectorId(gun), gunRuntimeStatus(no), gunFaultCode(no)));
             }
         } else if ("MeterValues".equalsIgnoreCase(requestedMessage)) {
             guns.values().stream().filter(g -> g.state == GunState.CHARGING).forEach(this::sendRealtime);
@@ -753,8 +900,8 @@ public class SimulatorRuntime {
         }
         send(
                 FrameType.HEARTBEAT,
-                RegistrationFrames.encodeHeartbeat(
-                        new RegistrationFrames.Heartbeat(properties.getPileCode(), gun.gunNo, gun.fault)));
+                RegistrationFrames.encodeHeartbeat(new RegistrationFrames.Heartbeat(
+                        properties.getPileCode(), gun.protocolConnectorNo, gun.fault)));
         gun.lastHeartbeatAt = System.currentTimeMillis();
     }
 
@@ -780,7 +927,7 @@ public class SimulatorRuntime {
         return new RealtimeFrames.Realtime(
                 gun.transactionNo == null ? "0".repeat(32) : gun.transactionNo,
                 properties.getPileCode(),
-                gun.gunNo,
+                gun.protocolConnectorNo,
                 gun.state.code(),
                 gun.plugged ? 0 : 1,
                 gun.plugged ? 1 : 0,
@@ -801,7 +948,7 @@ public class SimulatorRuntime {
 
     private void sendStartRequest(Gun gun) {
         OperationFrames.StartRequest request = new OperationFrames.StartRequest(
-                properties.getPileCode(), gun.gunNo, 0x01, false, gun.physicalCard, "0".repeat(32), "");
+                properties.getPileCode(), gun.protocolConnectorNo, 0x01, false, gun.physicalCard, "0".repeat(32), "");
         send(FrameType.START_REQUEST, OperationFrames.encodeStartRequest(request));
     }
 
@@ -906,14 +1053,14 @@ public class SimulatorRuntime {
                 case LOGIN_ACK -> handleLoginAck(frame);
                 case HEARTBEAT_ACK -> {
                     var ack = RegistrationFrames.decodeHeartbeatAck(frame.body());
-                    Gun g = guns.get(ack.gunNo());
+                    Gun g = gunForProtocolConnector(ack.gunNo());
                     if (g != null) g.heartbeatAckAt = System.currentTimeMillis();
                 }
                 case RATE_VERIFY_ACK -> handleRateVerifyAck(frame);
                 case RATE_RESPONSE, RATE_SET -> handleRateModel(frame, type);
                 case READ_REALTIME -> {
                     RealtimeFrames.ReadRealtime req = RealtimeFrames.decodeReadRealtime(frame.body());
-                    Gun gun = guns.get(req.gunNo());
+                    Gun gun = gunForProtocolConnector(req.gunNo());
                     if (gun != null) {
                         send(FrameType.REALTIME, RealtimeFrames.encodeRealtime(buildRealtime(gun)), frame.sequence());
                     }
@@ -1025,7 +1172,7 @@ public class SimulatorRuntime {
 
     private void handleStartAck(Frame frame) {
         OperationFrames.StartAck ack = OperationFrames.decodeStartAck(frame.body());
-        Gun gun = guns.get(ack.gunNo());
+        Gun gun = gunForProtocolConnector(ack.gunNo());
         if (gun == null) {
             return;
         }
@@ -1043,7 +1190,7 @@ public class SimulatorRuntime {
 
     private void handleRemoteStart(Frame frame) {
         OperationFrames.RemoteStart command = OperationFrames.decodeRemoteStart(frame.body());
-        Gun gun = guns.get(command.gunNo());
+        Gun gun = gunForProtocolConnector(command.gunNo());
         int failReason = !command.pileCode().equals(properties.getPileCode()) ? 1 : startFailure(gun);
         boolean success = failReason == 0;
         if (failReason == 5) {
@@ -1070,7 +1217,7 @@ public class SimulatorRuntime {
 
     private void handleRemoteStop(Frame frame) {
         OperationFrames.RemoteStop command = OperationFrames.decodeRemoteStop(frame.body());
-        Gun gun = guns.get(command.gunNo());
+        Gun gun = gunForProtocolConnector(command.gunNo());
         boolean success = gun != null && gun.state == GunState.CHARGING;
         int failReason = success ? 0x00 : 0x02;
         send(
@@ -1165,7 +1312,7 @@ public class SimulatorRuntime {
 
     private void handleBalance(Frame frame) {
         OperationFrames.BalanceUpdate update = OperationFrames.decodeBalanceUpdate(frame.body());
-        Gun gun = guns.get(update.gunNo());
+        Gun gun = gunForProtocolConnector(update.gunNo());
         int result = !update.pileCode().equals(properties.getPileCode())
                 ? 1
                 : gun == null
@@ -1221,7 +1368,7 @@ public class SimulatorRuntime {
 
     private void handleLock(Frame frame) {
         MaintenanceFrames.LockControl control = MaintenanceFrames.decodeLockControl(frame.body());
-        Gun gun = guns.get(String.format("%02d", control.gunNo()));
+        Gun gun = gunForProtocolConnector(control.gunNo());
         boolean valid = gun != null
                 && (control.action() == 85 || control.action() == 255)
                 && !(gun.plugged && control.action() == 85);
@@ -1268,7 +1415,7 @@ public class SimulatorRuntime {
         }
         sendRealtime(gun);
         if (isOcpp()) {
-            ocppClient.statusNotification(Integer.parseInt(gun.gunNo), "Charging", "NoError");
+            ocppClient.statusNotification(protocolConnectorId(gun), "Charging", "NoError");
         }
         persist();
     }
@@ -1293,7 +1440,7 @@ public class SimulatorRuntime {
             queueOcppStop(gun, reason);
             sendRealtime(gun);
             ocppClient.statusNotification(
-                    Integer.parseInt(gun.gunNo), gunRuntimeStatus(gun.gunNo), gunFaultCode(gun.gunNo));
+                    protocolConnectorId(gun), gunRuntimeStatus(gun.gunNo), gunFaultCode(gun.gunNo));
         } else {
             sendTransaction(tx);
             sendRealtime(gun);
@@ -1306,7 +1453,7 @@ public class SimulatorRuntime {
         return new OperationFrames.Transaction(
                 gun.transactionNo,
                 properties.getPileCode(),
-                gun.gunNo,
+                gun.protocolConnectorNo,
                 gun.startTime,
                 simulatedTime,
                 gun.ledger.segment(0),
@@ -1632,7 +1779,7 @@ public class SimulatorRuntime {
         reportLock(gun);
         if (isOcpp()) {
             ocppClient.statusNotification(
-                    Integer.parseInt(gun.gunNo), gunRuntimeStatus(gun.gunNo), gunFaultCode(gun.gunNo));
+                    protocolConnectorId(gun), gunRuntimeStatus(gun.gunNo), gunFaultCode(gun.gunNo));
         }
         if (gun.waitingStart != null && loggedIn && System.currentTimeMillis() <= gun.waitingUntil) {
             OperationFrames.RemoteStart cmd = gun.waitingStart;
@@ -1657,7 +1804,7 @@ public class SimulatorRuntime {
         reportLock(gun);
         if (isOcpp()) {
             ocppClient.statusNotification(
-                    Integer.parseInt(gun.gunNo), gunRuntimeStatus(gun.gunNo), gunFaultCode(gun.gunNo));
+                    protocolConnectorId(gun), gunRuntimeStatus(gun.gunNo), gunFaultCode(gun.gunNo));
         }
         sendRealtime(gun);
         return "已拔枪";
@@ -1711,7 +1858,7 @@ public class SimulatorRuntime {
         gun.phase = enable ? "故障" : "待机";
         if (isOcpp()) {
             ocppClient.statusNotification(
-                    Integer.parseInt(gun.gunNo), enable ? "Faulted" : gunRuntimeStatus(gun.gunNo), gun.ocppFaultCode);
+                    protocolConnectorId(gun), enable ? "Faulted" : gunRuntimeStatus(gun.gunNo), gun.ocppFaultCode);
         }
         sendRealtime(gun);
         return enable ? "已注入故障" : "故障已恢复";
@@ -1780,7 +1927,7 @@ public class SimulatorRuntime {
                 return "已上送 OCPP MeterValues";
             }
             ocppClient.statusNotification(
-                    Integer.parseInt(gun.gunNo), gunRuntimeStatus(gun.gunNo), gunFaultCode(gun.gunNo));
+                    protocolConnectorId(gun), gunRuntimeStatus(gun.gunNo), gunFaultCode(gun.gunNo));
             return "已上送 OCPP StatusNotification";
         }
         sendRealtime(gun);
@@ -1788,7 +1935,7 @@ public class SimulatorRuntime {
     }
 
     private Gun requireGun(String gunNo) {
-        Gun gun = guns.get(gunNo);
+        Gun gun = findGun(gunNo);
         if (gun == null) {
             throw new IllegalArgumentException("不存在的枪号: " + gunNo);
         }
@@ -1802,6 +1949,8 @@ public class SimulatorRuntime {
         data.put("loggedIn", loggedIn);
         data.put("manualDisconnect", manualDisconnect);
         data.put("pileCode", properties.getPileCode());
+        data.put("protocolDeviceId", properties.getPileCode());
+        data.put("chargePointId", protocol == Protocol.OCPP16J ? properties.getPileCode() : null);
         data.put("deviceId", selectedDeviceId);
         data.put("deviceSn", selectedDeviceSn);
         data.put("protocol", protocol.code());
@@ -1817,6 +1966,9 @@ public class SimulatorRuntime {
         for (Gun gun : guns.values()) {
             Map<String, Object> view = new LinkedHashMap<>();
             view.put("gunNo", gun.gunNo);
+            view.put("channelNo", gun.gunNo);
+            view.put("platformGunNo", gun.platformGunNo);
+            view.put("protocolConnectorNo", gun.protocolConnectorNo);
             view.put("phase", gun.phase);
             view.put("capacityKwh", gun.capacityKwh);
             view.put("vin", gun.vin);
@@ -1867,7 +2019,7 @@ public class SimulatorRuntime {
                 pendingOcppStops.values().stream()
                         .map(stop -> Map.of(
                                 "transactionId", stop.transactionId,
-                                "gunNo", stop.gunNo,
+                                "gunNo", platformGunNo(stop.gunNo),
                                 "meterStopWh", stop.meterStopWh,
                                 "reason", stop.reason,
                                 "retriesLeft", Math.max(stop.retriesLeft, 0)))
@@ -1990,6 +2142,29 @@ public class SimulatorRuntime {
                 java.util.Collections.nCopies(48, 2));
     }
 
+    private RegistrationFrames.RateModel activePlatformRateModel(String pileCode) {
+        if (opsDevices == null) {
+            throw new IllegalStateException("未配置平台设备目录，无法同步活动费率");
+        }
+        OpsDeviceClient.RateModel active = opsDevices.rates().stream()
+                .filter(OpsDeviceClient.RateModel::active)
+                .findFirst()
+                .orElseThrow(() -> new IllegalStateException("平台没有启用的费率模型"));
+        return new RegistrationFrames.RateModel(
+                pileCode,
+                active.modelNo(),
+                active.sharpEnergy(),
+                active.sharpService(),
+                active.peakEnergy(),
+                active.peakService(),
+                active.flatEnergy(),
+                active.flatService(),
+                active.valleyEnergy(),
+                active.valleyService(),
+                active.lossRatio(),
+                active.segments());
+    }
+
     private void reportLock(Gun gun) {
         gun.lastLockAt = System.currentTimeMillis();
         if (isOcpp()) {
@@ -2000,7 +2175,7 @@ public class SimulatorRuntime {
                     FrameType.LOCK_REPORT,
                     MaintenanceFrames.encodeLockReport(new MaintenanceFrames.LockReport(
                             properties.getPileCode(),
-                            Integer.parseInt(gun.gunNo),
+                            protocolConnectorId(gun),
                             gun.lockStatus,
                             gun.plugged ? 255 : 0,
                             95,
@@ -2102,7 +2277,9 @@ public class SimulatorRuntime {
         send(
                 type,
                 BmsFrames.encode(
-                        type, new BmsFrames.Message(gun.transactionNo, properties.getPileCode(), gun.gunNo, v)));
+                        type,
+                        new BmsFrames.Message(
+                                gun.transactionNo, properties.getPileCode(), gun.protocolConnectorNo, v)));
     }
 
     public synchronized Map<String, Object> configureClock(
@@ -2168,7 +2345,7 @@ public class SimulatorRuntime {
         if (!offlineCards.containsKey(gun.physicalCard)) throw new IllegalArgumentException("卡不在离线白名单中");
         if (rateModel.modelNo().equals("0000")) throw new IllegalArgumentException("请先从平台同步费率");
         String tx = properties.getPileCode()
-                + gun.gunNo
+                + gun.protocolConnectorNo
                 + simulatedTime.format(java.time.format.DateTimeFormatter.ofPattern("yyMMddHHmmss"))
                 + String.format("%04d", nextSequence() % 10000);
         gun.parallelNo = null;
@@ -2198,7 +2375,7 @@ public class SimulatorRuntime {
                 FrameType.START_REQUEST,
                 OperationFrames.encodeStartRequest(new OperationFrames.StartRequest(
                         properties.getPileCode(),
-                        gunNo,
+                        gun.protocolConnectorNo,
                         3,
                         false,
                         gun.physicalCard,
@@ -2225,7 +2402,7 @@ public class SimulatorRuntime {
                     FrameType.PARALLEL_START_REQUEST,
                     ParallelFrames.encodeParallelStartRequest(new ParallelFrames.ParallelStartRequest(
                             properties.getPileCode(),
-                            g.gunNo,
+                            g.protocolConnectorNo,
                             1,
                             false,
                             g.physicalCard,
@@ -2246,7 +2423,12 @@ public class SimulatorRuntime {
             cancelParallel();
             return;
         }
-        parallelAcks.put(ack.gunNo(), ack);
+        Gun gun = gunForProtocolConnector(ack.gunNo());
+        if (gun == null) {
+            cancelParallel();
+            return;
+        }
+        parallelAcks.put(gun.gunNo, ack);
         if (parallelAcks.size() == guns.size()) {
             for (Gun g : guns.values())
                 if (!g.plugged || g.fault || !g.allowWork) {
@@ -2265,7 +2447,7 @@ public class SimulatorRuntime {
 
     private void handleParallelRemote(Frame frame) {
         var c = ParallelFrames.decodeParallelRemoteStart(frame.body());
-        Gun g = guns.get(c.gunNo());
+        Gun g = gunForProtocolConnector(c.gunNo());
         int fail = !c.pileCode().equals(properties.getPileCode()) ? 1 : startFailure(g);
         if (pendingParallelNo != null && !pendingParallelNo.equals(c.parallelNo())) fail = 2;
         boolean success = fail == 0;
@@ -2277,7 +2459,7 @@ public class SimulatorRuntime {
                         c.gunNo(),
                         success,
                         fail,
-                        c.gunNo().equals("01") ? 0 : 1,
+                        g != null && g.gunNo.equals("01") ? 0 : 1,
                         c.parallelNo())),
                 frame.sequence());
         if (!success) {
@@ -2289,7 +2471,7 @@ public class SimulatorRuntime {
             parallelDeadline = System.currentTimeMillis() + 15000;
             parallelCommands.clear();
         }
-        parallelCommands.put(c.gunNo(), c);
+        parallelCommands.put(g.gunNo, c);
         g.phase = "鉴权中";
         if (parallelCommands.size() == guns.size()) {
             for (Gun gun : guns.values()) {
@@ -2306,19 +2488,19 @@ public class SimulatorRuntime {
     }
 
     private void cancelParallel() {
-        parallelAcks.values().forEach(a -> {
-            Gun g = guns.get(a.gunNo());
+        parallelAcks.forEach((gunNo, ack) -> {
+            Gun g = guns.get(gunNo);
             if (g != null) {
                 g.phase = "已插枪";
-                beginCharge(g, a.transactionNo(), 2);
+                beginCharge(g, ack.transactionNo(), 2);
                 stopCharge(g, 0x4A);
             }
         });
-        parallelCommands.values().forEach(a -> {
-            Gun g = guns.get(a.gunNo());
+        parallelCommands.forEach((gunNo, command) -> {
+            Gun g = guns.get(gunNo);
             if (g != null) {
                 g.phase = "已插枪";
-                beginCharge(g, a.transactionNo(), 1);
+                beginCharge(g, command.transactionNo(), 1);
                 stopCharge(g, 0x4A);
             }
         });
@@ -2383,6 +2565,8 @@ public class SimulatorRuntime {
     public synchronized Map<String, Object> configuration() {
         Map<String, Object> c = new LinkedHashMap<>();
         c.put("pileCode", properties.getPileCode());
+        c.put("protocolDeviceId", properties.getPileCode());
+        c.put("chargePointId", protocol == Protocol.OCPP16J ? properties.getPileCode() : null);
         c.put("deviceId", selectedDeviceId);
         c.put("deviceSn", selectedDeviceSn);
         c.put("opsBaseUrl", properties.getOpsBaseUrl());

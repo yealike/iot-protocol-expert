@@ -16,8 +16,6 @@ public interface DeviceChannelMapper {
 
     long countByDeviceId(@Param("deviceId") Long deviceId);
 
-    long countByDeviceIdAndChannelType(@Param("deviceId") Long deviceId, @Param("channelType") String channelType);
-
     int insert(DeviceChannel channel);
 
     int update(DeviceChannel channel);

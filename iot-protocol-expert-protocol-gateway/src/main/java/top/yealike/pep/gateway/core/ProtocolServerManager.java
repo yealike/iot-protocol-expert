@@ -13,14 +13,17 @@ public class ProtocolServerManager implements SmartLifecycle {
     private static final Logger log = LoggerFactory.getLogger(ProtocolServerManager.class);
 
     private final List<ProtocolServer> servers;
+    private final DeviceIdentityRegistry identities;
     private volatile boolean running;
 
-    public ProtocolServerManager(List<ProtocolServer> servers) {
+    public ProtocolServerManager(List<ProtocolServer> servers, DeviceIdentityRegistry identities) {
         this.servers = servers;
+        this.identities = identities;
     }
 
     @Override
     public void start() {
+        identities.load();
         for (ProtocolServer server : servers) {
             if (!server.enabled()) {
                 log.info("协议 {} 未启用，跳过监听 {}", server.protocol().label(), server.port());

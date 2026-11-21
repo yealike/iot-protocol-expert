@@ -10,8 +10,8 @@ import top.yealike.pep.ops.devices.service.DevicePropertyService;
 /**
  * 协议通道 → 平台 的遥测入口。
  *
- * <p>契约不变：仍然收 {@link OpsDtos.RealtimeRequest}。变化在内部—— 枪位实时值不再写 {@code gun_state}，而是翻译成通道型属性写进属性表，
- * 因此风机、储能、电表的遥测可以走同一套存储，而不需要各自建表。
+ * <p>契约不变：仍然收 {@link OpsDtos.RealtimeRequest}。枪位实时值不再写 {@code gun_state}，
+ * 而是翻译成通道型属性写进属性表。
  */
 @RestController
 @RequestMapping("/internal")
@@ -75,7 +75,11 @@ public class InternalTelemetryController {
             var order =
                     request.transactionNo() == null || request.transactionNo().isBlank()
                             ? orders.active(device.id, request.gunNo())
-                            : orders.findByOrderNo(request.transactionNo());
+                            : orders.findByExternal(
+                                    device.id,
+                                    request.protocol(),
+                                    top.yealike.pep.ops.charging.service.OrderService.YKC_TRANSACTION,
+                                    request.transactionNo());
             if (order != null
                     && java.util.Objects.equals(order.deviceId, device.id)
                     && java.util.Objects.equals(order.gunNo, request.gunNo())

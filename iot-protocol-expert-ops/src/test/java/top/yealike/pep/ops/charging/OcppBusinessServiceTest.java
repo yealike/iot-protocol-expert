@@ -12,9 +12,9 @@ import org.mockito.ArgumentCaptor;
 import top.yealike.pep.ops.api.dto.OpsDtos;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
 import top.yealike.pep.ops.charging.service.BillService;
+import top.yealike.pep.ops.charging.service.ChargeBillingService;
 import top.yealike.pep.ops.charging.service.OcppBusinessService;
 import top.yealike.pep.ops.charging.service.OrderService;
-import top.yealike.pep.ops.charging.service.RateModelService;
 import top.yealike.pep.ops.devices.entity.DeviceInstance;
 import top.yealike.pep.ops.devices.service.DevicePropertyService;
 import top.yealike.pep.ops.devices.service.DeviceService;
@@ -58,7 +58,6 @@ class OcppBusinessServiceTest {
         Fixture fixture = fixture();
         ChargeOrder order = chargingOrder();
         order.status = ChargeOrder.Status.PENDING;
-        order.ocppTransactionId = null;
         order.logicalCard = "TAG-A";
         order.physicalCard = "CARD-A";
         when(fixture.orders.active(1L, "01")).thenReturn(order);
@@ -85,6 +84,55 @@ class OcppBusinessServiceTest {
         assertTrue(result.message().contains("不存在"));
         verify(fixture.orders, never()).settle(any(), any(), any(), any(), any(), anyInt(), any());
         verifyNoInteractions(fixture.bills);
+    }
+
+    @Test
+    void stopTransactionUsesFrozenBillingAndRecordsSettlement() {
+        Fixture fixture = fixture();
+        ChargeOrder order = chargingOrder();
+        ChargeOrder settled = chargingOrder();
+        LocalDateTime endedAt = LocalDateTime.parse("2026-11-18T12:00:00");
+        settled.status = ChargeOrder.Status.SETTLED;
+        settled.energy = new BigDecimal("12.0000");
+        settled.electricityFee = new BigDecimal("9.0000");
+        settled.serviceFee = new BigDecimal("3.0000");
+        settled.amount = new BigDecimal("12.0000");
+        settled.lossEnergy = new BigDecimal("0.2000");
+        ChargeBillingService.FeeTotal fee = new ChargeBillingService.FeeTotal(
+                settled.energy,
+                settled.electricityFee,
+                settled.serviceFee,
+                settled.amount,
+                settled.lossEnergy,
+                false,
+                "[]");
+        when(fixture.orders.lockOcppTransactionId(1L, 3)).thenReturn(order);
+        when(fixture.billing.applyOcppMeter(order, new BigDecimal("12.0000"), endedAt))
+                .thenReturn(fee);
+        when(fixture.orders.require("ORDER-1")).thenReturn(settled);
+
+        OpsDtos.StopTransactionResult result =
+                fixture.service.stopTransaction(stopRequest("pile", 3, new BigDecimal("12000")));
+
+        assertTrue(result.accepted());
+        assertEquals(new BigDecimal("12.0000"), result.energy());
+        assertEquals(new BigDecimal("9.0000"), result.electricityFee());
+        assertEquals(new BigDecimal("3.0000"), result.serviceFee());
+        assertEquals(new BigDecimal("12.0000"), result.amount());
+        verify(fixture.billing).applyOcppMeter(order, new BigDecimal("12.0000"), endedAt);
+        verify(fixture.orders)
+                .settle(
+                        "ORDER-1",
+                        fee.energy(),
+                        fee.electricityFee(),
+                        fee.serviceFee(),
+                        fee.amount(),
+                        fee.lossEnergy(),
+                        order.startTime,
+                        endedAt,
+                        0x40,
+                        ChargeOrder.AMOUNT_SOURCE_ESTIMATE);
+        verify(fixture.bills).recordOcppSettlement(settled, "3");
     }
 
     @Test
@@ -150,7 +198,6 @@ class OcppBusinessServiceTest {
         order.deviceId = 1L;
         order.gunNo = "01";
         order.protocol = "OCPP16J";
-        order.ocppTransactionId = 3;
         order.meterStartWh = BigDecimal.ZERO;
         order.status = ChargeOrder.Status.CHARGING;
         order.startTime = LocalDateTime.parse("2026-11-18T11:00:00");
@@ -164,7 +211,7 @@ class OcppBusinessServiceTest {
         var orders = mock(OrderService.class);
         var properties = mock(DevicePropertyService.class);
         var bills = mock(BillService.class);
-        var rates = mock(RateModelService.class);
+        var billing = mock(ChargeBillingService.class);
         DeviceInstance device = new DeviceInstance();
         device.id = 1L;
         device.deviceCode = "pile";
@@ -172,10 +219,14 @@ class OcppBusinessServiceTest {
         when(devices.resolve("OCPP16J", "pile")).thenReturn(device);
         when(devices.gunCount(1L)).thenReturn(1);
         var service =
-                new OcppBusinessService(mock(OrderTelemetryService.class), devices, orders, properties, bills, rates);
-        return new Fixture(service, orders, properties, bills);
+                new OcppBusinessService(mock(OrderTelemetryService.class), devices, orders, properties, bills, billing);
+        return new Fixture(service, orders, properties, bills, billing);
     }
 
     private record Fixture(
-            OcppBusinessService service, OrderService orders, DevicePropertyService properties, BillService bills) {}
+            OcppBusinessService service,
+            OrderService orders,
+            DevicePropertyService properties,
+            BillService bills,
+            ChargeBillingService billing) {}
 }

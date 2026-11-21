@@ -19,6 +19,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import top.yealike.pep.gateway.config.ProtocolProperties;
+import top.yealike.pep.gateway.core.DeviceIdentityRegistry;
 import top.yealike.pep.gateway.core.ProtocolServer;
 import top.yealike.pep.gateway.core.ProtocolType;
 import top.yealike.pep.gateway.ops.OpsClient;
@@ -34,6 +35,7 @@ public class OcppServer implements ProtocolServer {
     private final OcppDispatcher dispatcher;
     private final OcppTelemetry telemetry;
     private final OpsClient ops;
+    private final DeviceIdentityRegistry identities;
 
     private EventLoopGroup bossGroup;
     private EventLoopGroup workerGroup;
@@ -46,12 +48,14 @@ public class OcppServer implements ProtocolServer {
             OcppSessionRegistry sessions,
             OcppDispatcher dispatcher,
             OcppTelemetry telemetry,
-            OpsClient ops) {
+            OpsClient ops,
+            DeviceIdentityRegistry identities) {
         this.properties = properties;
         this.sessions = sessions;
         this.dispatcher = dispatcher;
         this.telemetry = telemetry;
         this.ops = ops;
+        this.identities = identities;
     }
 
     @Override
@@ -103,7 +107,8 @@ public class OcppServer implements ProtocolServer {
                                     .addLast(
                                             businessGroup,
                                             "ocpp",
-                                            new OcppChannelHandler(path, sessions, dispatcher, telemetry, ops));
+                                            new OcppChannelHandler(
+                                                    path, sessions, dispatcher, telemetry, ops, identities));
                         }
                     });
             serverChannel = bootstrap.bind(properties.getOcppPort()).sync().channel();

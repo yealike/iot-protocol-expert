@@ -4,6 +4,7 @@ import io.micrometer.tracing.Tracer;
 import io.netty.channel.Channel;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -16,6 +17,8 @@ import top.yealike.pep.codec.frames.OperationFrames;
 import top.yealike.pep.codec.frames.ParallelFrames;
 import top.yealike.pep.codec.frames.RealtimeFrames;
 import top.yealike.pep.codec.frames.RegistrationFrames;
+import top.yealike.pep.gateway.core.DeviceIdentityRegistry;
+import top.yealike.pep.gateway.core.ProtocolType;
 import top.yealike.pep.gateway.ops.OpsClient;
 import top.yealike.pep.gateway.ops.OpsDtos;
 import top.yealike.pep.observability.protocol.ProtocolTelemetry;
@@ -30,12 +33,19 @@ public class ProtocolDispatcher {
     private final SessionRegistry sessions;
     private final OpsClient ops;
     private final Tracer tracer;
+    private final DeviceIdentityRegistry identities;
 
-    public ProtocolDispatcher(ProtocolTelemetry telemetry, SessionRegistry sessions, OpsClient ops, Tracer tracer) {
+    public ProtocolDispatcher(
+            ProtocolTelemetry telemetry,
+            SessionRegistry sessions,
+            OpsClient ops,
+            Tracer tracer,
+            DeviceIdentityRegistry identities) {
         this.telemetry = telemetry;
         this.sessions = sessions;
         this.ops = ops;
         this.tracer = tracer;
+        this.identities = identities;
     }
 
     public void onLogin(Channel channel, InboundFrame inbound) {
@@ -43,10 +53,12 @@ public class ProtocolDispatcher {
         RegistrationFrames.Login login = RegistrationFrames.decodeLogin(frame.body());
         String sessionId = channel.id().asLongText();
         OpsDtos.DeviceView device = null;
+        DeviceIdentityRegistry.Device identity = null;
         try {
+            identity = identities.resolveExternal(ProtocolType.YKC16, login.pileCode());
             device = ops.login(new OpsDtos.LoginRequest(
                     "YKC16",
-                    login.pileCode(),
+                    identity.deviceSn(),
                     login.pileCode(),
                     login.pileType(),
                     login.gunCount(),
@@ -61,42 +73,56 @@ public class ProtocolDispatcher {
                     null,
                     0,
                     sessionId));
-            sessions.bind(login.pileCode(), channel, frame.encrypted());
+            sessions.bind(identity.deviceSn(), login.pileCode(), channel, frame.encrypted());
             logFrame("IN", frame, login.pileCode(), inbound.wireHex(), null);
             sessions.send(
-                    login.pileCode(),
+                    identity.deviceSn(),
                     FrameType.LOGIN_ACK,
                     RegistrationFrames.encodeLoginAck(new RegistrationFrames.LoginAck(login.pileCode(), true)),
                     frame.sequence());
             log.info(
-                    "桩 {} 登录成功（枪数 {}，平台设备 {}）",
+                    "设备 {}（协议设备号 {}）登录成功（枪数 {}，平台设备 {}）",
+                    identity.deviceSn(),
                     login.pileCode(),
                     device == null ? login.gunCount() : device.gunCount(),
                     device == null ? "-" : device.id());
         } catch (RuntimeException e) {
             telemetry.failure(e);
-            sessions.bind(login.pileCode(), channel, frame.encrypted());
             logFrame("IN", frame, login.pileCode(), inbound.wireHex(), e.getMessage());
             try {
-                sessions.send(
+                sessions.sendUnauthenticated(
+                        channel,
                         login.pileCode(),
+                        frame.encrypted(),
                         FrameType.LOGIN_ACK,
                         RegistrationFrames.encodeLoginAck(new RegistrationFrames.LoginAck(login.pileCode(), false)),
                         frame.sequence());
             } catch (RuntimeException ignored) {
             }
-            log.warn("桩 {} 登录被拒绝: {}", login.pileCode(), e.getMessage());
+            log.warn(
+                    "协议设备号 {} 登录被拒绝{}: {}",
+                    login.pileCode(),
+                    identity == null ? "" : "（平台 SN " + identity.deviceSn() + "）",
+                    e.getMessage());
             channel.close();
         }
     }
 
-    public void dispatch(String pileCode, InboundFrame inbound) {
+    public void dispatch(String deviceSn, String externalPileCode, InboundFrame inbound) {
         Frame frame = inbound.frame();
         FrameType type = FrameType.ofOrNull(frame.frameType());
-        logFrame("IN", frame, pileCode, inbound.wireHex(), null);
+        logFrame("IN", frame, externalPileCode, inbound.wireHex(), null);
+        DeviceIdentityRegistry.Device identity;
+        try {
+            identity = identities.resolvePlatform(ProtocolType.YKC16, deviceSn);
+        } catch (RuntimeException e) {
+            telemetry.failure(e);
+            log.warn("设备 {} 身份已失效，关闭连接: {}", deviceSn, e.getMessage());
+            return;
+        }
         if (type == null) {
             telemetry.failure(new IllegalArgumentException("unknown frame type"));
-            log.warn("桩 {} 上送未知帧类型 0x{}", pileCode, String.format("%02X", frame.frameType()));
+            log.warn("设备 {} 上送未知帧类型 0x{}", deviceSn, String.format("%02X", frame.frameType()));
             return;
         }
         try {
@@ -106,50 +132,51 @@ public class ProtocolDispatcher {
             Object message = top.yealike.pep.codec.FramePayloads.decode(type, frame.body());
             try {
                 Object address = message.getClass().getMethod("pileCode").invoke(message);
-                if (!pileCode.equals(address)) {
+                if (!externalPileCode.equals(address)) {
                     throw new IllegalArgumentException("帧桩号与登录会话不符");
                 }
             } catch (NoSuchMethodException ignored) {
             } catch (ReflectiveOperationException e) {
                 throw new IllegalArgumentException("无法解析帧桩号", e);
             }
-            sessions.complete(pileCode, frame);
+            sessions.complete(deviceSn, frame);
             switch (type) {
                 case HEARTBEAT -> {
                     RegistrationFrames.Heartbeat hb = RegistrationFrames.decodeHeartbeat(frame.body());
-                    ops.touch("YKC16", pileCode);
+                    ops.touch("YKC16", deviceSn);
                     sessions.send(
-                            pileCode,
+                            deviceSn,
                             FrameType.HEARTBEAT_ACK,
                             RegistrationFrames.encodeHeartbeatAck(
-                                    new RegistrationFrames.HeartbeatAck(pileCode, hb.gunNo())),
+                                    new RegistrationFrames.HeartbeatAck(externalPileCode, hb.gunNo())),
                             frame.sequence());
                 }
                 case RATE_VERIFY -> {
                     RegistrationFrames.RateVerify verify = RegistrationFrames.decodeRateVerify(frame.body());
                     boolean consistent = ops.verifyRateModel(verify.modelNo());
                     sessions.send(
-                            pileCode,
+                            deviceSn,
                             FrameType.RATE_VERIFY_ACK,
-                            RegistrationFrames.encodeRateVerifyAck(
-                                    new RegistrationFrames.RateVerifyAck(pileCode, verify.modelNo(), consistent)),
+                            RegistrationFrames.encodeRateVerifyAck(new RegistrationFrames.RateVerifyAck(
+                                    externalPileCode, verify.modelNo(), consistent)),
                             frame.sequence());
                 }
                 case RATE_REQUEST -> {
                     OpsDtos.RateModelView model = ops.activeRateModel();
                     sessions.send(
-                            pileCode,
+                            deviceSn,
                             FrameType.RATE_RESPONSE,
-                            RegistrationFrames.encodeRateModel(toProtocol(model, pileCode)),
+                            RegistrationFrames.encodeRateModel(toProtocol(model, externalPileCode)),
                             frame.sequence());
                 }
                 case REALTIME -> {
                     RealtimeFrames.Realtime realtime = RealtimeFrames.decodeRealtime(frame.body());
-                    ops.touch("YKC16", pileCode);
+                    DeviceIdentityRegistry.Connector connector = identity.connectorByExternalNo(realtime.gunNo());
+                    ops.touch("YKC16", deviceSn);
                     ops.gunState(new OpsDtos.RealtimeRequest(
                             "YKC16",
-                            pileCode,
-                            realtime.gunNo(),
+                            deviceSn,
+                            connector.gunNo(),
                             realtime.state(),
                             realtime.gunHomed(),
                             realtime.plugged(),
@@ -167,49 +194,51 @@ public class ProtocolDispatcher {
                 }
                 case START_REQUEST -> {
                     OperationFrames.StartRequest request = OperationFrames.decodeStartRequest(frame.body());
+                    DeviceIdentityRegistry.Connector connector = identity.connectorByExternalNo(request.gunNo());
                     OpsDtos.StartResult result = ops.start(new OpsDtos.StartRequest(
                             "YKC16",
-                            pileCode,
-                            request.gunNo(),
+                            deviceSn,
+                            connector.gunNo(),
                             request.startType(),
                             request.account(),
                             "00000000",
                             request.account()));
                     OperationFrames.StartAck ack = new OperationFrames.StartAck(
-                            result.accepted() ? result.orderNo() : "0".repeat(32),
-                            pileCode,
+                            result.accepted() ? result.transactionNo() : "0".repeat(32),
+                            externalPileCode,
                             request.gunNo(),
                             "00000000",
                             result.accepted() ? new BigDecimal("1000.00") : BigDecimal.ZERO,
                             result.accepted(),
                             result.failReason() == null ? 0x05 : result.failReason());
-                    sessions.send(pileCode, FrameType.START_ACK, OperationFrames.encodeStartAck(ack), frame.sequence());
+                    sessions.send(deviceSn, FrameType.START_ACK, OperationFrames.encodeStartAck(ack), frame.sequence());
+                    if (result.accepted()) {
+                        ops.chargingByTransaction("YKC16", deviceSn, result.transactionNo(), LocalDateTime.now());
+                    }
                 }
                 case REMOTE_START_ACK -> {
                     OperationFrames.RemoteStartAck ack = OperationFrames.decodeRemoteStartAck(frame.body());
                     if (ack.success()) {
-                        ops.charging(ack.transactionNo(), LocalDateTime.now());
+                        ops.chargingByTransaction("YKC16", deviceSn, ack.transactionNo(), LocalDateTime.now());
                     } else if (ack.failReason() != 5) {
-                        ops.fail(ack.transactionNo(), "桩拒绝启动: " + ack.failReason());
+                        ops.failByTransaction("YKC16", deviceSn, ack.transactionNo(), "桩拒绝启动: " + ack.failReason());
                     }
                 }
                 case PARALLEL_START_REQUEST -> {
                     ParallelFrames.ParallelStartRequest request =
                             ParallelFrames.decodeParallelStartRequest(frame.body());
+                    DeviceIdentityRegistry.Connector connector = identity.connectorByExternalNo(request.gunNo());
                     OpsDtos.StartResult result = ops.start(new OpsDtos.StartRequest(
                             "YKC16",
-                            pileCode,
-                            request.gunNo(),
+                            deviceSn,
+                            connector.gunNo(),
                             request.startType(),
                             request.account(),
                             "00000000",
                             request.account()));
-                    if (result.accepted()) {
-                        ops.charging(result.orderNo(), LocalDateTime.now());
-                    }
                     ParallelFrames.ParallelStartAck ack = new ParallelFrames.ParallelStartAck(
-                            result.accepted() ? result.orderNo() : "0".repeat(32),
-                            pileCode,
+                            result.accepted() ? result.transactionNo() : "0".repeat(32),
+                            externalPileCode,
                             request.gunNo(),
                             "00000000",
                             result.accepted() ? new BigDecimal("1000.00") : BigDecimal.ZERO,
@@ -217,23 +246,28 @@ public class ProtocolDispatcher {
                             result.failReason() == null ? 0x05 : result.failReason(),
                             request.parallelNo());
                     sessions.send(
-                            pileCode,
+                            deviceSn,
                             FrameType.PARALLEL_START_ACK,
                             ParallelFrames.encodeParallelStartAck(ack),
                             frame.sequence());
+                    if (result.accepted()) {
+                        ops.chargingByTransaction("YKC16", deviceSn, result.transactionNo(), LocalDateTime.now());
+                    }
                 }
                 case PARALLEL_START_RESULT -> {
                     ParallelFrames.ParallelStartResult result = ParallelFrames.decodeParallelStartResult(frame.body());
                     if (result.success()) {
-                        ops.charging(result.transactionNo(), LocalDateTime.now());
+                        ops.chargingByTransaction("YKC16", deviceSn, result.transactionNo(), LocalDateTime.now());
                     } else {
-                        ops.fail(result.transactionNo(), "桩拒绝并充启动: " + result.failReason());
+                        ops.failByTransaction(
+                                "YKC16", deviceSn, result.transactionNo(), "桩拒绝并充启动: " + result.failReason());
                     }
                 }
                 case STOP_ACK -> {
                     OperationFrames.StopAck ack = OperationFrames.decodeStopAck(frame.body());
                     if (ack.success()) {
-                        OpsDtos.OrderView order = ops.active("YKC16", pileCode, ack.gunNo());
+                        DeviceIdentityRegistry.Connector connector = identity.connectorByExternalNo(ack.gunNo());
+                        OpsDtos.OrderView order = ops.active("YKC16", deviceSn, connector.gunNo());
                         if (order != null) {
                             ops.stop(order.orderNo(), 0x40);
                         }
@@ -241,30 +275,38 @@ public class ProtocolDispatcher {
                 }
                 case TRANSACTION -> {
                     OperationFrames.Transaction tx = OperationFrames.decodeTransaction(frame.body());
+                    DeviceIdentityRegistry.Connector connector = identity.connectorByExternalNo(tx.gunNo());
+                    List<OpsDtos.YkcEnergySegment> segments = java.util.stream.Stream.of(
+                                    tx.sharp(), tx.peak(), tx.flat(), tx.valley())
+                            .filter(java.util.Objects::nonNull)
+                            .map(segment -> new OpsDtos.YkcEnergySegment(
+                                    segment.unitPrice(), segment.energy(), segment.lossEnergy(), segment.amount()))
+                            .toList();
                     OpsDtos.BillResult bill = ops.acceptYkc(new OpsDtos.BillRequest(
                             "YKC16",
-                            pileCode,
+                            deviceSn,
                             tx.transactionNo(),
-                            tx.gunNo(),
+                            connector.gunNo(),
                             tx.startTime(),
                             tx.endTime(),
                             tx.tradeTime(),
                             tx.totalEnergy(),
                             tx.totalAmount(),
                             tx.lossTotalEnergy(),
+                            segments,
                             tx.stopReason(),
                             tx.tradeFlag(),
                             tx.physicalCard(),
                             tx.vin(),
                             inbound.wireHex()));
                     sessions.send(
-                            pileCode,
+                            deviceSn,
                             FrameType.TRANSACTION_ACK,
                             OperationFrames.encodeTransactionAck(
                                     new OperationFrames.TransactionAck(tx.transactionNo(), bill.accepted())),
                             frame.sequence());
                 }
-                case TIME_SYNC_ACK -> log.debug("桩 {} 对时完成", pileCode);
+                case TIME_SYNC_ACK -> log.debug("设备 {} 对时完成", deviceSn);
                 case PARAM_SET_ACK,
                         REBOOT_ACK,
                         UPDATE_ACK,
@@ -273,7 +315,7 @@ public class ProtocolDispatcher {
                         CARD_SYNC_ACK,
                         CARD_CLEAR_ACK,
                         CARD_QUERY_ACK,
-                        LOCK_CONTROL_ACK -> log.debug("桩 {} 应答 {}", pileCode, type.label());
+                        LOCK_CONTROL_ACK -> log.debug("设备 {} 应答 {}", deviceSn, type.label());
                 case CHARGE_HANDSHAKE,
                         PARAM_CONFIG,
                         CHARGE_END,
@@ -283,10 +325,10 @@ public class ProtocolDispatcher {
                         BMS_DEMAND,
                         BMS_INFO -> {
                     BmsFrames.Message bms = BmsFrames.decode(type, frame.body());
-                    log.debug("桩 {} {} 流水={} 字段={}", pileCode, type.label(), bms.transactionNo(), bms.values());
+                    log.debug("设备 {} {} 流水={} 字段={}", deviceSn, type.label(), bms.transactionNo(), bms.values());
                 }
                 case LOCK_REPORT ->
-                    log.info("桩 {} 地锁上报 {}", pileCode, MaintenanceFrames.decodeLockReport(frame.body()));
+                    log.info("设备 {} 地锁上报 {}", deviceSn, MaintenanceFrames.decodeLockReport(frame.body()));
                 case BALANCE_UPDATE,
                         CARD_SYNC,
                         CARD_CLEAR,
@@ -297,13 +339,13 @@ public class ProtocolDispatcher {
                         PARAM_SET,
                         TIME_SYNC,
                         RATE_SET,
-                        READ_REALTIME -> log.debug("桩 {} 上送了平台下行帧 {}，忽略", pileCode, type.label());
-                default -> log.debug("桩 {} 帧 {} 未实现业务处理", pileCode, type.label());
+                        READ_REALTIME -> log.debug("设备 {} 上送了平台下行帧 {}，忽略", deviceSn, type.label());
+                default -> log.debug("设备 {} 帧 {} 未实现业务处理", deviceSn, type.label());
             }
         } catch (RuntimeException e) {
             telemetry.failure(e);
-            log.error("处理桩 {} 帧 {} 失败: {}", pileCode, type.label(), e.getMessage(), e);
-            logFrame("IN", frame, pileCode, inbound.wireHex(), e.getMessage());
+            log.error("处理设备 {} 帧 {} 失败: {}", deviceSn, type.label(), e.getMessage(), e);
+            logFrame("IN", frame, externalPileCode, inbound.wireHex(), e.getMessage());
         }
     }
 
