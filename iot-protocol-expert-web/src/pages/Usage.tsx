@@ -1,178 +1,265 @@
-import { Alert, Button, Card, Empty, Progress, Table, Tag } from 'antd'
-import {
-  AccountBookOutlined,
-  LockOutlined,
-  PayCircleOutlined,
-  ReloadOutlined,
-  WalletOutlined
-} from '@ant-design/icons'
+import { Alert, Button, Card, Empty, Progress, Skeleton, Table, Tag } from 'antd'
+import { ReloadOutlined, WalletOutlined } from '@ant-design/icons'
 import { useQuery } from '@tanstack/react-query'
+import { NavLink } from 'react-router-dom'
 import { api } from '../api/client'
-import type { CurrentUser, UsageItem } from '../api/types'
+import type { QuotaPolicyState, UsageItem } from '../api/types'
 import { formatDateTime } from '../utils/dateTime'
-import { MetricCard } from '../components/tags'
-import QuotaAdmin from './QuotaAdmin'
-
-function formatUnits(value: number) {
-  return value.toLocaleString('zh-CN')
-}
-
-function activationLabel(state: string) {
-  return state === 'ACTIVE' ? '窗口已激活' : '等待首次调用'
-}
+import {
+  formatUnits,
+  MY_QUOTA_KEY,
+  MY_USAGE_KEY,
+  policyStatus,
+  quotaModeLabels,
+  quotaStatus
+} from '../utils/quota'
 
 const callStateLabels: Record<string, string> = {
   SETTLED: '已结算',
   UNCERTAIN: '待核对',
+  HELD: '已预留',
   RESERVED: '已预留',
   DISPATCHED: '调用中',
   RELEASED: '已释放'
 }
 
-export default function Usage({ user }: { user: CurrentUser }) {
-  const quota = useQuery({ queryKey: ['my-quota'], queryFn: api.myQuota })
-  const usage = useQuery({ queryKey: ['my-usage'], queryFn: () => api.myUsage(100) })
-  const canGrant = (user.permissions ?? []).includes('quota:grant')
-  const policies = quota.data?.policies ?? []
-  const totals = policies.reduce(
-    (result, policy) => ({
-      limit: result.limit + policy.limitUnits,
-      used: result.used + policy.usedUnits,
-      held: result.held + policy.heldUnits,
-      remaining: result.remaining + policy.remainingUnits
-    }),
-    { limit: 0, used: 0, held: 0, remaining: 0 }
+function PolicyCard({ policy }: { policy: QuotaPolicyState }) {
+  const status = policyStatus(policy)
+  const percent = Math.min(100, Math.round((policy.usedUnits / policy.limitUnits) * 100))
+  const isWindow = policy.mode === 'ON_FIRST_USE_WINDOW'
+  return (
+    <section className="usage-policy-card">
+      <div className="usage-policy-header">
+        <h3>{quotaModeLabels[policy.mode]}</h3>
+        <Tag color={status.color} bordered={false}>
+          {status.label}
+        </Tag>
+      </div>
+      <div className="usage-progress-heading">
+        <span>{policy.expiredWindow ? '上一周期使用进度' : '额度使用进度'}</span>
+        <strong>{percent}%</strong>
+      </div>
+      <Progress percent={percent} showInfo={false} />
+      <div className="usage-policy-stats">
+        <div>
+          <span>上限</span>
+          <strong>{formatUnits(policy.limitUnits)}</strong>
+        </div>
+        <div>
+          <span>{policy.expiredWindow ? '上期已用' : '已用'}</span>
+          <strong>{formatUnits(policy.usedUnits)}</strong>
+        </div>
+        <div>
+          <span>冻结</span>
+          <strong>{formatUnits(policy.heldUnits)}</strong>
+        </div>
+      </div>
+      <div className="usage-policy-meta">
+        <span>可用 {formatUnits(policy.availableUnits)} Units</span>
+        {policy.debtUnits > 0 ? (
+          <span className="danger-text">待补扣 {formatUnits(policy.debtUnits)}</span>
+        ) : null}
+      </div>
+      {isWindow && policy.endAt && !policy.expiredWindow ? (
+        <div className="usage-policy-window">本周期到期时间 {formatDateTime(policy.endAt)}</div>
+      ) : null}
+    </section>
   )
+}
 
+export function QuotaOverview() {
+  const quota = useQuery({
+    queryKey: MY_QUOTA_KEY,
+    queryFn: api.myQuota,
+    refetchInterval: 30_000
+  })
+
+  if (quota.error) {
+    return (
+      <Alert
+        type="error"
+        showIcon
+        message="额度查询失败"
+        description={quota.error.message}
+        action={<Button onClick={() => quota.refetch()}>重试</Button>}
+      />
+    )
+  }
+  if (!quota.data)
+    return (
+      <Card variant="borderless">
+        <Skeleton active />
+      </Card>
+    )
+
+  const status = quotaStatus(quota.data)
+  const { policies, availableUnits, pendingReconciliation } = quota.data
+  return (
+    <>
+      <section className="quota-overview-balance">
+        <div>
+          <div className="quota-overview-label">
+            <WalletOutlined /> 当前可用额度
+          </div>
+          <div className="quota-overview-value">
+            {formatUnits(availableUnits)} <span>Units</span>
+          </div>
+          <Tag
+            color={status.tone === 'normal' ? 'green' : status.tone === 'warning' ? 'gold' : 'red'}
+            bordered={false}
+          >
+            {status.label}
+          </Tag>
+        </div>
+        <div className="quota-overview-note">
+          <Button
+            icon={<ReloadOutlined />}
+            loading={quota.isFetching}
+            onClick={() => quota.refetch()}
+          >
+            刷新额度
+          </Button>
+          <span>
+            {policies.length > 1
+              ? '每次调用受所有额度策略共同限制，以最少的可用额度为准。'
+              : 'Units 是额度计量单位。输入和输出 Token 可在用量明细中查看。'}
+          </span>
+        </div>
+      </section>
+      {pendingReconciliation > 0 ? (
+        <Alert type="warning" showIcon message={`有 ${pendingReconciliation} 次模型调用等待对账`} />
+      ) : null}
+      <Card title="我的额度策略" variant="borderless" className="usage-panel">
+        {policies.length === 0 ? (
+          <Empty
+            image={Empty.PRESENTED_IMAGE_SIMPLE}
+            description="当前账号尚未分配模型额度，请联系管理员。"
+          />
+        ) : (
+          <div className="usage-policy-grid">
+            {policies.map((policy) => (
+              <PolicyCard key={policy.accountId} policy={policy} />
+            ))}
+          </div>
+        )}
+      </Card>
+    </>
+  )
+}
+
+function UsageHistory() {
+  const usage = useQuery({ queryKey: MY_USAGE_KEY, queryFn: () => api.myUsage() })
+  return (
+    <Card
+      title="最近 100 次模型调用"
+      variant="borderless"
+      className="usage-panel usage-table-panel"
+      extra={
+        <Button
+          icon={<ReloadOutlined />}
+          loading={usage.isFetching}
+          onClick={() => usage.refetch()}
+        >
+          刷新
+        </Button>
+      }
+    >
+      {usage.error ? <Alert type="error" showIcon message={usage.error.message} /> : null}
+      <Table<UsageItem>
+        rowKey="callId"
+        loading={usage.isLoading}
+        scroll={{ x: 880 }}
+        pagination={{
+          pageSize: 20,
+          hideOnSinglePage: true,
+          showTotal: (total) => `共 ${total} 次调用`
+        }}
+        dataSource={usage.data ?? []}
+        locale={{ emptyText: usage.error ? '暂时无法载入调用明细' : '暂无模型调用' }}
+        columns={[
+          {
+            title: '调用时间',
+            dataIndex: 'createdAt',
+            width: 172,
+            render: (value: string) => formatDateTime(value)
+          },
+          {
+            title: '模型',
+            render: (_, row) => (
+              <div className="usage-units">
+                <strong>{row.model}</strong>
+                <small>{row.provider}</small>
+              </div>
+            )
+          },
+          {
+            title: '状态',
+            dataIndex: 'state',
+            width: 100,
+            render: (value: string) => (
+              <Tag
+                color={value === 'SETTLED' ? 'green' : value === 'UNCERTAIN' ? 'orange' : 'default'}
+                bordered={false}
+              >
+                {callStateLabels[value] ?? value}
+              </Tag>
+            )
+          },
+          {
+            title: '输入 Token',
+            width: 115,
+            align: 'right',
+            render: (_, row) =>
+              formatUnits(row.quality === 'ESTIMATED_CAP' ? null : row.inputTokens)
+          },
+          {
+            title: '输出 Token',
+            width: 115,
+            align: 'right',
+            render: (_, row) =>
+              formatUnits(row.quality === 'ESTIMATED_CAP' ? null : row.outputTokens)
+          },
+          {
+            title: '扣减（Units）',
+            dataIndex: 'quotaUnits',
+            width: 130,
+            align: 'right',
+            render: (value: number | null, row) => (
+              <div className="usage-units">
+                <strong>{formatUnits(value)}</strong>
+                {row.quality === 'ESTIMATED_CAP' ? <small>按预留上限结算</small> : null}
+              </div>
+            )
+          },
+          {
+            title: 'Run ID',
+            dataIndex: 'runId',
+            width: 125,
+            ellipsis: true,
+            render: (value?: string) => <span className="mono muted">{value || '—'}</span>
+          }
+        ]}
+      />
+    </Card>
+  )
+}
+
+export default function Usage({ view }: { view: 'quota' | 'history' }) {
   return (
     <div className="usage-page">
       <div className="page-header">
         <div>
           <h1>模型额度</h1>
-          <p>统一查看额度消耗、策略窗口和模型调用明细。</p>
+          <p>查看自己的可用额度和模型调用记录。</p>
         </div>
-        <Button
-          icon={<ReloadOutlined />}
-          loading={quota.isFetching || usage.isFetching}
-          onClick={() => Promise.all([quota.refetch(), usage.refetch()])}
-        >
-          刷新数据
-        </Button>
       </div>
-
-      {quota.error ? <Alert type="error" showIcon message={(quota.error as Error).message} /> : null}
-
-      <div className="metric-grid usage-summary-grid">
-        <MetricCard icon={<WalletOutlined />} label="额度上限" value={quota.data ? formatUnits(totals.limit) : '—'} suffix="Units" />
-        <MetricCard icon={<AccountBookOutlined />} label="累计已用" value={quota.data ? formatUnits(totals.used) : '—'} suffix="Units" />
-        <MetricCard icon={<PayCircleOutlined />} label="当前剩余" value={quota.data ? formatUnits(totals.remaining) : '—'} suffix="Units" />
-        <MetricCard icon={<LockOutlined />} label="调用冻结" value={quota.data ? formatUnits(totals.held) : '—'} suffix="Units" />
-      </div>
-
-      <Card
-        title="额度策略"
-        variant="borderless"
-        className="usage-panel"
-        extra={<span className="muted">{policies.length} 条策略</span>}
-        loading={quota.isLoading}
-      >
-        {quota.isSuccess && !quota.error && policies.length === 0 ? (
-          <Empty description="当前账号尚未分配模型额度" />
-        ) : null}
-        <div className="usage-policy-grid">
-          {policies.map((policy) => {
-            const usedPercent = policy.limitUnits > 0
-              ? Math.min(100, Math.round((policy.usedUnits / policy.limitUnits) * 100))
-              : 0
-            return (
-              <section className="usage-policy-card" key={policy.accountId + policy.policyKey}>
-                <div className="usage-policy-header">
-                  <div><span>额度策略</span><strong className="mono">{policy.policyKey}</strong></div>
-                  <Tag color={policy.activationState === 'ACTIVE' ? 'green' : 'default'} bordered={false}>
-                    {activationLabel(policy.activationState)}
-                  </Tag>
-                </div>
-                <div className="usage-progress-heading"><span>额度使用进度</span><strong>{usedPercent}%</strong></div>
-                <Progress
-                  percent={usedPercent}
-                  showInfo={false}
-                  strokeColor={policy.remainingUnits <= 0 ? '#d9525c' : '#3563e9'}
-                  trailColor="#edf1f6"
-                />
-                <div className="usage-policy-stats">
-                  <div><span>额度上限</span><strong>{formatUnits(policy.limitUnits)}</strong></div>
-                  <div><span>已使用</span><strong>{formatUnits(policy.usedUnits)}</strong></div>
-                  <div><span>剩余</span><strong>{formatUnits(policy.remainingUnits)}</strong></div>
-                </div>
-                <div className="usage-policy-meta">
-                  <Tag color={policy.mode === 'TOTAL' ? 'blue' : 'purple'} bordered={false}>
-                    {policy.mode === 'TOTAL' ? '固定额度' : '首次使用窗口'}
-                  </Tag>
-                  <span>冻结 {formatUnits(policy.heldUnits)}</span>
-                  {policy.debtUnits > 0 ? <span className="danger-text">待补扣 {formatUnits(policy.debtUnits)}</span> : null}
-                </div>
-                {policy.startAt ? (
-                  <div className="usage-policy-window">
-                    窗口：{formatDateTime(policy.startAt)} 至 {formatDateTime(policy.endAt)}
-                  </div>
-                ) : null}
-              </section>
-            )
-          })}
-        </div>
-        {(quota.data?.pendingReconciliation ?? 0) > 0 ? (
-          <Alert
-            className="reconciliation-alert"
-            type="warning"
-            showIcon
-            message={`有 ${quota.data?.pendingReconciliation} 次调用等待对账`}
-          />
-        ) : null}
-      </Card>
-
-      <Card title="最近模型调用" variant="borderless" className="usage-panel usage-table-panel" loading={usage.isLoading}>
-        {usage.error ? <Alert type="error" showIcon message={(usage.error as Error).message} /> : null}
-        <Table<UsageItem>
-          rowKey="callId"
-          size="middle"
-          scroll={{ x: 1120 }}
-          pagination={{ pageSize: 20, hideOnSinglePage: true, showTotal: (total) => `共 ${total} 次调用` }}
-          dataSource={usage.data ?? []}
-          columns={[
-            { title: '调用时间', dataIndex: 'createdAt', width: 180, render: (value: string) => formatDateTime(value) },
-            { title: '逻辑模型', dataIndex: 'model', width: 160, render: (value: string) => <span className="usage-model-name">{value}</span> },
-            { title: '供应商', dataIndex: 'provider', width: 140 },
-            {
-              title: '状态',
-              dataIndex: 'state',
-              width: 110,
-              render: (value: string) => (
-                <Tag color={value === 'SETTLED' ? 'green' : value === 'UNCERTAIN' ? 'orange' : 'default'} bordered={false}>
-                  {callStateLabels[value] ?? value}
-                </Tag>
-              )
-            },
-            {
-              title: '输入 / 输出 Tokens',
-              width: 170,
-              align: 'right',
-              render: (_, row) => `${formatUnits(row.inputTokens)} / ${formatUnits(row.outputTokens)}`
-            },
-            {
-              title: '计量（Units）',
-              dataIndex: 'quotaUnits',
-              width: 150,
-              align: 'right',
-              render: (value: number, row) => (
-                <div className="usage-units"><strong>{formatUnits(value)}</strong><small>{row.quality}</small></div>
-              )
-            },
-            { title: 'Run ID', dataIndex: 'runId', ellipsis: true, render: (value?: string) => <span className="mono muted">{value || '—'}</span> }
-          ]}
-        />
-      </Card>
-
-      {canGrant ? <QuotaAdmin user={user} /> : null}
+      <nav className="quota-page-nav" aria-label="模型额度">
+        <NavLink to="/usage" end>
+          额度总览
+        </NavLink>
+        <NavLink to="/usage/history">用量明细</NavLink>
+      </nav>
+      {view === 'quota' ? <QuotaOverview /> : <UsageHistory />}
     </div>
   )
 }

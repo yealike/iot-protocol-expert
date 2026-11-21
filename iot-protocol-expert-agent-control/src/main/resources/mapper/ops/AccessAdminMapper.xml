@@ -96,6 +96,32 @@
         delete from pep_platform.role_binding where id = #{id}
     </delete>
 
+    <select id="findQuotaUsers"
+            resultType="top.yealike.pep.control.access.mapper.AccessAdminMapper$QuotaSubject">
+        select u.id::text as id, u.username as code, u.display_name as name, u.state, null::text as context
+          from pep_platform.app_user u
+         where #{query} = '' or u.id::text = #{query}
+            or strpos(lower(u.username), lower(#{query})) > 0
+            or strpos(lower(u.display_name), lower(#{query})) > 0
+         order by (u.id::text = #{query} or lower(u.username) = lower(#{query})) desc,
+                  (u.state = 'ACTIVE') desc, u.username, u.id
+         limit 30
+    </select>
+
+    <select id="findQuotaServiceAccounts"
+            resultType="top.yealike.pep.control.access.mapper.AccessAdminMapper$QuotaSubject">
+        select s.id::text as id, s.code, s.name, s.state, p.name as context
+          from pep_platform.service_account s
+          left join pep_platform.project p on p.id = s.project_id
+         where #{query} = '' or s.id::text = #{query}
+            or strpos(lower(s.code), lower(#{query})) > 0
+            or strpos(lower(s.name), lower(#{query})) > 0
+            or strpos(lower(p.name), lower(#{query})) > 0
+         order by (s.id::text = #{query} or lower(s.code) = lower(#{query})) desc,
+                  (s.state = 'ACTIVE') desc, s.code, s.id
+         limit 30
+    </select>
+
     <select id="listServiceAccounts"
             resultType="top.yealike.pep.control.access.AccessRecords$ServiceAccountInfo">
         select id, project_id as projectId, code, name, state

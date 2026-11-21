@@ -105,7 +105,14 @@ public class PrepareService {
             List<String> warnings = new ArrayList<>();
             Map<String, McpDescriptor> mcps = new LinkedHashMap<>();
             List<PreparedTool> tools = new ArrayList<>();
-            prepareMcps(manifest, request.publicationId(), mcps, tools, warnings);
+            try {
+                prepareMcps(manifest, request.publicationId(), mcps, tools, warnings);
+            } catch (PrepareException exception) {
+                if (ErrorCodes.SCHEMA_DRIFT.equals(exception.code())) {
+                    releases.recordSchemaFailure(request.releaseId(), actualDigest, exception.getMessage());
+                }
+                throw exception;
+            }
             Set<String> aliases = new HashSet<>();
             for (PreparedTool tool : tools) {
                 if (RESERVED_ALIASES.contains(tool.alias().toLowerCase(Locale.ROOT))

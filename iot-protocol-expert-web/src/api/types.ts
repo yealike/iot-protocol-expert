@@ -768,6 +768,7 @@ export interface AiAgentCatalogItem {
   skillCount: number
   skills: string[]
   healthy: boolean
+  healthVerified?: boolean
 }
 
 export interface AiCitation {
@@ -803,6 +804,14 @@ export interface AiMessage {
   status: string
   seq: number
   createdAt: string
+  usage?: AiRunUsage | null
+}
+
+export interface AiRunUsage {
+  inputTokens?: number
+  outputTokens?: number
+  totalTokens?: number
+  modelCalls?: number
 }
 
 export interface AiToolCall {
@@ -828,6 +837,7 @@ export interface AiRun {
   warnings?: string[]
   errorCode?: string
   errorMessage?: string
+  usage?: AiRunUsage | null
   startedAt?: string
   finishedAt?: string
   createdAt: string
@@ -838,6 +848,7 @@ export interface AiConversationDetail {
   conversation: AiConversation
   messages: AiMessage[]
   currentRun: AiRun | null
+  latestRun?: AiRun | null
 }
 
 export interface AiStreamEvent {
@@ -912,12 +923,16 @@ export interface ManagedRole {
 export interface QuotaPolicyState {
   accountId: string
   policyKey: string
-  mode: string
+  mode: QuotaGrantRequest['mode']
   state: string
   limitUnits: number
+  durationSeconds?: number | null
   usedUnits: number
   heldUnits: number
   remainingUnits: number
+  availableUnits: number
+  effective: boolean
+  expiredWindow: boolean
   activationState: string
   startAt?: string | null
   endAt?: string | null
@@ -927,8 +942,17 @@ export interface QuotaPolicyState {
 export interface QuotaSnapshot {
   scopeKind: string
   subjectId: string
+  availableUnits: number
   policies: QuotaPolicyState[]
   pendingReconciliation: number
+}
+
+export interface QuotaSubject {
+  id: string
+  code: string
+  name?: string | null
+  state: string
+  context?: string | null
 }
 
 export interface QuotaGrantRequest {
@@ -951,8 +975,8 @@ export interface UsageItem {
   runId?: string | null
   state: string
   createdAt: string
-  inputTokens: number
-  outputTokens: number
-  quotaUnits: number
-  quality: string
+  inputTokens: number | null
+  outputTokens: number | null
+  quotaUnits: number | null
+  quality: string | null
 }

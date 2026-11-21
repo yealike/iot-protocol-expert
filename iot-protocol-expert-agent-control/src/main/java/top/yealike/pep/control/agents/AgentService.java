@@ -284,7 +284,8 @@ public class AgentService {
             int toolCount = manifest.mcp().stream()
                     .mapToInt(item -> item.tools().size())
                     .sum();
-            boolean healthy = !registry.enabled()
+            boolean discoveryEnabled = registry.enabled();
+            boolean healthy = !discoveryEnabled
                     || registry.hasHealthy(
                             ComponentNames.serviceName(ComponentType.AGENT, release.agentKey(), release.version()));
             result.putIfAbsent(
@@ -300,7 +301,8 @@ public class AgentService {
                             manifest.skills().stream()
                                     .map(top.yealike.pep.runtime.contract.AgentManifest.SkillBinding::key)
                                     .toList(),
-                            healthy));
+                            healthy,
+                            discoveryEnabled));
         }
         return new ArrayList<>(result.values());
     }

@@ -102,13 +102,20 @@ public class RuntimeDispatchClient {
         String path = InternalPaths.RUNTIME_PREPARE;
         Response response = execute("POST", target, path, request);
         if (response.error() != null) {
-            return new PrepareResult(false, "FAILED", response.error(), null);
+            return new PrepareResult(false, "FAILED", null, response.error(), response.message(), response.status());
         }
         ReleasePrepareResponse value = JsonSupport.read(response.body(), ReleasePrepareResponse.class);
         if (value == null) {
-            return new PrepareResult(false, "CONTROL_EMPTY_RESPONSE", null, null);
+            return new PrepareResult(
+                    false, "FAILED", null, "CONTROL_EMPTY_RESPONSE", "Runtime 未返回发布准备结果", response.status());
         }
-        return new PrepareResult("READY".equalsIgnoreCase(value.state()), value.state(), value.instanceId(), null);
+        return new PrepareResult(
+                "READY".equalsIgnoreCase(value.state()),
+                value.state(),
+                value.instanceId(),
+                null,
+                value.message(),
+                response.status());
     }
 
     public DispatchResult dispatch(RuntimeTarget target, String agentKey, String version, RunDispatchRequest request) {
@@ -214,7 +221,8 @@ public class RuntimeDispatchClient {
     public record DispatchResult(
             boolean accepted, int status, RunDispatchReceipt receipt, String code, String message) {}
 
-    public record PrepareResult(boolean ready, String state, String instanceId, String errorCode) {}
+    public record PrepareResult(
+            boolean ready, String state, String instanceId, String errorCode, String errorMessage, int status) {}
 
     private record ErrorBody(String code, String message) {}
 

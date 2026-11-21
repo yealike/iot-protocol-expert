@@ -1,20 +1,42 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import { Alert, App, Button, Drawer, Grid, Input, Select, Space, Tag, Typography } from 'antd'
 import {
   ArrowRightOutlined,
+  DownOutlined,
   HistoryOutlined,
+  LoadingOutlined,
   PlusOutlined,
   ReloadOutlined,
   RobotOutlined,
   SendOutlined,
-  StopOutlined
+  StopOutlined,
+  WalletOutlined
 } from '@ant-design/icons'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { api, openAiEventStream } from '../api/client'
-import type { AiMessage, AiStreamEvent } from '../api/types'
+import type {
+  AiAgentCatalogItem,
+  AiConversationDetail,
+  AiMessage,
+  AiRun,
+  AiRunUsage,
+  AiStreamEvent
+} from '../api/types'
 import { formatDateTime } from '../utils/dateTime'
+import { answerTokens, formatUnits, MY_QUOTA_KEY, MY_USAGE_KEY, quotaStatus } from '../utils/quota'
+import { QuotaOverview } from './Usage'
 
 const { Text, Paragraph } = Typography
 
@@ -30,6 +52,14 @@ const STATUS_LABEL: Record<string, string> = {
 
 const ACTIVE_RUN_STATUSES = new Set(['QUEUED', 'DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED'])
 const TERMINAL_RUN_STATUSES = new Set(['COMPLETED', 'FAILED', 'CANCELLED'])
+const QUOTA_ERROR_CODES = new Set(['QUOTA_EXHAUSTED', 'QUOTA_TOTAL_EXHAUSTED'])
+const RUN_STATUS_ORDER = ['QUEUED', 'DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED']
+const ACTIVE_RUN_DESCRIPTION: Record<string, string> = {
+  QUEUED: '等待可用的执行资源',
+  DISPATCHING: '正在连接 Runtime 并校验 Agent 版本',
+  RUNNING: '正在分析问题，等待输出',
+  CANCEL_REQUESTED: '正在等待执行服务确认停止'
+}
 const LAST_AGENT_STORAGE_KEY = 'ipe-ai-last-agent'
 const EXAMPLE_PROMPTS = [
   {
@@ -46,11 +76,9 @@ const EXAMPLE_PROMPTS = [
   }
 ]
 
-interface ProgressStep {
-  id: string
-  text: string
-  color?: string
-}
+type RunProgress = Pick<AiRun, 'id' | 'status' | 'errorMessage' | 'errorCode'> &
+  Partial<Pick<AiRun, 'createdAt' | 'usage'>>
+type StreamState = 'connecting' | 'open' | 'reconnecting' | 'unavailable'
 
 export default function Assistant() {
   const { message, modal } = App.useApp()
@@ -58,20 +86,25 @@ export default function Assistant() {
   const screens = Grid.useBreakpoint()
   const compact = screens.md === false
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [quotaOpen, setQuotaOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [targetAgentKey, setTargetAgentKey] = useState<string | null>(readLastAgent)
   const [input, setInput] = useState('')
-  const [streamText, setStreamText] = useState('')
-  const [streaming, setStreaming] = useState(false)
+  const [preview, setPreview] = useState<{ runId: string; text: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [cancelling, setCancelling] = useState(false)
-  const [progress, setProgress] = useState<ProgressStep[]>([])
+  const [progress, setProgress] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const [activeRunId, setActiveRunId] = useState<string | null>(null)
-  const cursorRef = useRef(0)
-  const activeRunIdRef = useRef<string | null>(null)
-  const stopStreamRef = useRef<(() => void) | null>(null)
-  const streamConversationRef = useRef<string | null>(null)
+  const [liveRun, setLiveRun] = useState<RunProgress | null>(null)
+  const [pendingMessage, setPendingMessage] = useState<AiMessage | null>(null)
+  const [streamState, setStreamState] = useState<StreamState>('connecting')
+  const [streamRevision, setStreamRevision] = useState(0)
+  const [following, setFollowing] = useState(true)
+  const selectedIdRef = useRef<string | null>(null)
+  const streamRunIdRef = useRef<string | null>(null)
+  const streamCursorRef = useRef<number | null>(null)
+  const resumeFromSnapshotRef = useRef(false)
+  const followRef = useRef(true)
   const messagesRef = useRef<HTMLDivElement | null>(null)
 
   const agents = useQuery({ queryKey: ['ai-agent-catalog'], queryFn: api.aiAgentCatalog })
@@ -82,7 +115,11 @@ export default function Assistant() {
   const detail = useQuery({
     queryKey: ['ai-conversation', selectedId],
     queryFn: () => api.aiConversation(selectedId as string),
-    enabled: Boolean(selectedId)
+    enabled: Boolean(selectedId),
+    refetchInterval: ({ state }) => {
+      const run = preferRun(liveRun, state.data?.currentRun ?? state.data?.latestRun ?? null)
+      return run && ACTIVE_RUN_STATUSES.has(run.status) ? 2000 : false
+    }
   })
 
   const targetAgent = useMemo(
@@ -90,7 +127,8 @@ export default function Assistant() {
     [agents.data, targetAgentKey]
   )
   const conversation = detail.data?.conversation ?? null
-  const currentRun = detail.data?.currentRun ?? null
+  const snapshotRun = detail.data?.currentRun ?? detail.data?.latestRun ?? null
+  const currentRun = preferRun(liveRun, snapshotRun)
   const currentCatalog = useMemo(
     () =>
       conversation
@@ -132,16 +170,11 @@ export default function Assistant() {
     return options
   }, [agents.data, conversation])
 
-  const busy =
-    streaming ||
-    Boolean(activeRunId) ||
-    Boolean(currentRun && ACTIVE_RUN_STATUSES.has(currentRun.status))
-  const cancelRunId = currentRun?.id ?? activeRunId
+  const running = Boolean(currentRun && ACTIVE_RUN_STATUSES.has(currentRun.status))
+  const busy = submitting || running
+  const cancelRunId = running ? currentRun?.id : undefined
   const canSubmit = Boolean(selectedId || targetAgent?.healthy)
-  const canCancel =
-    Boolean(cancelRunId) &&
-    !TERMINAL_RUN_STATUSES.has(currentRun?.status ?? '') &&
-    currentRun?.status !== 'CANCEL_REQUESTED'
+  const canCancel = Boolean(cancelRunId) && currentRun?.status !== 'CANCEL_REQUESTED'
 
   useEffect(() => {
     if (!agents.data?.length) return
@@ -160,168 +193,167 @@ export default function Assistant() {
     setTargetAgentKey(candidate.agentKey)
   }, [agents.data, selectedId, targetAgentKey])
 
-  const refreshConversation = () => {
-    if (selectedId) {
-      void queryClient.invalidateQueries({ queryKey: ['ai-conversation', selectedId] })
-    }
+  const refreshConversation = (id = selectedIdRef.current) => {
+    if (id) void queryClient.invalidateQueries({ queryKey: ['ai-conversation', id] })
     void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
   }
 
-  const setActiveRun = (runId: string | null) => {
-    activeRunIdRef.current = runId
-    setActiveRunId(runId)
-  }
-
-  const appendProgress = (text: string, color = 'blue') => {
-    setProgress((prev) => [...prev, { id: crypto.randomUUID(), text, color }].slice(-20))
-  }
-
-  const eventRunId = (event: AiStreamEvent) => {
-    if (event.runId) return event.runId
-    const value = event.data.runId
-    return typeof value === 'string' ? value : undefined
-  }
-
-  const handleEvent = (event: AiStreamEvent) => {
-    if (event.cursor > 0) cursorRef.current = event.cursor
-    const data = event.data
-    const runId = eventRunId(event)
-    const active = activeRunIdRef.current
-    if (runId && active && runId !== active) return
-    if (runId && !active && !['run.queued', 'run.started'].includes(event.type)) {
-      return
-    }
-
-    switch (event.type) {
-      case 'run.queued':
-        if (runId) setActiveRun(runId)
-        setStreaming(true)
-        appendProgress('任务已进入队列')
-        refreshConversation()
-        break
-      case 'run.started':
-        if (runId) setActiveRun(runId)
-        setStreaming(true)
-        setStreamText('')
-        setProgress([])
-        appendProgress('Agent 开始执行')
-        refreshConversation()
-        break
-      case 'assistant.delta': {
-        const delta =
-          typeof data.delta === 'string'
-            ? data.delta
-            : typeof data.text === 'string'
-              ? data.text
-              : ''
-        if (delta) setStreamText((prev) => prev + delta)
-        setStreaming(true)
-        break
-      }
-      case 'tool.started': {
-        const tool = eventToolLabel(data)
-        appendProgress(tool ? `调用工具 ${tool}` : '调用工具')
-        setStreaming(true)
-        break
-      }
-      case 'tool.completed': {
-        const tool = eventToolLabel(data)
-        const state = data.state ? ` · ${String(data.state)}` : ''
-        appendProgress(tool ? `工具完成 ${tool}${state}` : `工具完成${state}`, 'green')
-        break
-      }
-      case 'tool.failed': {
-        const tool = eventToolLabel(data)
-        const error = String(data.message ?? data.errorMessage ?? data.errorCode ?? '工具调用失败')
-        appendProgress(tool ? `工具失败 ${tool}` : '工具调用失败', 'red')
-        setNotice(error)
-        break
-      }
-      case 'skill.loaded': {
-        const skill = String(data.skillKey ?? data.key ?? data.name ?? '')
-        const version = data.version ? `@${String(data.version)}` : ''
-        appendProgress(skill ? `加载 Skill ${skill}${version}` : '加载 Skill', 'purple')
-        break
-      }
-      case 'run.warning':
-        setNotice(String(data.message ?? data.warning ?? '执行受限'))
-        appendProgress('执行出现警告', 'orange')
-        break
-      case 'run.cancel_requested':
-        setNotice('正在停止执行；已发出的外部请求不保证远端未执行。')
-        refreshConversation()
-        break
-      case 'run.cancelled':
-        setStreaming(false)
-        setActiveRun(null)
-        setNotice('任务已取消；已发出的外部请求不保证远端未执行。')
-        refreshConversation()
-        break
-      case 'run.failed':
-        setStreaming(false)
-        setActiveRun(null)
-        setNotice(String(data.message ?? data.errorMessage ?? data.errorCode ?? '执行失败'))
-        appendProgress('执行失败', 'red')
-        refreshConversation()
-        break
-      case 'run.timed_out':
-        setStreaming(false)
-        setActiveRun(null)
-        setNotice(String(data.message ?? data.errorMessage ?? '执行超时'))
-        appendProgress('执行超时', 'red')
-        refreshConversation()
-        break
-      case 'run.completed':
-        setStreaming(false)
-        setActiveRun(null)
-        setStreamText('')
-        appendProgress('执行完成', 'green')
-        window.setTimeout(refreshConversation, 250)
-        break
-      case 'stream.ready':
-        break
-      default:
-        if (event.type.startsWith('run.')) refreshConversation()
-        break
-    }
-  }
-
-  useEffect(() => {
-    setStreamText('')
-    setProgress([])
+  const selectConversation = (id: string) => {
+    if (id === selectedIdRef.current) return
+    selectedIdRef.current = id
+    streamRunIdRef.current = null
+    streamCursorRef.current = null
+    resumeFromSnapshotRef.current = false
+    setSelectedId(id)
+    setLiveRun(null)
+    setPreview(null)
+    setPendingMessage(null)
+    setProgress(null)
     setNotice(null)
-    setStreaming(false)
-    setActiveRun(null)
-    cursorRef.current = 0
-    streamConversationRef.current = null
-    stopStreamRef.current?.()
-    stopStreamRef.current = null
-    return () => {
-      stopStreamRef.current?.()
-      stopStreamRef.current = null
-      streamConversationRef.current = null
-    }
-  }, [selectedId])
+    setStreamState('connecting')
+    followRef.current = true
+    setFollowing(true)
+  }
 
+  const snapshotReady = Boolean(detail.data)
   useEffect(() => {
-    if (!selectedId || !detail.data || streamConversationRef.current === selectedId) {
-      return
+    if (!selectedId || !snapshotReady) return
+    const data = queryClient.getQueryData<AiConversationDetail>(['ai-conversation', selectedId])
+    if (!data) return
+    const cursor = data.conversation.eventCursor
+    const active = data.currentRun
+    streamRunIdRef.current = active?.id ?? streamRunIdRef.current
+    const after = resumeFromSnapshotRef.current
+      ? cursor
+      : (streamCursorRef.current ?? (active ? 0 : cursor))
+    resumeFromSnapshotRef.current = false
+    setStreamState('connecting')
+
+    const refresh = () => {
+      void queryClient.invalidateQueries({ queryKey: ['ai-conversation', selectedId] })
     }
-    setActiveRun(detail.data.currentRun?.id ?? null)
-    const initialCursor = detail.data.currentRun ? 0 : detail.data.conversation.eventCursor
-    cursorRef.current = initialCursor
-    streamConversationRef.current = selectedId
-    stopStreamRef.current = openAiEventStream(
+    const updateRun = (
+      id: string,
+      status: string,
+      errorCode?: string,
+      errorMessage?: string,
+      usage?: AiRunUsage
+    ) => {
+      setLiveRun((previous) =>
+        preferRun(previous?.id === id ? previous : null, {
+          id,
+          status,
+          errorCode,
+          errorMessage,
+          usage,
+          createdAt: previous?.id === id ? previous.createdAt : undefined
+        })
+      )
+    }
+    const handleEvent = ({ type, data, runId, cursor: eventCursor }: AiStreamEvent) => {
+      if (selectedIdRef.current !== selectedId) return
+      if (eventCursor > 0) streamCursorRef.current = eventCursor
+      if (type === 'stream.ready') {
+        refresh()
+        return
+      }
+      const id = runId ?? streamRunIdRef.current
+      if (!id) return
+      if (type === 'run.queued' && id !== streamRunIdRef.current && eventCursor > cursor) {
+        streamRunIdRef.current = id
+        setLiveRun(null)
+        setPreview(null)
+        setProgress(null)
+        setNotice(null)
+      }
+      if (id !== streamRunIdRef.current) return
+
+      switch (type) {
+        case 'run.queued':
+          updateRun(id, 'QUEUED')
+          setPendingMessage((previous) =>
+            previous && !previous.runId ? { ...previous, runId: id } : previous
+          )
+          refresh()
+          break
+        case 'run.dispatching':
+          updateRun(id, 'DISPATCHING')
+          break
+        case 'run.started':
+          updateRun(id, 'RUNNING')
+          break
+        case 'assistant.delta': {
+          const delta = data.delta ?? data.text
+          if (typeof delta === 'string' && delta) {
+            setPreview((previous) => ({
+              runId: id,
+              text: (previous?.runId === id ? previous.text : '') + delta
+            }))
+          }
+          break
+        }
+        case 'tool.started':
+          setProgress(`正在调用工具 ${eventToolLabel(data)}`.trim())
+          break
+        case 'tool.completed':
+          setProgress(null)
+          break
+        case 'tool.failed':
+          setProgress(null)
+          setNotice(String(data.message ?? data.errorMessage ?? '工具调用失败'))
+          break
+        case 'skill.loaded':
+          setProgress(`已加载技能 ${String(data.skillKey ?? data.key ?? data.name ?? '')}`.trim())
+          break
+        case 'run.warning':
+          setNotice(String(data.message ?? data.warning ?? '执行受限'))
+          break
+        case 'run.cancel_requested':
+          updateRun(id, 'CANCEL_REQUESTED')
+          refresh()
+          break
+        case 'run.completed':
+        case 'run.cancelled':
+        case 'run.failed':
+        case 'run.timed_out':
+          updateRun(
+            id,
+            type === 'run.completed'
+              ? 'COMPLETED'
+              : type === 'run.cancelled'
+                ? 'CANCELLED'
+                : 'FAILED',
+            typeof data.errorCode === 'string' ? data.errorCode : undefined,
+            typeof data.message === 'string'
+              ? data.message
+              : typeof data.errorMessage === 'string'
+                ? data.errorMessage
+                : undefined,
+            typeof data.usage === 'object' && data.usage !== null
+              ? (data.usage as AiRunUsage)
+              : undefined
+          )
+          refresh()
+          void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
+          break
+      }
+    }
+
+    return openAiEventStream(
       selectedId,
-      initialCursor,
+      after,
       handleEvent,
-      undefined,
+      (state) => {
+        if (selectedIdRef.current === selectedId) setStreamState(state)
+      },
       (error) => {
-        setNotice(error.message)
-        if (error.status === 410) refreshConversation()
+        if (selectedIdRef.current !== selectedId) return
+        if (error.status === 410) resumeFromSnapshotRef.current = true
+        setStreamState('unavailable')
+        refresh()
       }
     )
-  }, [detail.data, selectedId])
+  }, [queryClient, selectedId, snapshotReady, streamRevision])
 
   const creatingConversation = useRef(false)
   const createConversation = async (agentKey: string) => {
@@ -339,7 +371,7 @@ export default function Assistant() {
       creatingConversation.current = true
       const created = await api.aiCreateConversation(agentKey, agent.version)
       rememberAgent(agentKey)
-      setSelectedId(created.id)
+      selectConversation(created.id)
       void queryClient.invalidateQueries({ queryKey: ['ai-conversations'] })
       return created
     } catch (error) {
@@ -369,12 +401,11 @@ export default function Assistant() {
     setTargetAgentKey(agentKey)
   }
 
-  const send = async () => {
-    const content = input.trim()
-    if (!content || busy) return
+  const submitQuestion = async (content: string, { keepDraft = false } = {}) => {
+    if (!content || busy || !canSubmit) return
+    let conversationId = selectedId
     try {
       setSubmitting(true)
-      let conversationId = selectedId
       if (!conversationId) {
         if (!targetAgentKey) throw new Error('请先选择 Agent')
         const created = await createConversation(targetAgentKey)
@@ -382,34 +413,54 @@ export default function Assistant() {
         conversationId = created.id
       }
       setNotice(null)
-      setStreamText('')
-      setProgress([])
-      setStreaming(true)
-      const run = await api.aiSubmitRun(conversationId, content, crypto.randomUUID())
-      setActiveRun(run.id)
-      setInput('')
-      appendProgress('任务已提交')
-      window.setTimeout(refreshConversation, 300)
+      setPreview(null)
+      setLiveRun(null)
+      setProgress(null)
+      setFollowing(true)
+      followRef.current = true
+      const requestId = crypto.randomUUID()
+      setPendingMessage({
+        id: requestId,
+        conversationId,
+        role: 'user',
+        content,
+        citations: [],
+        status: 'PENDING',
+        seq: 0,
+        createdAt: new Date().toISOString()
+      })
+      const run = await api.aiSubmitRun(conversationId, content, requestId)
+      if (selectedIdRef.current === conversationId) {
+        streamRunIdRef.current = run.id
+        setLiveRun((previous) => ({
+          ...(preferRun(previous?.id === run.id ? previous : null, run) ?? run),
+          createdAt: run.createdAt
+        }))
+        setPendingMessage((previous) => (previous ? { ...previous, runId: run.id } : null))
+        if (!keepDraft) setInput((draft) => (draft.trim() === content ? '' : draft))
+      }
+      refreshConversation(conversationId)
     } catch (error) {
-      setStreaming(false)
+      if (conversationId === selectedIdRef.current) setPendingMessage(null)
       message.error((error as Error).message)
     } finally {
       setSubmitting(false)
     }
   }
 
+  const send = () => submitQuestion(input.trim())
+
   const cancelRun = async () => {
     if (!cancelRunId) return
+    const conversationId = selectedId
     try {
       setCancelling(true)
       const result = await api.aiCancelRun(cancelRunId)
-      setNotice(
-        result.note ??
-          (result.status && TERMINAL_RUN_STATUSES.has(result.status)
-            ? `任务状态：${STATUS_LABEL[result.status] ?? result.status}`
-            : '已请求停止；等待运行实例确认。')
-      )
-      window.setTimeout(refreshConversation, 500)
+      if (selectedIdRef.current === conversationId && result.status === 'CANCEL_REQUESTED') {
+        setLiveRun({ id: cancelRunId, status: result.status, createdAt: currentRun?.createdAt })
+        setNotice(result.note ?? null)
+      }
+      refreshConversation(conversationId)
     } catch (error) {
       message.error((error as Error).message)
     } finally {
@@ -417,12 +468,57 @@ export default function Assistant() {
     }
   }
 
-  const messages = detail.data?.messages ?? []
+  const messages = detail.data?.messages
+  const pending =
+    pendingMessage &&
+    !messages?.some(
+      (item) => item.role === 'user' && item.runId === pendingMessage.runId && pendingMessage.runId
+    )
+      ? pendingMessage
+      : null
+  const visiblePreview =
+    preview &&
+    preview.runId === currentRun?.id &&
+    !messages?.some((item) => item.role === 'assistant' && item.runId === preview.runId)
+      ? preview
+      : null
+  const closedRun =
+    !submitting && currentRun && TERMINAL_RUN_STATUSES.has(currentRun.status) ? currentRun : null
+  const closedRunId = closedRun?.id
+  const quotaFailure = Boolean(closedRun?.errorCode && QUOTA_ERROR_CODES.has(closedRun.errorCode))
+  const retryQuestion = quotaFailure && closedRunId
+    ? (messages?.find((item) => item.role === 'user' && item.runId === closedRunId)?.content ??
+      (snapshotRun?.id === closedRunId ? snapshotRun.question : undefined))
+    : undefined
 
   useEffect(() => {
+    if (!closedRunId) return
+    void queryClient.invalidateQueries({ queryKey: MY_QUOTA_KEY })
+    void queryClient.invalidateQueries({ queryKey: MY_USAGE_KEY })
+  }, [closedRunId, queryClient])
+
+  const followLatest = () => {
+    followRef.current = true
+    setFollowing(true)
     const element = messagesRef.current
     if (element) element.scrollTop = element.scrollHeight
-  }, [messages, streamText, progress, selectedId])
+  }
+
+  const scrollIfFollowing = useCallback(() => {
+    const element = messagesRef.current
+    if (element && followRef.current) element.scrollTop = element.scrollHeight
+  }, [])
+
+  useLayoutEffect(scrollIfFollowing, [
+    scrollIfFollowing,
+    messages,
+    pending,
+    progress,
+    selectedId,
+    running,
+    closedRun,
+    streamState
+  ])
 
   const sidebar = (
     <aside className="assistant-sidebar">
@@ -470,9 +566,7 @@ export default function Assistant() {
             <Tag color="blue" bordered={false}>
               v{targetAgent.version}
             </Tag>
-            <Tag color={targetAgent.healthy ? 'green' : 'red'} bordered={false}>
-              {targetAgent.healthy ? '健康' : '无健康实例'}
-            </Tag>
+            <AgentHealth agent={targetAgent} />
             <Text type="secondary">
               {targetAgent.healthy
                 ? `${targetAgent.toolCount} 工具 · ${targetAgent.skillCount} 技能`
@@ -495,7 +589,7 @@ export default function Assistant() {
               className={`assistant-history-item${item.id === selectedId ? ' active' : ''}`}
               onClick={() => {
                 setTargetAgentKey(item.agentKey)
-                setSelectedId(item.id)
+                selectConversation(item.id)
                 setHistoryOpen(false)
               }}
             >
@@ -544,9 +638,7 @@ export default function Assistant() {
                 </Tag>
                 {currentCatalog ? (
                   <>
-                    <Tag color={currentCatalog.healthy ? 'green' : 'red'} bordered={false}>
-                      {currentCatalog.healthy ? '健康' : '无健康实例'}
-                    </Tag>
+                    <AgentHealth agent={currentCatalog} />
                     <Text type="secondary">
                       {currentCatalog.toolCount} 工具 · {currentCatalog.skillCount} 技能
                     </Text>
@@ -560,11 +652,13 @@ export default function Assistant() {
             ) : null}
           </div>
           <Space size={6} wrap>
-            {currentRun ? <Tag>{STATUS_LABEL[currentRun.status] ?? currentRun.status}</Tag> : null}
+            {currentRun && running ? (
+              <Tag color="processing">{STATUS_LABEL[currentRun.status]}</Tag>
+            ) : null}
             <Button
               size="small"
               icon={<ReloadOutlined />}
-              onClick={refreshConversation}
+              onClick={() => refreshConversation()}
               disabled={!selectedId}
             >
               刷新
@@ -602,8 +696,18 @@ export default function Assistant() {
             />
           ) : null}
 
-          <div className="assistant-messages" ref={messagesRef}>
-            {messages.length === 0 ? (
+          <div
+            className="assistant-messages"
+            ref={messagesRef}
+            onScroll={({ currentTarget }) => {
+              const nearBottom =
+                currentTarget.scrollHeight - currentTarget.scrollTop - currentTarget.clientHeight <
+                72
+              followRef.current = nearBottom
+              setFollowing(nearBottom)
+            }}
+          >
+            {!messages?.length && !pending && !busy ? (
               <div className="assistant-empty assistant-welcome">
                 <span className="assistant-welcome-icon">
                   <RobotOutlined />
@@ -628,23 +732,103 @@ export default function Assistant() {
                 </div>
               </div>
             ) : (
-              messages.map((item) => <MessageBubble key={item.id} message={item} />)
+              messages?.map((item) => <MessageBubble key={item.id} message={item} />)
             )}
-            {streamText ? (
-              <MessageBubble message={streamPreview(selectedId, streamText)} streaming />
+            {pending ? <MessageBubble message={pending} /> : null}
+            {visiblePreview ? (
+              <StreamingAnswer
+                key={visiblePreview.runId}
+                text={visiblePreview.text}
+                status={currentRun?.status}
+                usage={currentRun?.usage}
+                onRender={scrollIfFollowing}
+              />
             ) : null}
-            {progress.length > 0 && busy ? (
-              <div className="assistant-progress">
-                {progress.slice(-8).map((step) => (
-                  <Tag key={step.id} color={step.color}>
-                    {step.text}
-                  </Tag>
-                ))}
+            {busy ? (
+              <RunActivity
+                run={running ? currentRun : null}
+                progress={progress}
+                hasOutput={Boolean(visiblePreview)}
+                submittedAt={pending?.createdAt}
+              />
+            ) : null}
+            {closedRun?.status === 'FAILED' ? (
+              <Alert
+                className="assistant-run-notice"
+                type="error"
+                showIcon
+                message={
+                  quotaFailure
+                    ? '上一条问题因额度不足未完成'
+                    : closedRun.errorCode === 'RUN_TIMED_OUT'
+                      ? '任务超时'
+                      : '任务执行失败'
+                }
+                description={
+                  quotaFailure ? (
+                    <div className="assistant-quota-failure">
+                      <div>
+                        {retryQuestion
+                          ? '额度恢复后，可以在当前会话重试。'
+                          : '额度恢复后，可以在当前会话发送新问题。'}
+                      </div>
+                      <Space wrap size={6}>
+                        {retryQuestion ? (
+                          <Button
+                            type="primary"
+                            size="small"
+                            onClick={() => void submitQuestion(retryQuestion, { keepDraft: true })}
+                          >
+                            重试上一条问题
+                          </Button>
+                        ) : null}
+                        <Button type="link" size="small" onClick={() => setQuotaOpen(true)}>
+                          查看我的额度
+                        </Button>
+                      </Space>
+                    </div>
+                  ) : (
+                    (closedRun.errorMessage ?? '请稍后重试，或联系管理员检查运行服务。')
+                  )
+                }
+              />
+            ) : null}
+            {closedRun?.status === 'CANCELLED' ? (
+              <div className="assistant-run-notice" role="status">
+                任务已停止
               </div>
             ) : null}
           </div>
 
+          {busy && (streamState === 'reconnecting' || streamState === 'unavailable') ? (
+            <div className="assistant-stream-notice" role="status">
+              <span>
+                {streamState === 'reconnecting'
+                  ? '实时连接中断，正在重连…'
+                  : '实时更新不可用，任务状态仍会自动刷新。'}
+              </span>
+              {streamState === 'unavailable' ? (
+                <Button
+                  size="small"
+                  type="link"
+                  onClick={() => setStreamRevision((revision) => revision + 1)}
+                >
+                  重新连接
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
           <div className="assistant-composer">
+            {!following ? (
+              <Button
+                className="assistant-latest"
+                size="small"
+                icon={<DownOutlined />}
+                onClick={followLatest}
+              >
+                回到最新
+              </Button>
+            ) : null}
             <div className="assistant-input-row">
               <Input.TextArea
                 value={input}
@@ -670,6 +854,7 @@ export default function Assistant() {
               </Button>
             </div>
             <div className="assistant-composer-footer">
+              <AssistantQuota onOpen={() => setQuotaOpen(true)} />
               <Text type="secondary" style={{ fontSize: 12 }}>
                 Enter 发送 · Shift + Enter 换行 · 切换 Agent 需新建会话
               </Text>
@@ -677,6 +862,19 @@ export default function Assistant() {
           </div>
         </div>
       </section>
+      <Drawer
+        title="我的模型额度"
+        placement="right"
+        width="min(100%, 600px)"
+        open={quotaOpen}
+        destroyOnHidden
+        onClose={() => setQuotaOpen(false)}
+        extra={<Link to="/usage/history">用量明细</Link>}
+      >
+        <div className="usage-page">
+          <QuotaOverview />
+        </div>
+      </Drawer>
       {compact ? (
         <Drawer
           className="assistant-history-drawer"
@@ -694,25 +892,133 @@ export default function Assistant() {
   )
 }
 
-function streamPreview(conversationId: string | null, text: string): AiMessage {
-  return {
-    id: 'streaming',
-    conversationId: conversationId ?? '',
-    role: 'assistant',
-    content: text,
-    citations: [],
-    status: 'STREAMING',
-    seq: 0,
-    createdAt: new Date().toISOString()
-  }
+function preferRun(live: RunProgress | null, snapshot: RunProgress | null): RunProgress | null {
+  if (!live || !snapshot) return live ?? snapshot
+  if (live.id !== snapshot.id) return live
+  if (TERMINAL_RUN_STATUSES.has(snapshot.status)) return snapshot
+  if (TERMINAL_RUN_STATUSES.has(live.status)) return live
+  return RUN_STATUS_ORDER.indexOf(snapshot.status) >= RUN_STATUS_ORDER.indexOf(live.status)
+    ? snapshot
+    : live
+}
+
+function AgentHealth({ agent }: { agent: AiAgentCatalogItem }) {
+  if (agent.healthy && !agent.healthVerified) return <Tag bordered={false}>已发布</Tag>
+  return (
+    <Tag color={agent.healthy ? 'green' : 'red'} bordered={false}>
+      {agent.healthy ? '健康' : '无健康实例'}
+    </Tag>
+  )
+}
+
+function RunActivity({
+  run,
+  progress,
+  hasOutput,
+  submittedAt
+}: {
+  run: RunProgress | null
+  progress: string | null
+  hasOutput: boolean
+  submittedAt?: string
+}) {
+  const [now, setNow] = useState(Date.now)
+  const since = run?.createdAt ?? submittedAt
+  useEffect(() => {
+    if (!since) return
+    const interval = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(interval)
+  }, [since])
+  const seconds = since ? Math.max(0, Math.floor((now - new Date(since).getTime()) / 1000)) : 0
+  const status = run?.status
+  const label = status ? STATUS_LABEL[status] : '正在提交'
+  const description =
+    status === 'RUNNING'
+      ? (progress ?? (hasOutput ? '正在生成回答' : ACTIVE_RUN_DESCRIPTION.RUNNING))
+      : status
+        ? ACTIVE_RUN_DESCRIPTION[status]
+        : '正在提交你的问题'
+  return (
+    <div className="assistant-run-activity" role="status">
+      <LoadingOutlined aria-hidden />
+      <div>
+        <strong>{label}</strong>
+        <span>{description}</span>
+      </div>
+      {seconds > 0 ? <time aria-hidden>{seconds}s</time> : null}
+    </div>
+  )
+}
+
+function StreamingAnswer({
+  text,
+  status,
+  usage,
+  onRender
+}: {
+  text: string
+  status?: string
+  usage?: AiRunUsage | null
+  onRender: () => void
+}) {
+  const deferredText = useDeferredValue(text)
+  const interrupted = status === 'CANCELLED' || status === 'FAILED'
+  const content = status && TERMINAL_RUN_STATUSES.has(status) ? text : deferredText
+  useLayoutEffect(onRender, [content, onRender])
+  return (
+    <div className="assistant-message">
+      <div className="assistant-message-bubble">
+        <div className="assistant-message-author">{interrupted ? '助手 · 部分输出' : '助手'}</div>
+        <AnswerMarkdown>{content}</AnswerMarkdown>
+        {status === 'COMPLETED' ? <AnswerTokenCount usage={usage} /> : null}
+      </div>
+    </div>
+  )
+}
+
+function AssistantQuota({ onOpen }: { onOpen: () => void }) {
+  const quota = useQuery({ queryKey: MY_QUOTA_KEY, queryFn: api.myQuota, refetchInterval: 30_000 })
+  const snapshot = quota.isError ? undefined : quota.data
+  const status = snapshot ? quotaStatus(snapshot) : undefined
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="assistant-quota-link"
+      data-tone={status?.tone}
+      aria-haspopup="dialog"
+      aria-live="polite"
+    >
+      <WalletOutlined />
+      {snapshot
+        ? <span>可用额度 <strong>{formatUnits(snapshot.availableUnits)}</strong> Units</span>
+        : <span>{quota.isError ? '额度暂不可查' : '正在查询额度'}</span>}
+      {status && status.tone !== 'normal' ? <span>· {status.label}</span> : null}
+    </button>
+  )
+}
+
+function AnswerTokenCount({ usage }: { usage?: AiRunUsage | null }) {
+  const tokens = answerTokens(usage)
+  return (
+    <div className="assistant-answer-usage">
+      {tokens ? (
+        <>
+          <strong>消耗 {formatUnits(tokens.totalTokens)} Token</strong>
+          <span>输入 {formatUnits(tokens.inputTokens)}</span>
+          <span>输出 {formatUnits(tokens.outputTokens)}</span>
+        </>
+      ) : (
+        <span>Token 用量暂无记录</span>
+      )}
+    </div>
+  )
 }
 
 function eventToolLabel(data: Record<string, unknown>): string {
   const alias = typeof data.toolAlias === 'string' ? data.toolAlias : ''
   const original = typeof data.originalName === 'string' ? data.originalName : ''
-  if (alias && original && original !== alias) return `${alias} (${original})`
-  if (alias) return alias
-  return String(data.tool ?? data.toolName ?? data.name ?? '')
+  return original || String(data.tool ?? data.toolName ?? data.name ?? alias)
 }
 
 function readLastAgent(): string | null {
@@ -733,34 +1039,37 @@ function rememberAgent(agentKey: string) {
   }
 }
 
-function MessageBubble({ message, streaming }: { message: AiMessage; streaming?: boolean }) {
+const AnswerMarkdown = memo(function AnswerMarkdown({ children }: { children: string }) {
+  return (
+    <div className="assistant-markdown">
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ children, href }) => (
+            <a href={href} target="_blank" rel="noreferrer">
+              {children}
+            </a>
+          )
+        }}
+      >
+        {children}
+      </ReactMarkdown>
+    </div>
+  )
+})
+
+const MessageBubble = memo(function MessageBubble({ message }: { message: AiMessage }) {
   const isUser = message.role === 'user'
   return (
     <div className={`assistant-message${isUser ? ' user' : ''}`}>
       <div className="assistant-message-bubble">
-        <div className="assistant-message-author">
-          {isUser ? '我' : '助手'}
-          {streaming ? ' · 生成中' : ''}
-        </div>
+        <div className="assistant-message-author">{isUser ? '我' : '助手'}</div>
         {isUser ? (
           <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>
             {message.content}
           </Paragraph>
         ) : (
-          <div className="assistant-markdown">
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                a: ({ children, href }) => (
-                  <a href={href} target="_blank" rel="noreferrer">
-                    {children}
-                  </a>
-                )
-              }}
-            >
-              {message.content}
-            </ReactMarkdown>
-          </div>
+          <AnswerMarkdown>{message.content}</AnswerMarkdown>
         )}
         {message.citations.length > 0 ? (
           <div className="assistant-citations">
@@ -791,7 +1100,8 @@ function MessageBubble({ message, streaming }: { message: AiMessage; streaming?:
             </ul>
           </div>
         ) : null}
+        {!isUser ? <AnswerTokenCount usage={message.usage} /> : null}
       </div>
     </div>
   )
-}
+})

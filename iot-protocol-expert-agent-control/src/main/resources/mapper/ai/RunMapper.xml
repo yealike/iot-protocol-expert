@@ -175,6 +175,22 @@
         where id = #{id} and execution_token = #{executionToken} and status = 'DISPATCHING'
     </update>
 
+    <update id="claimDispatchRetry">
+        update ai_run
+        set dispatch_attempts = dispatch_attempts + 1, dispatch_next_attempt_at = null,
+            lease_until = now() + make_interval(secs => #{leaseSeconds}), updated_at = now()
+        where id = #{id} and execution_token = #{executionToken} and status = 'DISPATCHING'
+          and dispatch_next_attempt_at = #{expectedAttemptAt} and dispatch_next_attempt_at &lt;= now()
+          and (deadline_at is null or deadline_at &gt; now())
+    </update>
+
+    <update id="failDispatch">
+        update ai_run
+        set status = 'FAILED', error_code = #{code}, error_message = #{message}, finished_at = now(),
+            updated_at = now(), lease_owner = null, lease_until = null, dispatch_next_attempt_at = null
+        where id = #{id} and execution_token = #{executionToken} and status = 'DISPATCHING'
+    </update>
+
     <update id="releaseDispatch">
         update ai_run
         set status = 'QUEUED', lease_owner = null, lease_until = null, deadline_at = null,

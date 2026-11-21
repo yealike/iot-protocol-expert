@@ -128,9 +128,13 @@ public class AgentExecutionService {
 
     public RunDispatchReceipt dispatch(String agentKey, String version, RunDispatchRequest request) {
         validateDispatch(agentKey, version, request);
-        PreparedRelease release = releases.find(request.releaseId())
-                .orElseThrow(() ->
-                        new RunRejectedException(409, ErrorCodes.RELEASE_NOT_ACTIVE, "该发布尚未在当前 Runtime 准备完成", null));
+        PreparedRelease release = releases.find(request.releaseId()).orElseGet(() -> {
+            var failure = releases.schemaFailure(request.releaseId(), request.manifestDigest());
+            if (failure.isPresent()) {
+                throw new RunRejectedException(422, ErrorCodes.SCHEMA_DRIFT, failure.get(), null);
+            }
+            throw new RunRejectedException(409, ErrorCodes.RELEASE_NOT_ACTIVE, "该发布尚未在当前 Runtime 准备完成", null);
+        });
         verifyRelease(agentKey, version, request, release);
 
         Object lock = executions.dispatchLock(request.runId());

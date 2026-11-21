@@ -17,6 +17,27 @@ public final class McpToolSchemas {
         return Digests.digest(canonical(inputSchema));
     }
 
+    /** 校验实时输入结构，兼容已发布摘要保留 required 原始排序的版本。 */
+    public static boolean matchesFrozen(Map<String, Object> live, McpToolDescriptor frozen) {
+        if (digest(live).equals(frozen.schemaDigest())) {
+            return true;
+        }
+        return digest(frozen.inputSchema()).equals(frozen.schemaDigest())
+                && Digests.canonicalJson(withSortedRequired(live))
+                        .equals(Digests.canonicalJson(withSortedRequired(frozen.inputSchema())));
+    }
+
+    private static Map<String, Object> withSortedRequired(Map<String, Object> inputSchema) {
+        Map<String, Object> schema = canonical(inputSchema);
+        if (schema.get("required") instanceof List<?> required
+                && required.stream().allMatch(String.class::isInstance)) {
+            schema.put(
+                    "required",
+                    required.stream().map(String.class::cast).sorted().toList());
+        }
+        return schema;
+    }
+
     public static Map<String, Object> canonical(Map<String, Object> inputSchema) {
         Map<String, Object> source = inputSchema == null ? Map.of() : inputSchema;
         Map<String, Object> canonical = new LinkedHashMap<>();

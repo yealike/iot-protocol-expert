@@ -126,8 +126,7 @@ public class McpConnectionPool {
                     throw new PrepareException(
                             422, ErrorCodes.SCHEMA_DRIFT, "MCP 工具已不存在：" + descriptor.key() + "." + frozen.name());
                 }
-                String digest = McpToolSchemas.digest(McpSchemaMaps.inputSchema(tool));
-                if (!digest.equals(frozen.schemaDigest())) {
+                if (!McpToolSchemas.matchesFrozen(McpSchemaMaps.inputSchema(tool), frozen)) {
                     throw new PrepareException(
                             422,
                             ErrorCodes.SCHEMA_DRIFT,

@@ -87,10 +87,13 @@ public class ConversationService {
     public ConversationView detail(UserIdentity identity, UUID conversationId) {
         Conversation conversation = require(identity, conversationId);
         List<Message> messages = conversations.listMessages(conversationId, 200);
-        Object currentRun = runs.current(conversationId)
-                .map(run -> (Object) runs.find(run.id()).orElse(run))
-                .orElse(null);
-        return new ConversationView(conversation, messages, currentRun);
+        var currentRun = runs.current(conversationId).orElse(null);
+        var latestRun = currentRun == null
+                ? runs.listByConversation(conversationId, 1).stream()
+                        .findFirst()
+                        .orElse(null)
+                : currentRun;
+        return new ConversationView(conversation, messages, currentRun, latestRun);
     }
 
     public Conversation require(UserIdentity identity, UUID conversationId) {

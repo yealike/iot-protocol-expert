@@ -7,9 +7,13 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.sun.net.httpserver.HttpServer;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -18,7 +22,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.support.SimpleTransactionStatus;
+import top.yealike.pep.control.agents.config.PlatformProperties;
 import top.yealike.pep.control.agents.dispatch.RuntimeDispatchClient;
+import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
 import top.yealike.pep.control.agents.domain.PlatformRecords.McpRelease;
 import top.yealike.pep.control.agents.domain.PlatformRecords.Publication;
 import top.yealike.pep.control.agents.registry.NacosRegistryService;
@@ -27,6 +33,7 @@ import top.yealike.pep.control.agents.store.AgentStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
+import top.yealike.pep.runtime.contract.InternalPaths;
 
 class PublicationCoordinatorTransactionTest {
 
@@ -59,6 +66,80 @@ class PublicationCoordinatorTransactionTest {
 
         assertThat(fixture.transactions.commits).isEqualTo(1);
         assertThat(fixture.transactions.rollbacks).isZero();
+    }
+
+    @Test
+    void savesSpecificRuntimePreparationRejectionFromHttpWithoutRetrying() throws Exception {
+        var fixture = new Fixture(false);
+        var now = Instant.now();
+        var publication = new Publication(
+                UUID.randomUUID(),
+                "AGENT",
+                fixture.resourceId,
+                "1.1.3",
+                1L,
+                "PREPARING",
+                "PREPARING",
+                1L,
+                "test",
+                null,
+                null,
+                0,
+                now,
+                now.plusSeconds(60),
+                now,
+                now);
+        var release = new AgentRelease(
+                UUID.randomUUID(), fixture.resourceId, "demo", "1.1.3", null, "digest", "STAGED", 1L, 1L, now);
+        when(fixture.publications.claimPending(anyString(), anyInt(), anyInt())).thenReturn(List.of(publication));
+        when(fixture.agents.releases(fixture.resourceId)).thenReturn(List.of(release));
+        var server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        String reason = "MCP 工具 Schema 已漂移：demo.read_document";
+        server.createContext(InternalPaths.RUNTIME_PREPARE, exchange -> {
+            try (exchange) {
+                exchange.getRequestBody().readAllBytes();
+                var body = ("{\"error\":\"SCHEMA_DRIFT\",\"message\":\"" + reason + "\"}")
+                        .getBytes(StandardCharsets.UTF_8);
+                exchange.getResponseHeaders().set("Content-Type", "application/json");
+                exchange.sendResponseHeaders(422, body.length);
+                exchange.getResponseBody().write(body);
+            }
+        });
+        server.start();
+        try {
+            var properties = new PlatformProperties(
+                    null,
+                    new PlatformProperties.Security(null, null, "control", "runtime", "test-key", "test", 15),
+                    new PlatformProperties.Runtime(
+                            3,
+                            30,
+                            100,
+                            2,
+                            1,
+                            "http://127.0.0.1:" + server.getAddress().getPort(),
+                            true),
+                    null,
+                    null);
+            var runtime = new RuntimeDispatchClient(mock(NacosRegistryService.class), properties);
+            var coordinator = new PublicationCoordinator(
+                    fixture.publications,
+                    fixture.mcps,
+                    fixture.skills,
+                    fixture.agents,
+                    runtime,
+                    fixture.registry,
+                    fixture.projections,
+                    fixture.transactions);
+
+            coordinator.tick();
+
+            verify(fixture.publications)
+                    .markFailed(eq(publication.id()), anyString(), eq("PREPARING"), eq("SCHEMA_DRIFT"), eq(reason));
+            verify(fixture.publications, never())
+                    .fail(eq(publication.id()), anyString(), anyString(), anyString(), anyString(), any());
+        } finally {
+            server.stop(0);
+        }
     }
 
     private static final class Fixture {

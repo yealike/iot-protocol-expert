@@ -106,7 +106,10 @@ public class RunScheduler {
             Run run = claimed.get();
             dispatching.incrementAndGet();
             try {
-                dispatch(run, false);
+                if (run.dispatchAttempts() == 1) {
+                    events.publish(run.conversationId(), run.id(), "run.dispatching", Map.of());
+                }
+                dispatch(run, false, run.dispatchAttempts());
             } catch (RuntimeException exception) {
                 log.error("run dispatch failed: run={}", run.id(), exception);
                 fail(run, "DISPATCH_ERROR", "派发失败，请稍后重试");
@@ -116,7 +119,7 @@ public class RunScheduler {
         }
     }
 
-    private void dispatch(Run run, boolean retry) {
+    private void dispatch(Run run, boolean retry, int attempt) {
         AgentRelease release = run.agentReleaseId() == null
                 ? agents.requirePublishedRelease(run.agentKey(), run.agentVersion())
                 : agents.release(run.agentReleaseId());
@@ -134,21 +137,21 @@ public class RunScheduler {
             fail(run, "AGENT_DENIED", "当前账号已无权使用该 Agent");
             return;
         }
-        if (run.dispatchAttempts() > Math.max(1, platform.runtime().maxDispatchAttempts())) {
+        if (attempt > maxDispatchAttempts()) {
             fail(run, ErrorCodes.NO_HEALTHY_RUNTIME, "多次派发仍无可用 Runtime");
             return;
         }
 
         List<RuntimeDispatchClient.RuntimeTarget> targets = runtime.agentTargets(release.agentKey(), release.version());
         if (targets.isEmpty()) {
-            releaseOrFail(run, ErrorCodes.NO_HEALTHY_RUNTIME, "当前没有可用的 Agent Runtime");
+            releaseOrFail(run, attempt, ErrorCodes.NO_HEALTHY_RUNTIME, "当前没有可用的 Agent Runtime");
             return;
         }
         RuntimeDispatchClient.RuntimeTarget target = retry
                 ? targetFor(run, targets)
                 : targets.get(ThreadLocalRandom.current().nextInt(targets.size()));
         if (target == null) {
-            releaseOrFail(run, ErrorCodes.NO_HEALTHY_RUNTIME, "原执行 Runtime 已不可发现");
+            releaseOrFail(run, attempt, ErrorCodes.NO_HEALTHY_RUNTIME, "原执行 Runtime 已不可发现");
             return;
         }
         if (!retry && !runs.bindDispatchTarget(run.id(), run.executionToken(), target.instanceId(), leaseSeconds())) {
@@ -186,7 +189,16 @@ public class RunScheduler {
             return;
         }
         if (result.status() == 429) {
-            releaseOrFail(run, ErrorCodes.RUN_BUSY, "Runtime 容量已满，稍后重试");
+            releaseOrFail(run, attempt, ErrorCodes.RUN_BUSY, "Runtime 正忙，请稍后重试");
+            return;
+        }
+        if (ErrorCodes.SCHEMA_DRIFT.equals(result.code())) {
+            String reason = result.message() == null ? "MCP 工具结构与发布版本不一致" : result.message();
+            fail(run, result.code(), reason + "。请联系管理员核对 MCP 工具并发布新的 Agent 版本。");
+            return;
+        }
+        if (result.status() >= 400 && result.status() < 500 && result.status() != 408 && result.status() != 409) {
+            fail(run, result.code() == null ? "DISPATCH_REJECTED" : result.code(), "Runtime 拒绝接收任务，请联系管理员");
             return;
         }
         var status = runtime.status(target, run.id(), run.executionToken());
@@ -195,21 +207,34 @@ public class RunScheduler {
             log.info("run dispatch recovered by receipt: run={} status={}", run.id(), status.status());
             return;
         }
-        if (run.dispatchAttempts() >= Math.max(1, platform.runtime().maxDispatchAttempts())) {
-            fail(run, result.code() == null ? ErrorCodes.NO_HEALTHY_RUNTIME : result.code(), "Runtime 未接收该 Run");
+        if (attempt >= maxDispatchAttempts()) {
+            String code = result.code() == null ? ErrorCodes.NO_HEALTHY_RUNTIME : result.code();
+            String message = ErrorCodes.RELEASE_NOT_ACTIVE.equals(code)
+                    ? "此 Agent 版本尚未在 Runtime 就绪，请联系管理员检查发布状态"
+                    : "运行服务未能接收任务，请稍后重试";
+            fail(run, code, message);
             return;
         }
         runs.deferDispatch(
-                run.id(), run.executionToken(), Instant.now().plusMillis(backoffMillis(run)), leaseSeconds());
+                run.id(), run.executionToken(), Instant.now().plusMillis(backoffMillis(attempt)), leaseSeconds());
     }
 
     private void retryDispatches() {
         for (Run run : runs.dispatchRetries(10)) {
+            if (!runs.claimDispatchRetry(run, leaseSeconds())) {
+                continue;
+            }
+            int attempt = run.dispatchAttempts() + 1;
             try {
-                dispatch(run, true);
+                dispatch(run, true, attempt);
             } catch (RuntimeException exception) {
-                log.warn("run dispatch retry failed: run={} reason={}", run.id(), safeMessage(exception));
-                runs.deferDispatch(run.id(), run.executionToken(), Instant.now().plusSeconds(2), leaseSeconds());
+                log.warn("run dispatch retry failed: run={}", run.id(), exception);
+                if (attempt >= maxDispatchAttempts()) {
+                    fail(run, "DISPATCH_ERROR", "派发失败，请稍后重试");
+                } else {
+                    runs.deferDispatch(
+                            run.id(), run.executionToken(), Instant.now().plusSeconds(2), leaseSeconds());
+                }
             }
         }
     }
@@ -266,25 +291,26 @@ public class RunScheduler {
         }
     }
 
-    private void releaseOrFail(Run run, String code, String message) {
-        if (run.dispatchAttempts() >= Math.max(1, platform.runtime().maxDispatchAttempts())) {
+    private void releaseOrFail(Run run, int attempt, String code, String message) {
+        if (attempt >= maxDispatchAttempts()) {
             fail(run, code, message);
             return;
         }
         boolean released = runs.releaseDispatch(
-                run.id(), run.executionToken(), Instant.now().plusMillis(backoffMillis(run)));
+                run.id(), run.executionToken(), Instant.now().plusMillis(backoffMillis(attempt)));
         if (!released) {
             log.warn("run release skipped: run={} token={}", run.id(), run.executionToken());
         }
     }
 
     private void fail(Run run, String code, String message) {
-        if (runs.markFailed(run.id(), run.executionToken(), run.runtimeInstanceId(), code, message, Map.of())) {
+        if (runs.failDispatch(run.id(), run.executionToken(), code, message)) {
             events.publish(
                     run.conversationId(),
                     run.id(),
                     "run.failed",
                     Map.of("runId", run.id().toString(), "errorCode", code, "message", message));
+            log.warn("run dispatch rejected: run={} code={}", run.id(), code);
         }
     }
 
@@ -303,8 +329,12 @@ public class RunScheduler {
         return Math.max(30, platform.runtime().leaseSeconds());
     }
 
-    private static long backoffMillis(Run run) {
-        long seconds = Math.min(8L, 1L << Math.min(Math.max(run.dispatchAttempts() - 1, 0), 3));
+    private int maxDispatchAttempts() {
+        return Math.max(1, platform.runtime().maxDispatchAttempts());
+    }
+
+    private static long backoffMillis(int attempt) {
+        long seconds = 1L << Math.min(Math.max(attempt - 1, 0), 3);
         return seconds * 1000L + ThreadLocalRandom.current().nextLong(400L);
     }
 

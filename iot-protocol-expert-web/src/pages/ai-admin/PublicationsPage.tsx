@@ -185,16 +185,25 @@ function PublicationDetail({
             items={PHASES.map((item) => ({ title: item }))}
             style={{ marginBottom: 24 }}
           />
-          {failed ? (
+          {failed || data.errorMessage || data.errorCode ? (
             <Alert
-              type="error"
+              type={failed ? 'error' : 'warning'}
               showIcon
               style={{ marginBottom: 16 }}
-              message={data.errorMessage || '发布失败'}
+              message={failed ? '发布失败' : '发布遇到问题，等待自动重试'}
               description={
-                data.errorCode
-                  ? `错误码：${data.errorCode}${data.traceId ? ` · Trace：${data.traceId}` : ''}`
-                  : undefined
+                <Space direction="vertical" size={4}>
+                  {data.errorMessage ? <span>{data.errorMessage}</span> : null}
+                  {data.errorCode === 'SCHEMA_DRIFT' ? (
+                    <span>请测试对应 MCP 的工具目录，发布新版本后更新 Agent 的工具绑定。</span>
+                  ) : null}
+                  {data.errorCode ? (
+                    <Text type="secondary">
+                      {data.errorCode}
+                      {data.traceId ? ` · Trace ${data.traceId}` : ''}
+                    </Text>
+                  ) : null}
+                </Space>
               }
             />
           ) : null}
@@ -213,9 +222,11 @@ function PublicationDetail({
             <Descriptions.Item label="deadline">
               {data.deadlineAt ? formatDateTime(data.deadlineAt) : '-'}
             </Descriptions.Item>
-            <Descriptions.Item label="下一次尝试">
-              {data.nextAttemptAt ? formatDateTime(data.nextAttemptAt) : '-'}
-            </Descriptions.Item>
+            {!failed && !done ? (
+              <Descriptions.Item label="下一次尝试">
+                {data.nextAttemptAt ? formatDateTime(data.nextAttemptAt) : '-'}
+              </Descriptions.Item>
+            ) : null}
             <Descriptions.Item label="创建时间">{formatDateTime(data.createdAt)}</Descriptions.Item>
             <Descriptions.Item label="更新时间" span={2}>
               {formatDateTime(data.updatedAt)}

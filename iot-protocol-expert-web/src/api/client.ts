@@ -47,6 +47,7 @@ import type {
   ManagedRole,
   QuotaGrantRequest,
   QuotaSnapshot,
+  QuotaSubject,
   UsageItem,
   UserChange,
   DeviceDetail,
@@ -317,8 +318,7 @@ export const api = {
   aiRotateCredential: (id: string, secret: string) =>
     aiRequest<AiCredential>(`/credentials/${encodeURIComponent(id)}`, aiJson({ secret }, 'PUT')),
 
-  aiGatewayProviders: () =>
-    aiRequest<AiGatewayProvider[]>('/model-catalog/providers'),
+  aiGatewayProviders: () => aiRequest<AiGatewayProvider[]>('/model-catalog/providers'),
   aiCreateGatewayProvider: (body: AiGatewayProviderCreate) =>
     aiRequest<AiGatewayProvider>('/model-catalog/providers', aiJson(body)),
   aiGatewayModels: () => aiRequest<AiGatewayModel[]>('/model-catalog/models'),
@@ -475,6 +475,10 @@ export const api = {
 
   myQuota: () => request<QuotaSnapshot>('/api/control/v1/me/quota'),
   myUsage: (limit = 100) => request<UsageItem[]>(`/api/control/v1/me/usage?limit=${limit}`),
+  quotaSubjects: (scopeKind: QuotaGrantRequest['scopeKind'], query: string) =>
+    request<QuotaSubject[]>(
+      `/api/control/v1/admin/quota-subjects?${new URLSearchParams({ scopeKind, query })}`
+    ),
   adminQuotaAccount: (scopeKind: string, subjectId: string) =>
     request<QuotaSnapshot>(
       `/api/control/v1/admin/quota-accounts?scopeKind=${encodeURIComponent(
@@ -497,13 +501,17 @@ export function openAiEventStream(
   conversationId: string,
   afterCursor: number,
   onEvent: (event: AiStreamEvent) => void,
-  onState?: (state: 'open' | 'closed') => void,
+  onState?: (state: 'open' | 'reconnecting') => void,
   onError?: (error: ApiError) => void
 ): () => void {
   const controller = new AbortController()
   let cursor = Math.max(0, afterCursor)
   const run = async () => {
     while (!controller.signal.aborted) {
+      const connection = new AbortController()
+      const abortConnection = () => connection.abort()
+      controller.signal.addEventListener('abort', abortConnection, { once: true })
+      let idleTimer = window.setTimeout(abortConnection, 25_000)
       try {
         const response = await fetch(
           `${AI_API}/conversations/${encodeURIComponent(
@@ -511,14 +519,18 @@ export function openAiEventStream(
           )}/events?afterCursor=${cursor}`,
           {
             credentials: 'include',
-            signal: controller.signal,
+            signal: connection.signal,
             headers: {
               Accept: 'text/event-stream',
               'X-AI-Client': 'web'
             }
           }
         )
-        if (!response.ok || !response.body) {
+        if (
+          !response.ok ||
+          !response.body ||
+          !response.headers.get('Content-Type')?.includes('text/event-stream')
+        ) {
           if (response.status === 410) {
             onError?.(new ApiError(410, '事件游标已过期，请刷新会话快照'))
             return
@@ -529,13 +541,19 @@ export function openAiEventStream(
           }
           throw new Error('事件连接不可用')
         }
-        onState?.('open')
         const reader = response.body.getReader()
         const decoder = new TextDecoder()
         let buffer = ''
+        let connected = false
         while (!controller.signal.aborted) {
           const { done, value } = await reader.read()
-          if (done) break
+          if (done || controller.signal.aborted) break
+          window.clearTimeout(idleTimer)
+          idleTimer = window.setTimeout(abortConnection, 25_000)
+          if (!connected) {
+            connected = true
+            onState?.('open')
+          }
           buffer += decoder.decode(value, { stream: true })
           let separator = /\r?\n\r?\n/.exec(buffer)
           while (separator && separator.index !== undefined) {
@@ -552,9 +570,14 @@ export function openAiEventStream(
       } catch {
         // 断线后使用最后确认的游标重放。
       } finally {
-        onState?.('closed')
+        window.clearTimeout(idleTimer)
+        controller.signal.removeEventListener('abort', abortConnection)
+        connection.abort()
       }
-      if (!controller.signal.aborted) await new Promise((resolve) => setTimeout(resolve, 1500))
+      if (!controller.signal.aborted) {
+        onState?.('reconnecting')
+        await new Promise((resolve) => window.setTimeout(resolve, 1500))
+      }
     }
   }
   void run()

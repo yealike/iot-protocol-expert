@@ -19,6 +19,12 @@ public interface AccessAdminMapper {
 
     record RoleRow(UUID id, String code, String name, String scopeType, boolean builtIn) {}
 
+    record QuotaSubject(String id, String code, String name, String state, String context) {}
+
+    List<QuotaSubject> findQuotaUsers(@Param("query") String query);
+
+    List<QuotaSubject> findQuotaServiceAccounts(@Param("query") String query);
+
     List<TenantInfo> listTenants(@Param("userId") long userId, @Param("platformAdmin") boolean platformAdmin);
 
     List<ProjectInfo> listProjects(

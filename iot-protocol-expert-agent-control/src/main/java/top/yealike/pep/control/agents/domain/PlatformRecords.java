@@ -217,5 +217,6 @@ public final class PlatformRecords {
             int toolCount,
             int skillCount,
             List<String> skills,
-            boolean healthy) {}
+            boolean healthy,
+            boolean healthVerified) {}
 }

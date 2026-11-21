@@ -1,5 +1,6 @@
 package top.yealike.pep.modelgateway.quota;
 
+import java.nio.charset.StandardCharsets;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
@@ -32,6 +33,7 @@ public class QuotaService {
     private static final Logger log = LoggerFactory.getLogger(QuotaService.class);
     // PostgreSQL 的 uuid 按无符号字节序比较；规范字符串序与其一致，UUID.compareTo 则按有符号 long。
     private static final Comparator<UUID> DATABASE_UUID_ORDER = Comparator.comparing(UUID::toString);
+    private static final int MAX_POLICY_KEY_LENGTH = 64;
 
     private final QuotaRepository repository;
     private final TransactionTemplate transactions;
@@ -109,8 +111,7 @@ public class QuotaService {
             QuotaRecords.Policy policy = repository
                     .findPolicy(account.policyKey(), account.activeRevision())
                     .orElseThrow(() -> ApiException.unavailable(ModelErrorCodes.QUOTA_UNAVAILABLE, "额度策略版本不存在"));
-            if (policy.effectiveAt().isAfter(now)
-                    || (policy.expiresAt() != null && !policy.expiresAt().isAfter(now))) {
+            if (!isEffective(policy, now)) {
                 throw new ApiException(429, ModelErrorCodes.QUOTA_TOTAL_EXHAUSTED, "额度策略不在有效期内");
             }
             QuotaRecords.Bucket bucket = ensureBucket(account, policy, now);
@@ -190,18 +191,25 @@ public class QuotaService {
             }
             return current;
         }
-        boolean expired = current != null
-                && (current.endAt() == null
-                        || !current.endAt().isAfter(now)
-                        || "VOID".equals(current.activationState())
-                        || "EXPIRED".equals(current.activationState()));
-        if (current == null || expired) {
+        if (current == null || windowExpired(current, now)) {
             if (current != null && "PROVISIONAL".equals(current.activationState())) {
                 repository.updateBucketState(current.id(), "EXPIRED");
             }
             return createBucket(account, policy, now, "WINDOW", "PROVISIONAL", policy.durationSeconds());
         }
         return current;
+    }
+
+    private static boolean isEffective(QuotaRecords.Policy policy, OffsetDateTime now) {
+        return !policy.effectiveAt().isAfter(now)
+                && (policy.expiresAt() == null || policy.expiresAt().isAfter(now));
+    }
+
+    private static boolean windowExpired(QuotaRecords.Bucket bucket, OffsetDateTime now) {
+        return bucket.endAt() == null
+                || !bucket.endAt().isAfter(now)
+                || "VOID".equals(bucket.activationState())
+                || "EXPIRED".equals(bucket.activationState());
     }
 
     private QuotaRecords.Bucket createBucket(
@@ -498,7 +506,7 @@ public class QuotaService {
             throw ApiException.badRequest(ModelErrorCodes.REQUEST_INVALID, "缺少 Idempotency-Key");
         }
         String policyKey = request.policyKey() == null || request.policyKey().isBlank()
-                ? request.scopeKind().toLowerCase(java.util.Locale.ROOT) + ":" + request.subjectId() + ":" + mode
+                ? defaultPolicyKey(request, mode)
                 : request.policyKey();
         return transactions.execute(status -> {
             repository.lockAdvisory("quota-grant:" + request.actorId() + ":" + request.idempotencyKey());
@@ -562,6 +570,13 @@ public class QuotaService {
             body.put("mode", mode);
             return body;
         });
+    }
+
+    private static String defaultPolicyKey(GrantRequest request, String mode) {
+        String key = request.scopeKind().toLowerCase(java.util.Locale.ROOT) + ":" + request.subjectId() + ":" + mode;
+        return key.length() <= MAX_POLICY_KEY_LENGTH
+                ? key
+                : "quota:" + UUID.nameUUIDFromBytes(key.getBytes(StandardCharsets.UTF_8));
     }
 
     private void requireMatchingReplay(
@@ -628,27 +643,44 @@ public class QuotaService {
     }
 
     public Map<String, Object> snapshot(String scopeKind, String subjectId) {
+        OffsetDateTime now = repository.now();
         List<QuotaRecords.Account> accounts = repository.accounts(scopeKind, subjectId);
         List<Map<String, Object>> policies = new ArrayList<>();
+        long availableUnits = Long.MAX_VALUE;
         for (QuotaRecords.Account account : accounts) {
             QuotaRecords.Policy policy = repository
                     .findPolicy(account.policyKey(), account.activeRevision())
                     .orElse(null);
             if (policy == null) {
+                availableUnits = 0;
                 continue;
             }
             QuotaRecords.Bucket bucket = account.currentBucketId() == null
                     ? null
                     : repository.findBucket(account.currentBucketId()).orElse(null);
+            boolean total = "TOTAL".equals(policy.mode());
+            boolean expiredWindow = !total && bucket != null && windowExpired(bucket, now);
+            boolean effective = isEffective(policy, now);
+            long used = bucket == null ? 0 : bucket.usedUnits();
+            long held = bucket == null ? 0 : bucket.heldUnits();
+            long remaining = total || bucket == null ? policy.limitUnits() - used - held : bucket.remaining();
+            long available = "ACTIVE".equals(account.state()) && effective
+                    ? Math.max(0, expiredWindow ? policy.limitUnits() : remaining)
+                    : 0;
+            availableUnits = Math.min(availableUnits, available);
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("accountId", account.id().toString());
             row.put("policyKey", account.policyKey());
             row.put("mode", policy.mode());
             row.put("state", account.state());
             row.put("limitUnits", policy.limitUnits());
-            row.put("usedUnits", bucket == null ? 0 : bucket.usedUnits());
-            row.put("heldUnits", bucket == null ? 0 : bucket.heldUnits());
-            row.put("remainingUnits", bucket == null ? policy.limitUnits() : bucket.remaining());
+            row.put("durationSeconds", policy.durationSeconds());
+            row.put("usedUnits", used);
+            row.put("heldUnits", held);
+            row.put("remainingUnits", remaining);
+            row.put("availableUnits", available);
+            row.put("effective", effective);
+            row.put("expiredWindow", expiredWindow);
             row.put("activationState", bucket == null ? "NOT_ACTIVATED" : bucket.activationState());
             row.put("startAt", bucket == null ? null : bucket.startAt());
             row.put("endAt", bucket == null ? null : bucket.endAt());
@@ -659,6 +691,7 @@ public class QuotaService {
         body.put("scopeKind", scopeKind);
         body.put("subjectId", subjectId);
         body.put("policies", policies);
+        body.put("availableUnits", accounts.isEmpty() ? 0 : availableUnits);
         body.put("pendingReconciliation", repository.pendingReconciliation(scopeKind, subjectId));
         return body;
     }

@@ -23,6 +23,7 @@ import {
   LogoutOutlined,
   MenuOutlined,
   RobotOutlined,
+  SettingOutlined,
   UserOutlined,
   WalletOutlined
 } from '@ant-design/icons'
@@ -76,6 +77,7 @@ const items: NavigationItem[] = [
   },
   { key: '/assistant', icon: <RobotOutlined />, label: 'AI 助手', section: 'intelligence' },
   { key: '/usage', icon: <WalletOutlined />, label: '模型额度', section: 'intelligence' },
+  { key: '/quota-admin', icon: <SettingOutlined />, label: '额度管理', section: 'administration' },
   {
     key: '/ai-admin',
     icon: <BuildOutlined />,
@@ -91,7 +93,13 @@ const items: NavigationItem[] = [
   { key: '/users', icon: <UserOutlined />, label: '用户管理', section: 'administration' }
 ]
 
-const restrictedUserItems = new Set(['/assistant', '/ai-knowledge', '/ai-admin', '/usage'])
+const restrictedUserItems = new Set([
+  '/assistant',
+  '/ai-knowledge',
+  '/ai-admin',
+  '/usage',
+  '/quota-admin'
+])
 
 export default function AppLayout({ user, children }: Props) {
   const location = useLocation()
@@ -249,6 +257,10 @@ function canAccess(item: NavigationItem, user: CurrentUser): boolean {
       return Boolean(user.permissions?.includes('ai:admin'))
     case '/assistant':
       return Boolean(user.permissions?.includes('ai:use'))
+    case '/quota-admin':
+      return Boolean(
+        user.permissions?.includes('usage:read') || user.permissions?.includes('quota:grant')
+      )
     case '/usage':
       return Boolean(
         user.permissions?.includes('ai:use') ||

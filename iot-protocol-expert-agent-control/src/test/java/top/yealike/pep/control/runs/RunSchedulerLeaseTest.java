@@ -20,15 +20,20 @@ import top.yealike.pep.control.access.policy.PolicyService;
 import top.yealike.pep.control.agents.AgentService;
 import top.yealike.pep.control.agents.config.PlatformProperties;
 import top.yealike.pep.control.agents.dispatch.RuntimeDispatchClient;
+import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
 import top.yealike.pep.control.config.AiProperties;
 import top.yealike.pep.control.observability.AiObservability;
 import top.yealike.pep.control.runs.RunRecords.Run;
+import top.yealike.pep.runtime.contract.ErrorCodes;
 
 class RunSchedulerLeaseTest {
 
     private final RunRepository runs = mock(RunRepository.class);
     private final RunEventService events = mock(RunEventService.class);
     private final AiObservability observability = mock(AiObservability.class);
+    private final AgentService agents = mock(AgentService.class);
+    private final PolicyService policy = mock(PolicyService.class);
+    private final RuntimeDispatchClient runtime = mock(RuntimeDispatchClient.class);
 
     @Test
     void controlTerminatesDeadlineExpiredRunEvenWhenLeaseStillValid() {
@@ -101,17 +106,95 @@ class RunSchedulerLeaseTest {
                 .thenAnswer(invocation -> ((java.util.function.Supplier<?>) invocation.getArgument(1)).get());
         return new RunScheduler(
                 runs,
-                mock(AgentService.class),
-                mock(PolicyService.class),
+                agents,
+                policy,
                 events,
-                mock(RuntimeDispatchClient.class),
+                runtime,
                 new PlatformProperties(
-                        null, null, new PlatformProperties.Runtime(3, 30, 100, 2, 1, null, false), null, null),
+                        null,
+                        new PlatformProperties.Security(null, null, "control", "runtime", null, "test", 15),
+                        new PlatformProperties.Runtime(3, 30, 100, 2, 1, null, false),
+                        null,
+                        null),
                 new AiProperties("test", null, 0, null, null, new AiProperties.Run(4, 6, 12, 120_000, 20), null),
                 observability);
     }
 
+    @Test
+    void schemaDriftFailsImmediatelyAndPublishesTheReason() {
+        Run run =
+                run("DISPATCHING", Instant.now().plusSeconds(30), Instant.now().plusSeconds(60), null);
+        var target = dispatchTarget(run);
+        when(runs.claimNextForDispatch(anyString(), anyInt(), any(), anyInt()))
+                .thenReturn(Optional.of(run))
+                .thenReturn(Optional.empty());
+        when(runs.bindDispatchTarget(run.id(), run.executionToken(), target.instanceId(), 30))
+                .thenReturn(true);
+        when(runtime.dispatch(eq(target), eq(run.agentKey()), eq(run.agentVersion()), any()))
+                .thenReturn(new RuntimeDispatchClient.DispatchResult(
+                        false, 422, null, ErrorCodes.SCHEMA_DRIFT, "MCP 工具 Schema 已漂移：read_document"));
+        String reason = "MCP 工具 Schema 已漂移：read_document。请联系管理员核对 MCP 工具并发布新的 Agent 版本。";
+        when(runs.failDispatch(run.id(), run.executionToken(), ErrorCodes.SCHEMA_DRIFT, reason))
+                .thenReturn(true);
+
+        scheduler().tick();
+
+        verify(runtime, never()).status(eq(target), eq(run.id()), eq(run.executionToken()));
+        verify(events)
+                .publish(
+                        run.conversationId(),
+                        run.id(),
+                        "run.failed",
+                        Map.of("runId", run.id().toString(), "errorCode", ErrorCodes.SCHEMA_DRIFT, "message", reason));
+    }
+
+    @Test
+    void lastRetryConsumesAnAttemptAndDoesNotRescheduleAnUnpreparedRelease() {
+        Run run =
+                run("DISPATCHING", Instant.now().plusSeconds(30), Instant.now().plusSeconds(60), Instant.now(), 2);
+        var target = dispatchTarget(run);
+        when(runs.dispatchRetries(10)).thenReturn(List.of(run));
+        when(runs.claimDispatchRetry(run, 30)).thenReturn(true);
+        when(runtime.dispatch(eq(target), eq(run.agentKey()), eq(run.agentVersion()), any()))
+                .thenReturn(new RuntimeDispatchClient.DispatchResult(
+                        false, 409, null, ErrorCodes.RELEASE_NOT_ACTIVE, "未准备"));
+
+        scheduler().tick();
+
+        verify(runs)
+                .failDispatch(
+                        run.id(),
+                        run.executionToken(),
+                        ErrorCodes.RELEASE_NOT_ACTIVE,
+                        "此 Agent 版本尚未在 Runtime 就绪，请联系管理员检查发布状态");
+        verify(runs, never()).deferDispatch(eq(run.id()), eq(run.executionToken()), any(), anyInt());
+    }
+
+    private RuntimeDispatchClient.RuntimeTarget dispatchTarget(Run run) {
+        var release = new AgentRelease(
+                run.agentReleaseId(),
+                UUID.randomUUID(),
+                run.agentKey(),
+                run.agentVersion(),
+                null,
+                run.manifestDigest(),
+                "ACTIVE",
+                1,
+                1,
+                Instant.now());
+        when(agents.release(run.agentReleaseId())).thenReturn(release);
+        when(policy.canUseAgent(any(), eq(run.agentKey()))).thenReturn(new PolicyService.Decision(true, "", ""));
+        var target = new RuntimeDispatchClient.RuntimeTarget("http://localhost:19084", run.runtimeInstanceId(), "test");
+        when(runtime.agentTargets(run.agentKey(), run.agentVersion())).thenReturn(List.of(target));
+        return target;
+    }
+
     private static Run run(String status, Instant leaseUntil, Instant deadlineAt, Instant dispatchNextAttemptAt) {
+        return run(status, leaseUntil, deadlineAt, dispatchNextAttemptAt, 1);
+    }
+
+    private static Run run(
+            String status, Instant leaseUntil, Instant deadlineAt, Instant dispatchNextAttemptAt, int attempts) {
         Instant now = Instant.now();
         return new Run(
                 UUID.randomUUID(),
@@ -145,7 +228,7 @@ class RunSchedulerLeaseTest {
                 "runtime-1",
                 7L,
                 now,
-                1,
+                attempts,
                 deadlineAt,
                 dispatchNextAttemptAt,
                 "CANCEL_REQUESTED".equals(status) ? now : null);

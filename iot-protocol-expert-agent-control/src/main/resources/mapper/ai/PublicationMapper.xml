@@ -161,7 +161,9 @@
         update ai_publication
            set state = 'FAILED',
                error_code = 'PUBLICATION_TIMEOUT',
-               error_message = '发布超时，请检查注册或运行时状态后重试',
+               error_message = case when error_message is null then '发布超时，请检查注册或运行时状态后重试'
+                                    else concat('发布超时。上一次失败原因（', error_code, '）：', error_message)
+                               end,
                lease_owner = null,
                lease_until = null,
                updated_at = now()
@@ -177,6 +179,7 @@
            set state = 'FAILED',
                error_code = #{code},
                error_message = #{message},
+               attempts = attempts + 1,
                lease_owner = null,
                lease_until = null,
                updated_at = now()

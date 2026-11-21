@@ -229,10 +229,16 @@ public class PublicationCoordinator {
                 retry(publication, "RUNTIME_PREPARING", "Runtime 正在准备该版本");
                 return Step.WAIT;
             }
-            retry(
-                    publication,
-                    result.errorCode() == null ? "RUNTIME_PREPARE_FAILED" : result.errorCode(),
-                    "Runtime 发布准备失败");
+            String code = result.errorCode() == null ? "RUNTIME_PREPARE_FAILED" : result.errorCode();
+            String message =
+                    result.errorMessage() == null || result.errorMessage().isBlank()
+                            ? "Runtime 发布准备失败"
+                            : result.errorMessage();
+            if (result.status() == 422 || ErrorCodes.REVISION_CONFLICT.equals(code)) {
+                failPermanent(publication, code, message);
+                return Step.DONE;
+            }
+            retry(publication, code, message);
             return Step.RETRY;
         }
         boolean advanced =

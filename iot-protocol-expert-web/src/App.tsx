@@ -19,6 +19,7 @@ import Assistant from './pages/Assistant'
 import AiKnowledge from './pages/AiKnowledge'
 import Users from './pages/Users'
 import Usage from './pages/Usage'
+import QuotaAdmin from './pages/QuotaAdmin'
 import AiAdmin from './pages/ai-admin/AiAdmin'
 import ModelsPage from './pages/ai-admin/ModelsPage'
 import ProvidersPage from './pages/ai-admin/ProvidersPage'
@@ -88,7 +89,9 @@ export default function App() {
           <Route path="/orders/:orderNo" element={<OrderDetail />} />
           <Route path="/simulator/*" element={<Simulator />} />
           <Route path="/assistant" element={<Assistant />} />
-          <Route path="/usage" element={<Usage user={user} />} />
+          <Route path="/usage" element={<Usage view="quota" />} />
+          <Route path="/usage/history" element={<Usage view="history" />} />
+          <Route path="/quota-admin" element={<QuotaAdmin user={user} />} />
           <Route path="/users" element={<Users />} />
           <Route path="/ai-knowledge" element={<AiKnowledge user={user} />} />
           <Route path="/ai-admin" element={<AiAdmin user={user} />}>

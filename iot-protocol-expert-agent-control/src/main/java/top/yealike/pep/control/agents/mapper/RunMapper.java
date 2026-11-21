@@ -70,6 +70,18 @@ public interface RunMapper {
             @Param("nextAttemptAt") Instant nextAttemptAt,
             @Param("leaseSeconds") int leaseSeconds);
 
+    int claimDispatchRetry(
+            @Param("id") UUID id,
+            @Param("executionToken") long executionToken,
+            @Param("expectedAttemptAt") Instant expectedAttemptAt,
+            @Param("leaseSeconds") int leaseSeconds);
+
+    int failDispatch(
+            @Param("id") UUID id,
+            @Param("executionToken") long executionToken,
+            @Param("code") String code,
+            @Param("message") String message);
+
     int releaseDispatch(
             @Param("id") UUID id,
             @Param("executionToken") long executionToken,

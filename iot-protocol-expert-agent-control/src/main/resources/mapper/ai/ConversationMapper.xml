@@ -31,6 +31,7 @@
             <arg column="status" javaType="java.lang.String"/>
             <arg column="seq" javaType="_long"/>
             <arg column="created_at" javaType="java.time.Instant"/>
+            <arg column="usage_json" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
         </constructor>
     </resultMap>
 
@@ -70,18 +71,22 @@
     </insert>
 
     <select id="listMessages" resultMap="MessageMap">
-        select id, conversation_id, run_id, role, content, citations, status, seq, created_at from (
+        select t.id, t.conversation_id, t.run_id, t.role, t.content, t.citations, t.status, t.seq, t.created_at,
+               r.usage_json
+          from (
             select id, conversation_id, run_id, role, content, citations, status, seq, created_at from ai_message where conversation_id = #{conversationId} order by seq desc limit #{limit}
-        ) t order by seq asc
+          ) t
+          left join ai_run r on t.role = 'assistant' and r.id = t.run_id and r.conversation_id = t.conversation_id
+         order by t.seq asc
     </select>
 
     <select id="listMessagesAfter" resultMap="MessageMap">
-        select id, conversation_id, run_id, role, content, citations, status, seq, created_at from ai_message where conversation_id = #{conversationId} and seq > #{afterSeq} order by seq asc limit
+        select id, conversation_id, run_id, role, content, citations, status, seq, created_at, null as usage_json from ai_message where conversation_id = #{conversationId} and seq > #{afterSeq} order by seq asc limit
             #{limit}
     </select>
 
     <select id="listMessagesThrough" resultMap="MessageMap">
-        select id, conversation_id, run_id, role, content, citations, status, seq, created_at from (
+        select id, conversation_id, run_id, role, content, citations, status, seq, created_at, null as usage_json from (
             select id, conversation_id, run_id, role, content, citations, status, seq, created_at from ai_message
         where conversation_id = #{conversationId} and seq &lt;= (select seq from ai_message where id = #{messageId} and
             conversation_id = #{conversationId})

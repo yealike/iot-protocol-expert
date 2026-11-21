@@ -249,6 +249,7 @@ class MapperXmlBindingTest {
                 }
                 if (row instanceof Message message) {
                     assertEquals(nullable ? 0 : 1, message.citations().size());
+                    assertEquals(nullable ? Map.of() : Map.of("tokens", 7), message.usage());
                     if (!nullable)
                         assertEquals("doc", message.citations().getFirst().documentId());
                 }

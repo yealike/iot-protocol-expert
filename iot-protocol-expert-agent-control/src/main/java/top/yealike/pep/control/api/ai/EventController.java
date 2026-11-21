@@ -4,6 +4,7 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.annotation.PreDestroy;
+import java.util.LinkedHashMap;
 import java.util.UUID;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.ScheduledThreadPoolExecutor;
@@ -32,6 +33,9 @@ import top.yealike.pep.control.runs.RunEventService;
 @Tag(name = "AI 对话事件", description = "SSE 事件流，支持断点续传")
 public class EventController {
     private static final int BATCH = 200;
+    private static final long POLL_INTERVAL_MS = 350L;
+    private static final int AUTH_CHECK_TICKS = 3;
+    private static final int HEARTBEAT_TICKS = 35;
     private final RunEventService events;
     private final ConversationService conversations;
     private final OpsIdentityClient identities;
@@ -90,16 +94,24 @@ public class EventController {
                     observability.wrap(() -> {
                         try {
                             ++ticks[0];
-                            var current = identities.resolveCookie(cookie);
-                            if (current.authVersion() != identity.authVersion())
-                                throw new IllegalStateException("User authorization changed");
-                            conversations.require(current, id);
                             var batch = events.replay(id, cursor[0], BATCH);
+                            if (!ready[0] || !batch.isEmpty() || ticks[0] % AUTH_CHECK_TICKS == 0) {
+                                var current = identities.resolveCookie(cookie);
+                                if (!current.actor().equals(identity.actor())
+                                        || current.authVersion() != identity.authVersion()) {
+                                    throw new IllegalStateException("User authorization changed");
+                                }
+                                conversations.require(current, id);
+                            }
                             for (var event : batch) {
+                                var payload = new LinkedHashMap<>(event.payload());
+                                if (event.runId() != null) {
+                                    payload.put("runId", event.runId().toString());
+                                }
                                 emitter.send(SseEmitter.event()
                                         .id(String.valueOf(event.cursor()))
                                         .name(event.type())
-                                        .data(event.payload(), MediaType.APPLICATION_JSON));
+                                        .data(payload, MediaType.APPLICATION_JSON));
                                 cursor[0] = event.cursor();
                             }
                             if (!ready[0] && batch.size() < BATCH) {
@@ -108,7 +120,7 @@ public class EventController {
                                         .data(java.util.Map.of("cursor", cursor[0])));
                                 ready[0] = true;
                             }
-                            if (ticks[0] % 15 == 0)
+                            if (ticks[0] % HEARTBEAT_TICKS == 0)
                                 emitter.send(SseEmitter.event().comment("ping"));
                         } catch (Exception exception) {
                             cleanup.run();
@@ -116,7 +128,7 @@ public class EventController {
                         }
                     }),
                     100,
-                    1000,
+                    POLL_INTERVAL_MS,
                     TimeUnit.MILLISECONDS));
             // 完成回调可能先于 future.set 执行，避免遗留轮询任务。
             if (closed.get()) future.get().cancel(false);

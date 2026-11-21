@@ -129,6 +129,14 @@ public class RunRepository {
         return mapper.deferDispatch(id, executionToken, nextAttemptAt, leaseSeconds) > 0;
     }
 
+    public boolean claimDispatchRetry(Run run, int leaseSeconds) {
+        return mapper.claimDispatchRetry(run.id(), run.executionToken(), run.dispatchNextAttemptAt(), leaseSeconds) > 0;
+    }
+
+    public boolean failDispatch(UUID id, long executionToken, String code, String message) {
+        return mapper.failDispatch(id, executionToken, code, message) > 0;
+    }
+
     public boolean releaseDispatch(UUID id, long executionToken, Instant nextAttemptAt) {
         return mapper.releaseDispatch(id, executionToken, nextAttemptAt) > 0;
     }
