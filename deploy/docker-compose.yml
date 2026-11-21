@@ -26,6 +26,12 @@ services:
     volumes:
       - ./data/logs:/app/logs
       - ./data/protocol-documents:/app/data/protocol-documents
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:19082/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
 
   ipe-control:
     <<: *java
@@ -40,7 +46,15 @@ services:
       JAVA_TOOL_OPTIONS: "-Xms128m -Xmx768m"
     ports:
       - "127.0.0.1:19083:19083"
-    depends_on: [ipe-ops]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:19083/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    depends_on:
+      ipe-ops:
+        condition: service_healthy
 
   ipe-model-gateway:
     <<: *java
@@ -55,7 +69,15 @@ services:
       JAVA_TOOL_OPTIONS: "-Xms128m -Xmx512m"
     ports:
       - "127.0.0.1:19085:19085"
-    depends_on: [ipe-ops]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:19085/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    depends_on:
+      ipe-ops:
+        condition: service_healthy
 
   ipe-runtime:
     <<: *java
@@ -72,7 +94,17 @@ services:
       JAVA_TOOL_OPTIONS: "-Xms128m -Xmx1024m"
     ports:
       - "127.0.0.1:19084:19084"
-    depends_on: [ipe-control, ipe-model-gateway]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:19084/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    depends_on:
+      ipe-control:
+        condition: service_healthy
+      ipe-model-gateway:
+        condition: service_healthy
 
   ipe-device-gateway:
     <<: *java
@@ -88,7 +120,15 @@ services:
       - "8768:8768"
       - "8769:8769"
       - "127.0.0.1:19080:19080"
-    depends_on: [ipe-ops]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:19080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    depends_on:
+      ipe-ops:
+        condition: service_healthy
 
   ipe-simulator:
     <<: *java
@@ -104,7 +144,17 @@ services:
       JAVA_TOOL_OPTIONS: "-Xms128m -Xmx512m"
     ports:
       - "127.0.0.1:19081:19081"
-    depends_on: [ipe-device-gateway]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:19081/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 60s
+    depends_on:
+      ipe-ops:
+        condition: service_healthy
+      ipe-device-gateway:
+        condition: service_healthy
 
   ipe-web:
     restart: unless-stopped
@@ -115,7 +165,11 @@ services:
     ports:
       - "8095:80"
     networks: [ipe]
-    depends_on: [ipe-ops, ipe-control]
+    depends_on:
+      ipe-ops:
+        condition: service_healthy
+      ipe-control:
+        condition: service_healthy
 
 networks:
   ipe:

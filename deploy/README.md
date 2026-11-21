@@ -34,7 +34,7 @@
 - Langfuse：<http://SERVER_IP:3005>
 - 设备接入：`8768`（云快充）、`8769`（OCPP）
 
-## 三个容易踩的坑
+## 部署注意事项
 
 - **nginx 上游缓存**：`ipe-web` 启动时解析 `ipe-ops` / `ipe-control` 的容器 IP。只重建某一个后端时
   （`docker compose up -d ipe-control`），nginx 仍指向旧 IP，页面会 502。执行
@@ -48,6 +48,10 @@
   过期的 MyBatis 映射 XML 会被打进 JAR，导致容器启动时报
   `Failed to parse mapping resource` 并反复重启。`deploy.ps1` 的打包已固定带 `clean`，
   手工执行 Maven 时也要用 `mvn clean package`。
+- **容器启动顺序**：`docker compose` 的 `depends_on` 默认只等容器启动、不等服务就绪。
+  模拟器启动时会向运维平台自动选桩，若此时 `ipe-ops` 还没就绪，选桩会失败并把
+  错误留在页面上。Compose 已为各服务配置 `healthcheck`，并用
+  `condition: service_healthy` 让依赖方等待，健康检查全部通过后才会启动下一个服务。
 
 ## 服务器侧
 
