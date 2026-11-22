@@ -47,6 +47,13 @@ knife4j:
   setting:
     language: zh_cn
 
+mybatis:
+  mapper-locations: classpath*:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    jdbc-type-for-null: "NULL"
+    call-setters-on-nulls: true
+
 management:
   endpoints:
     web:

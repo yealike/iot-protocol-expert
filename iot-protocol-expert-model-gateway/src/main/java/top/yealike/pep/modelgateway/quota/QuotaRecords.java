@@ -74,4 +74,19 @@ public final class QuotaRecords {
             String model,
             String requestHash,
             String state) {}
+
+    public record UsageRow(
+            String callId,
+            String logicalCallId,
+            int attemptNo,
+            String model,
+            String provider,
+            String projectId,
+            String runId,
+            String state,
+            OffsetDateTime createdAt,
+            Long inputTokens,
+            Long outputTokens,
+            Long quotaUnits,
+            String quality) {}
 }

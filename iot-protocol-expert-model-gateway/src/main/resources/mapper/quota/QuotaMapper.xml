@@ -1,0 +1,462 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.modelgateway.quota.mapper.QuotaMapper">
+
+    <resultMap id="AccountMap" type="top.yealike.pep.modelgateway.quota.QuotaRecords$Account">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="scope_kind" javaType="java.lang.String"/>
+            <arg column="subject_id" javaType="java.lang.String"/>
+            <arg column="policy_key" javaType="java.lang.String"/>
+            <arg column="active_revision" javaType="_long"/>
+            <arg column="current_bucket_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="state" javaType="java.lang.String"/>
+            <arg column="debt_units" javaType="_long"/>
+            <arg column="version" javaType="_long"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="PolicyMap" type="top.yealike.pep.modelgateway.quota.QuotaRecords$Policy">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="policy_key" javaType="java.lang.String"/>
+            <arg column="revision" javaType="_long"/>
+            <arg column="mode" javaType="java.lang.String"/>
+            <arg column="limit_units" javaType="_long"/>
+            <arg column="duration_seconds" javaType="java.lang.Long"/>
+            <arg column="effective_at" javaType="java.time.OffsetDateTime"/>
+            <arg column="expires_at" javaType="java.time.OffsetDateTime"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="BucketMap" type="top.yealike.pep.modelgateway.quota.QuotaRecords$Bucket">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="account_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="policy_revision" javaType="_long"/>
+            <arg column="generation" javaType="_long"/>
+            <arg column="start_at" javaType="java.time.OffsetDateTime"/>
+            <arg column="end_at" javaType="java.time.OffsetDateTime"/>
+            <arg column="activation_state" javaType="java.lang.String"/>
+            <arg column="limit_units" javaType="_long"/>
+            <arg column="used_units" javaType="_long"/>
+            <arg column="held_units" javaType="_long"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="ReservationMap" type="top.yealike.pep.modelgateway.quota.QuotaRecords$Reservation">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="model_call_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="reserved_units" javaType="_long"/>
+            <arg column="state" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="ChargeMap" type="top.yealike.pep.modelgateway.quota.QuotaRecords$Charge">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="reservation_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="account_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="bucket_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="reserved_units" javaType="_long"/>
+            <arg column="settled_units" javaType="java.lang.Long"/>
+            <arg column="state" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="CallMap" type="top.yealike.pep.modelgateway.quota.QuotaRecords$Call">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="logical_call_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="attempt_no" javaType="_int"/>
+            <arg column="billing_subject_id" javaType="java.lang.String"/>
+            <arg column="scope_kind" javaType="java.lang.String"/>
+            <arg column="actor_id" javaType="java.lang.String"/>
+            <arg column="tenant_id" javaType="java.lang.String"/>
+            <arg column="project_id" javaType="java.lang.String"/>
+            <arg column="task_id" javaType="java.lang.String"/>
+            <arg column="run_id" javaType="java.lang.String"/>
+            <arg column="model_profile_key" javaType="java.lang.String"/>
+            <arg column="provider" javaType="java.lang.String"/>
+            <arg column="model" javaType="java.lang.String"/>
+            <arg column="request_hash" javaType="java.lang.String"/>
+            <arg column="state" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="ChangeRequestMap" type="top.yealike.pep.modelgateway.quota.QuotaRecords$ChangeRequest">
+        <constructor>
+            <arg column="account_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="new_revision" javaType="java.lang.Long"/>
+            <arg column="action" javaType="java.lang.String"/>
+            <arg column="effective_mode" javaType="java.lang.String"/>
+            <arg column="reason" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="UsageRowMap" type="top.yealike.pep.modelgateway.quota.QuotaRecords$UsageRow">
+        <constructor>
+            <arg column="call_id" javaType="java.lang.String"/>
+            <arg column="logical_call_id" javaType="java.lang.String"/>
+            <arg column="attempt_no" javaType="_int"/>
+            <arg column="model" javaType="java.lang.String"/>
+            <arg column="provider" javaType="java.lang.String"/>
+            <arg column="project_id" javaType="java.lang.String"/>
+            <arg column="run_id" javaType="java.lang.String"/>
+            <arg column="state" javaType="java.lang.String"/>
+            <arg column="created_at" javaType="java.time.OffsetDateTime"/>
+            <arg column="input_tokens" javaType="java.lang.Long"/>
+            <arg column="output_tokens" javaType="java.lang.Long"/>
+            <arg column="quota_units" javaType="java.lang.Long"/>
+            <arg column="quality" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <sql id="AccountColumns">
+        id, scope_kind, subject_id, policy_key, active_revision, current_bucket_id, state, debt_units, version
+    </sql>
+
+    <sql id="CallColumns">
+        id, logical_call_id, attempt_no, billing_subject_id, scope_kind, actor_id, tenant_id, project_id,
+        task_id, run_id, model_profile_key, provider, model, request_hash, state
+    </sql>
+
+    <select id="now" resultType="java.time.OffsetDateTime">
+        select now()
+    </select>
+
+    <select id="lockAdvisory" resultType="int">
+        select 1
+          from (select pg_advisory_xact_lock(hashtextextended(#{value}, 0))) as advisory_lock
+    </select>
+
+    <select id="lockAccounts" resultMap="AccountMap">
+        select <include refid="AccountColumns"/>
+          from pep_metering.quota_account
+         where scope_kind = #{scopeKind} and subject_id = #{subjectId}
+         order by scope_kind, subject_id, id
+           for update
+    </select>
+
+    <select id="accounts" resultMap="AccountMap">
+        select <include refid="AccountColumns"/>
+          from pep_metering.quota_account
+         where scope_kind = #{scopeKind} and subject_id = #{subjectId}
+         order by policy_key
+    </select>
+
+    <select id="findAccount" resultMap="AccountMap">
+        select <include refid="AccountColumns"/>
+          from pep_metering.quota_account
+         where id = #{id}
+    </select>
+
+    <select id="lockAccount" resultMap="AccountMap">
+        select <include refid="AccountColumns"/>
+          from pep_metering.quota_account
+         where id = #{id}
+           for update
+    </select>
+
+    <select id="findPolicy" resultMap="PolicyMap">
+        select id, policy_key, revision, mode, limit_units, duration_seconds, effective_at, expires_at
+          from pep_metering.quota_policy_version
+         where policy_key = #{policyKey} and revision = #{revision}
+    </select>
+
+    <select id="findBucket" resultMap="BucketMap">
+        select id, account_id, policy_revision, generation, start_at, end_at, activation_state,
+               limit_units, used_units, held_units
+          from pep_metering.quota_bucket
+         where id = #{id}
+    </select>
+
+    <select id="lockBucket" resultMap="BucketMap">
+        select id, account_id, policy_revision, generation, start_at, end_at, activation_state,
+               limit_units, used_units, held_units
+          from pep_metering.quota_bucket
+         where id = #{id}
+           for update
+    </select>
+
+    <select id="nextGeneration" resultType="java.lang.Long">
+        select coalesce(max(generation), -1) + 1 from pep_metering.quota_bucket where account_id = #{accountId}
+    </select>
+
+    <insert id="insertBucket">
+        insert into pep_metering.quota_bucket
+            (id, account_id, policy_revision, generation, start_at, end_at,
+             activation_state, limit_units, used_units, held_units)
+        values (#{id}, #{accountId}, #{policyRevision}, #{generation}, #{startAt}, #{endAt},
+                #{activationState}, #{limitUnits}, 0, 0)
+    </insert>
+
+    <update id="setCurrentBucket">
+        update pep_metering.quota_account
+           set current_bucket_id = #{bucketId}, version = version + 1, updated_at = now()
+         where id = #{accountId} and version = #{expectedVersion}
+    </update>
+
+    <update id="updateBucketState">
+        update pep_metering.quota_bucket set activation_state = #{state} where id = #{bucketId}
+    </update>
+
+    <update id="updateBucketPolicy">
+        update pep_metering.quota_bucket
+           set limit_units = #{limitUnits}, policy_revision = #{policyRevision}
+         where id = #{bucketId}
+    </update>
+
+    <update id="addHeld">
+        update pep_metering.quota_bucket set held_units = held_units + #{delta} where id = #{bucketId}
+    </update>
+
+    <update id="settleBucket">
+        update pep_metering.quota_bucket
+           set held_units = greatest(0, held_units - #{releasedHeld}),
+               used_units = used_units + #{settledUnits}
+         where id = #{bucketId}
+    </update>
+
+    <update id="settleReleasedBucket">
+        update pep_metering.quota_bucket set used_units = used_units + #{settledUnits} where id = #{bucketId}
+    </update>
+
+    <select id="findReservationByCall" resultMap="ReservationMap">
+        select id, model_call_id, reserved_units, state
+          from pep_metering.quota_reservation
+         where model_call_id = #{modelCallId}
+    </select>
+
+    <select id="lockReservation" resultMap="ReservationMap">
+        select id, model_call_id, reserved_units, state
+          from pep_metering.quota_reservation
+         where id = #{id}
+           for update
+    </select>
+
+    <select id="lockCharges" resultMap="ChargeMap">
+        select id, reservation_id, account_id, bucket_id, reserved_units, settled_units, state
+          from pep_metering.reservation_charge
+         where reservation_id = #{reservationId}
+         order by account_id
+           for update
+    </select>
+
+    <select id="findCall" resultMap="CallMap">
+        select <include refid="CallColumns"/>
+          from pep_metering.model_call
+         where logical_call_id = #{logicalCallId} and attempt_no = #{attemptNo}
+    </select>
+
+    <select id="findCallById" resultMap="CallMap">
+        select <include refid="CallColumns"/>
+          from pep_metering.model_call
+         where id = #{id}
+    </select>
+
+    <insert id="insertCall">
+        insert into pep_metering.model_call
+            (id, logical_call_id, attempt_no, billing_subject_id, scope_kind, actor_id, tenant_id,
+             project_id, task_id, run_id, model_profile_key, provider, model, request_hash, state)
+        values (#{id}, #{logicalCallId}, #{attemptNo}, #{billingSubjectId}, #{scopeKind}, #{actorId}, #{tenantId},
+                #{projectId}, #{taskId}, #{runId}, #{modelProfileKey}, #{provider}, #{model}, #{requestHash},
+                #{state})
+    </insert>
+
+    <insert id="insertReservation">
+        insert into pep_metering.quota_reservation
+            (id, model_call_id, reserved_units, state, dispatch_deadline, version)
+        values (#{id}, #{modelCallId}, #{units}, 'HELD', #{dispatchDeadline}, 0)
+    </insert>
+
+    <insert id="insertCharge">
+        insert into pep_metering.reservation_charge
+            (id, reservation_id, account_id, bucket_id, reserved_units, state)
+        values (#{id}, #{reservationId}, #{accountId}, #{bucketId}, #{units}, 'HELD')
+    </insert>
+
+    <update id="updateReservationState">
+        update pep_metering.quota_reservation
+           set state = #{state}, version = version + 1, updated_at = now()
+         where id = #{id}
+    </update>
+
+    <update id="markReservationDispatched">
+        update pep_metering.quota_reservation
+           set state = 'DISPATCHED',
+               dispatched_at = now(),
+               version = version + 1,
+               updated_at = now()
+         where id = #{id}
+           and state = 'HELD'
+           and dispatch_deadline &gt;= now()
+    </update>
+
+    <update id="updateChargeState">
+        update pep_metering.reservation_charge
+           set state = #{state}, settled_units = #{settledUnits}
+         where id = #{id}
+    </update>
+
+    <update id="updateCallState">
+        update pep_metering.model_call
+           set state = #{state}, provider_request_id = coalesce(#{providerRequestId}, provider_request_id),
+               updated_at = now()
+         where id = #{id}
+    </update>
+
+    <update id="markCallDispatched">
+        update pep_metering.model_call
+           set state = 'DISPATCHED',
+               dispatched_at = now(),
+               updated_at = now()
+         where id = #{id}
+    </update>
+
+    <insert id="appendLedger">
+        insert into pep_metering.quota_ledger_entry
+            (id, account_id, bucket_id, reservation_id, event_type, delta_used, delta_held, source_event_id)
+        values (#{id}, #{accountId}, #{bucketId}, #{reservationId}, #{eventType}, #{deltaUsed}, #{deltaHeld},
+                #{sourceEventId})
+        on conflict (account_id, source_event_id) do nothing
+    </insert>
+
+    <insert id="insertUsage">
+        insert into pep_metering.model_usage
+            (id, model_call_id, normalization_version, input_tokens, output_tokens,
+             cache_read_tokens, cache_write_tokens, reasoning_tokens, quota_units,
+             quality, provider_usage_hash, raw_usage)
+        values (#{id}, #{modelCallId}, 'v1', #{inputTokens}, #{outputTokens},
+                #{cacheReadTokens}, #{cacheWriteTokens}, #{reasoningTokens}, #{quotaUnits},
+                #{quality}, #{providerUsageHash}, cast(#{rawUsage} as jsonb))
+        on conflict (model_call_id) do nothing
+    </insert>
+
+    <update id="markDebt">
+        update pep_metering.quota_account
+           set state = 'DEBT', debt_units = greatest(debt_units, #{debtUnits}), updated_at = now()
+         where id = #{accountId}
+    </update>
+
+    <update id="updateAccountState">
+        update pep_metering.quota_account
+           set state = #{state}, updated_at = now(), version = version + 1
+         where id = #{accountId}
+    </update>
+
+    <select id="expiredHeldReservations" resultMap="ReservationMap">
+        select id, model_call_id, reserved_units, state
+          from pep_metering.quota_reservation
+         where state = 'HELD' and dispatch_deadline &lt; now()
+         order by dispatch_deadline
+         limit #{limit}
+           for update skip locked
+    </select>
+
+    <select id="expiredDispatchedReservations" resultMap="ReservationMap">
+        select id, model_call_id, reserved_units, state
+          from pep_metering.quota_reservation
+         where state = 'DISPATCHED' and created_at &lt; #{cutoff}
+         order by created_at
+         limit #{limit}
+           for update skip locked
+    </select>
+
+    <select id="pendingReconciliation" resultType="java.lang.Long">
+        select count(*)
+          from pep_metering.quota_reservation r
+          join pep_metering.model_call c on c.id = r.model_call_id
+         where c.scope_kind = #{scopeKind} and c.billing_subject_id = #{subjectId}
+           and r.state = 'UNCERTAIN'
+    </select>
+
+    <select id="chargesForCall" resultMap="ChargeMap">
+        select c.id, c.reservation_id, c.account_id, c.bucket_id, c.reserved_units,
+               c.settled_units, c.state
+          from pep_metering.reservation_charge c
+          join pep_metering.quota_reservation r on r.id = c.reservation_id
+         where r.model_call_id = #{modelCallId}
+         order by c.account_id
+    </select>
+
+    <select id="nextAdjustmentNo" resultType="java.lang.Integer">
+        select coalesce(max(adjustment_no), 0) + 1
+          from pep_metering.usage_adjustment
+         where model_call_id = #{modelCallId}
+    </select>
+
+    <update id="adjustBucketUsed">
+        update pep_metering.quota_bucket
+           set used_units = greatest(0, used_units + #{delta})
+         where id = #{bucketId}
+    </update>
+
+    <select id="usageRows" resultMap="UsageRowMap">
+        select c.id as call_id, c.logical_call_id, c.attempt_no, c.model_profile_key as model, c.provider,
+               c.project_id, c.run_id, c.state, c.created_at,
+               u.input_tokens, u.output_tokens, u.quota_units, u.quality
+          from pep_metering.model_call c
+          left join pep_metering.model_usage u on u.model_call_id = c.id
+         where c.scope_kind = #{scopeKind} and c.billing_subject_id = #{subjectId}
+        <if test="modelKey != null and modelKey != ''">
+           and c.model_profile_key = #{modelKey}
+        </if>
+        <if test="projectId != null and projectId != ''">
+           and c.project_id = #{projectId}
+        </if>
+         order by c.created_at desc, c.id desc
+         limit #{limit}
+    </select>
+
+    <select id="maxPolicyRevision" resultType="java.lang.Integer">
+        select coalesce(max(revision), 0)::int
+          from pep_metering.quota_policy_version
+         where policy_key = #{policyKey}
+    </select>
+
+    <insert id="insertPolicy">
+        insert into pep_metering.quota_policy_version
+            (id, policy_key, revision, mode, limit_units, duration_seconds, effective_at, expires_at)
+        values (#{id}, #{policyKey}, #{revision}, #{mode}, #{limitUnits}, #{durationSeconds}, #{effectiveAt},
+                #{expiresAt})
+    </insert>
+
+    <insert id="insertAccount">
+        insert into pep_metering.quota_account
+            (id, scope_kind, subject_id, policy_key, active_revision, state, debt_units, version)
+        values (#{id}, #{scopeKind}, #{subjectId}, #{policyKey}, #{revision}, 'ACTIVE', 0, 0)
+        on conflict (scope_kind, subject_id, policy_key) do nothing
+    </insert>
+
+    <update id="updateAccountRevision">
+        update pep_metering.quota_account
+           set active_revision = #{revision}, updated_at = now(), version = version + 1
+         where id = #{accountId}
+    </update>
+
+    <insert id="insertChangeRequest">
+        insert into pep_metering.quota_change_request
+            (id, account_id, old_revision, new_revision, action, effective_mode, reason,
+             actor_id, idempotency_key)
+        values (#{id}, #{accountId}, #{oldRevision}, #{newRevision}, #{action}, #{effectiveMode}, #{reason},
+                #{actorId}, #{idempotencyKey})
+    </insert>
+
+    <select id="findChangeRequest" resultMap="ChangeRequestMap">
+        select account_id, new_revision, action, effective_mode, reason
+          from pep_metering.quota_change_request
+         where actor_id = #{actorId} and idempotency_key = #{idempotencyKey}
+    </select>
+
+    <insert id="insertAdjustment">
+        insert into pep_metering.usage_adjustment
+            (id, model_call_id, adjustment_no, delta_units, reason, evidence_ref,
+             operator_id, idempotency_key)
+        values (#{id}, #{modelCallId}, #{adjustmentNo}, #{deltaUnits}, #{reason}, #{evidenceRef},
+                #{operatorId}, #{idempotencyKey})
+    </insert>
+</mapper>

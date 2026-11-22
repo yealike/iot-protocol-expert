@@ -1,5 +1,6 @@
 package top.yealike.pep.modelgateway;
 
+import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
@@ -12,6 +13,7 @@ import top.yealike.pep.observability.protocol.LogbackTelemetryConfiguration;
 @EnableScheduling
 @ConfigurationPropertiesScan
 @Import(LogbackTelemetryConfiguration.class)
+@MapperScan({"top.yealike.pep.modelgateway.catalog.mapper", "top.yealike.pep.modelgateway.quota.mapper"})
 public class PepModelGatewayApplication {
 
     public static void main(String[] args) {

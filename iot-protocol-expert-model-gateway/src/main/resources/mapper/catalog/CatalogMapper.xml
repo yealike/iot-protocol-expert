@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.modelgateway.catalog.mapper.CatalogMapper">
+
+    <resultMap id="ProviderMap" type="top.yealike.pep.modelgateway.catalog.CatalogRecords$Provider">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="code" javaType="java.lang.String"/>
+            <arg column="name" javaType="java.lang.String"/>
+            <arg column="base_url" javaType="java.lang.String"/>
+            <arg column="credential_cipher" javaType="_byte[]"/>
+            <arg column="credential_nonce" javaType="_byte[]"/>
+            <arg column="state" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="ModelProfileMap"
+               type="top.yealike.pep.modelgateway.catalog.CatalogRecords$ModelProfile">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="key" javaType="java.lang.String"/>
+            <arg column="display_name" javaType="java.lang.String"/>
+            <arg column="provider_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
+            <arg column="upstream_model" javaType="java.lang.String"/>
+            <arg column="context_window" javaType="java.lang.Integer"/>
+            <arg column="max_output_tokens" javaType="_int"/>
+            <arg column="token_weight_num" javaType="_int"/>
+            <arg column="token_weight_den" javaType="_int"/>
+            <arg column="counting_mode" javaType="java.lang.String"/>
+            <arg column="state" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <sql id="ProviderColumns">
+        id, code, name, base_url, credential_cipher, credential_nonce, state
+    </sql>
+
+    <sql id="ProfileColumns">
+        id, key, display_name, provider_id, upstream_model, context_window,
+        max_output_tokens, token_weight_num, token_weight_den, counting_mode, state
+    </sql>
+
+    <insert id="insertProvider">
+        insert into pep_metering.model_provider
+            (id, code, name, base_url, credential_cipher, credential_nonce, credential_key_id)
+        values (#{id}, #{code}, #{name}, #{baseUrl}, #{cipher}, #{nonce}, #{keyId})
+        on conflict (code) do update
+           set name = excluded.name,
+               base_url = excluded.base_url,
+               credential_cipher = excluded.credential_cipher,
+               credential_nonce = excluded.credential_nonce,
+               credential_key_id = excluded.credential_key_id,
+               updated_at = now()
+    </insert>
+
+    <select id="listProviders" resultMap="ProviderMap">
+        select <include refid="ProviderColumns"/>
+          from pep_metering.model_provider
+         order by code
+    </select>
+
+    <select id="findProvider" resultMap="ProviderMap">
+        select <include refid="ProviderColumns"/>
+          from pep_metering.model_provider
+         where code = #{code}
+    </select>
+
+    <select id="findProviderById" resultMap="ProviderMap">
+        select <include refid="ProviderColumns"/>
+          from pep_metering.model_provider
+         where id = #{id}
+    </select>
+
+    <insert id="insertProfile">
+        insert into pep_metering.model_profile
+            (id, key, display_name, provider_id, upstream_model, context_window,
+             max_output_tokens, token_weight_num, token_weight_den, counting_mode)
+        values (#{id}, #{key}, #{displayName}, #{providerId}, #{upstreamModel}, #{contextWindow},
+                #{maxOutputTokens}, #{weightNum}, #{weightDen}, #{countingMode})
+        on conflict (key) do update
+           set display_name = excluded.display_name,
+               provider_id = excluded.provider_id,
+               upstream_model = excluded.upstream_model,
+               context_window = excluded.context_window,
+               max_output_tokens = excluded.max_output_tokens,
+               token_weight_num = excluded.token_weight_num,
+               token_weight_den = excluded.token_weight_den,
+               counting_mode = excluded.counting_mode,
+               updated_at = now()
+    </insert>
+
+    <select id="listProfiles" resultMap="ModelProfileMap">
+        select <include refid="ProfileColumns"/>
+          from pep_metering.model_profile
+         order by key
+    </select>
+
+    <select id="findProfile" resultMap="ModelProfileMap">
+        select <include refid="ProfileColumns"/>
+          from pep_metering.model_profile
+         where key = #{key}
+    </select>
+</mapper>

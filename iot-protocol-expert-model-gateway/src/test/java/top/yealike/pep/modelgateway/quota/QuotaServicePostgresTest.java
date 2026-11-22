@@ -14,9 +14,15 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import javax.sql.DataSource;
+import org.apache.ibatis.session.Configuration;
+import org.apache.ibatis.type.JdbcType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
+import org.mybatis.spring.SqlSessionFactoryBean;
+import org.mybatis.spring.SqlSessionTemplate;
+import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
@@ -24,6 +30,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 import top.yealike.pep.model.contract.ModelErrorCodes;
 import top.yealike.pep.model.contract.ModelUsage;
 import top.yealike.pep.modelgateway.config.GatewayProperties;
+import top.yealike.pep.modelgateway.mybatis.UuidTypeHandler;
+import top.yealike.pep.modelgateway.quota.mapper.QuotaMapper;
 import top.yealike.pep.modelgateway.support.ApiException;
 
 /**
@@ -40,7 +48,7 @@ class QuotaServicePostgresTest {
     private String subject;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws java.io.IOException {
         var dataSource = new DriverManagerDataSource(
                 System.getenv("PEP_TEST_DB_URL"),
                 System.getenv("PEP_TEST_DB_USER"),
@@ -56,10 +64,27 @@ class QuotaServicePostgresTest {
         var properties = new GatewayProperties();
         properties.setDispatchDeadlineSeconds(30);
         quota = new QuotaService(
-                new QuotaRepository(jdbc),
+                new QuotaRepository(quotaMapper(dataSource)),
                 new TransactionTemplate(new DataSourceTransactionManager(dataSource)),
                 properties);
         subject = "u-" + UUID.randomUUID();
+    }
+
+    private static QuotaMapper quotaMapper(DataSource dataSource) throws java.io.IOException {
+        var configuration = new Configuration();
+        configuration.setMapUnderscoreToCamelCase(true);
+        configuration.setJdbcTypeForNull(JdbcType.NULL);
+        configuration.getTypeHandlerRegistry().register(UUID.class, UuidTypeHandler.class);
+        var factoryBean = new SqlSessionFactoryBean();
+        factoryBean.setDataSource(dataSource);
+        factoryBean.setConfiguration(configuration);
+        factoryBean.setMapperLocations(
+                new PathMatchingResourcePatternResolver().getResources("classpath*:mapper/quota/QuotaMapper.xml"));
+        try {
+            return new SqlSessionTemplate(factoryBean.getObject()).getMapper(QuotaMapper.class);
+        } catch (Exception exception) {
+            throw new IllegalStateException("初始化 MyBatis 配额映射失败", exception);
+        }
     }
 
     @Test
