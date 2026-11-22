@@ -16,7 +16,6 @@ import org.junit.jupiter.api.Test;
 import top.yealike.pep.control.access.policy.PolicyService;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentCatalogItem;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
-import top.yealike.pep.control.agents.registry.NacosRegistryService;
 import top.yealike.pep.control.agents.store.AgentStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
@@ -30,19 +29,16 @@ class AgentServiceCatalogTest {
     void catalogUsesDefaultReleasesAndCollapsesDuplicateKeys() {
         AgentStore agents = mock(AgentStore.class);
         PolicyService policy = mock(PolicyService.class);
-        NacosRegistryService registry = mock(NacosRegistryService.class);
         AgentRelease v2 = release("demo-agent", "2.0.0", 2L);
         AgentRelease staleV1 = release("demo-agent", "1.0.0", 1L);
         when(agents.defaultReleases()).thenReturn(List.of(v2, staleV1));
         when(policy.canUseAgent(any(), eq("demo-agent"))).thenReturn(new PolicyService.Decision(true, "OK", "v1"));
-        when(registry.enabled()).thenReturn(false);
         AgentService service = new AgentService(
                 agents,
                 mock(McpStore.class),
                 mock(SkillStore.class),
                 mock(AgentCompiler.class),
                 mock(PublicationStore.class),
-                registry,
                 policy);
 
         List<AgentCatalogItem> catalog =
@@ -67,7 +63,6 @@ class AgentServiceCatalogTest {
                 mock(SkillStore.class),
                 mock(AgentCompiler.class),
                 mock(PublicationStore.class),
-                mock(NacosRegistryService.class),
                 mock(PolicyService.class));
 
         assertThat(service.requirePublishedRelease("demo-agent", null)).isSameAs(v2);

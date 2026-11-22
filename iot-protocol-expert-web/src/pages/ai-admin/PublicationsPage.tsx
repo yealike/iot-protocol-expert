@@ -7,7 +7,6 @@ import {
   Descriptions,
   Form,
   Input,
-  Progress,
   Select,
   Space,
   Steps,
@@ -295,7 +294,7 @@ function RegistryHealth() {
       <Alert
         type="info"
         showIcon
-        message="Registry 视图只展示 Nacos 注册投影与健康实例定位，不回显任何凭据。"
+        message="此视图展示平台发布状态和组件版本。"
       />
       <Card
         title="三类组件注册投影"
@@ -443,41 +442,13 @@ function RegistryDetail({ detail }: { detail: AiRegistryVersionDetail }) {
         <Descriptions.Item label="观测状态">
           {detail.observedState ? <StateTag state={detail.observedState} /> : '-'}
         </Descriptions.Item>
-        <Descriptions.Item label="健康实例">{detail.instances.length}</Descriptions.Item>
+        <Descriptions.Item label="发布状态">
+          {detail.releaseState ? <StateTag state={detail.releaseState} /> : '-'}
+        </Descriptions.Item>
       </Descriptions>
       {detail.error ? (
         <Alert type="warning" showIcon message={detail.error} style={{ marginTop: 12 }} />
       ) : null}
-      <Progress
-        percent={detail.instances.length > 0 ? 100 : 0}
-        status={detail.instances.length > 0 ? 'success' : 'exception'}
-        showInfo={false}
-        style={{ marginTop: 12 }}
-      />
-      <Table
-        rowKey={(row) => `${row.ip}:${row.port}`}
-        size="small"
-        pagination={false}
-        dataSource={detail.instances}
-        locale={{ emptyText: '没有健康实例' }}
-        columns={[
-          { title: 'IP', dataIndex: 'ip' },
-          { title: 'Port', dataIndex: 'port', width: 100 },
-          {
-            title: 'metadata',
-            dataIndex: 'metadata',
-            render: (value: Record<string, string>) => (
-              <Space size={[4, 4]} wrap>
-                {Object.entries(value ?? {}).map(([key, item]) => (
-                  <Tag key={key}>
-                    {key}={item}
-                  </Tag>
-                ))}
-              </Space>
-            )
-          }
-        ]}
-      />
     </div>
   )
 }

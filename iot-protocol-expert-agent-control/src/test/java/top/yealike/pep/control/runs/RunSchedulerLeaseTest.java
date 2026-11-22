@@ -25,6 +25,7 @@ import top.yealike.pep.control.config.AiProperties;
 import top.yealike.pep.control.observability.AiObservability;
 import top.yealike.pep.control.runs.RunRecords.Run;
 import top.yealike.pep.runtime.contract.ErrorCodes;
+import top.yealike.pep.runtime.contract.RuntimeRunStatus;
 
 class RunSchedulerLeaseTest {
 
@@ -113,7 +114,7 @@ class RunSchedulerLeaseTest {
                 new PlatformProperties(
                         null,
                         new PlatformProperties.Security(null, null, "control", "runtime", null, "test", 15),
-                        new PlatformProperties.Runtime(3, 30, 100, 2, 1, null, false),
+                        new PlatformProperties.Runtime(3, 30, 100, 2, 1, null),
                         null),
                 new AiProperties("test", null, 0, null, null, new AiProperties.Run(4, 6, 12, 120_000, 20), null),
                 observability);
@@ -169,6 +170,26 @@ class RunSchedulerLeaseTest {
         verify(runs, never()).deferDispatch(eq(run.id()), eq(run.executionToken()), any(), anyInt());
     }
 
+    @Test
+    void retriesThroughTheConfiguredAddressAfterTheRunHasAnInstanceId() {
+        Run run =
+                run("DISPATCHING", Instant.now().plusSeconds(30), Instant.now().plusSeconds(60), Instant.now(), 1);
+        dispatchTarget(run);
+        var target = new RuntimeDispatchClient.RuntimeTarget("http://localhost:19084", "direct", "direct");
+        when(runtime.targets()).thenReturn(List.of(target));
+        when(runs.dispatchRetries(10)).thenReturn(List.of(run));
+        when(runs.claimDispatchRetry(run, 30)).thenReturn(true);
+        when(runtime.dispatch(eq(target), eq(run.agentKey()), eq(run.agentVersion()), any()))
+                .thenReturn(new RuntimeDispatchClient.DispatchResult(false, 503, null, "RUNTIME_UNAVAILABLE", ""));
+        when(runtime.status(target, run.id(), run.executionToken()))
+                .thenReturn(new RuntimeRunStatus(
+                        run.id(), run.executionToken(), "RUNNING", run.runtimeInstanceId(), null, null, null, null));
+
+        scheduler().tick();
+
+        verify(runs).markRunning(run.id(), run.executionToken(), run.runtimeInstanceId(), 30);
+    }
+
     private RuntimeDispatchClient.RuntimeTarget dispatchTarget(Run run) {
         var release = new AgentRelease(
                 run.agentReleaseId(),
@@ -184,7 +205,7 @@ class RunSchedulerLeaseTest {
         when(agents.release(run.agentReleaseId())).thenReturn(release);
         when(policy.canUseAgent(any(), eq(run.agentKey()))).thenReturn(new PolicyService.Decision(true, "", ""));
         var target = new RuntimeDispatchClient.RuntimeTarget("http://localhost:19084", run.runtimeInstanceId(), "test");
-        when(runtime.agentTargets(run.agentKey(), run.agentVersion())).thenReturn(List.of(target));
+        when(runtime.targets()).thenReturn(List.of(target));
         return target;
     }
 

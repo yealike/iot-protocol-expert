@@ -38,7 +38,6 @@ function Initialize-PepLocalEnvironment {
         IPE_AI_REGISTRY_ENABLED             = "false"
         IPE_NACOS_DISCOVERY_ENABLED         = "false"
         IPE_AI_MCP_REGISTRY_ENABLED         = "false"
-        IPE_RUNTIME_DIRECT_FALLBACK_ENABLED = "true"
         IPE_OTLP_ENABLED                    = "false"
     }
     foreach ($entry in $defaults.GetEnumerator()) {

@@ -34,7 +34,6 @@ import top.yealike.pep.control.agents.domain.PlatformRecords.SkillDraftFile;
 import top.yealike.pep.control.agents.domain.PlatformRecords.SkillRelease;
 import top.yealike.pep.control.agents.mcp.McpService;
 import top.yealike.pep.control.agents.model.ModelProfileService;
-import top.yealike.pep.control.agents.registry.NacosRegistryService;
 import top.yealike.pep.control.agents.skill.SkillService;
 import top.yealike.pep.control.agents.store.AgentStore.McpBindingInput;
 import top.yealike.pep.control.agents.store.AgentStore.SkillBindingInput;
@@ -59,7 +58,6 @@ public class PlatformAdminController {
     private final AgentService agents;
     private final PublicationStore publications;
     private final RegistryStore registryStore;
-    private final NacosRegistryService registry;
 
     public PlatformAdminController(
             ModelProfileService models,
@@ -68,8 +66,7 @@ public class PlatformAdminController {
             SkillService skills,
             AgentService agents,
             PublicationStore publications,
-            RegistryStore registryStore,
-            NacosRegistryService registry) {
+            RegistryStore registryStore) {
         this.models = models;
         this.credentials = credentials;
         this.mcps = mcps;
@@ -77,7 +74,6 @@ public class PlatformAdminController {
         this.agents = agents;
         this.publications = publications;
         this.registryStore = registryStore;
-        this.registry = registry;
     }
 
     // ------------------------------------------------------------------ 模型与凭据
@@ -442,30 +438,15 @@ public class PlatformAdminController {
                 data.putIfAbsent("lastError", projection.lastError());
             });
         }
-        if (componentType != ComponentType.AGENT) {
-            String state = componentType == ComponentType.MCP
-                    ? mcps.release(key, version).state()
-                    : skills.release(key, version).state();
-            data.put("authority", "PLATFORM");
-            data.put("instances", List.of());
-            data.put("healthy", "ACTIVE".equals(state));
-            data.put("releaseState", state);
-            return data;
-        }
-        List<Map<String, Object>> instances = registry.healthyInstances(serviceName).stream()
-                .map(instance -> {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    row.put("ip", instance.ip());
-                    row.put("port", instance.port());
-                    row.put("metadata", instance.metadata());
-                    return row;
-                })
-                .toList();
-        data.put("instances", instances);
-        data.put("healthy", !instances.isEmpty());
-        if (instances.isEmpty()) {
-            data.put("error", registry.enabled() ? "没有健康实例" : "注册中心未启用");
-        }
+        String state = switch (componentType) {
+            case AGENT -> agents.release(key, version).state();
+            case MCP -> mcps.release(key, version).state();
+            case SKILL -> skills.release(key, version).state();
+        };
+        data.put("authority", "PLATFORM");
+        data.put("instances", List.of());
+        data.put("healthy", "ACTIVE".equals(state));
+        data.put("releaseState", state);
         return data;
     }
 

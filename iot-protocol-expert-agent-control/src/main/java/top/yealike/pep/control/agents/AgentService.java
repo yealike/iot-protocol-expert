@@ -19,7 +19,6 @@ import top.yealike.pep.control.agents.domain.PlatformRecords.CompileResult;
 import top.yealike.pep.control.agents.domain.PlatformRecords.McpRelease;
 import top.yealike.pep.control.agents.domain.PlatformRecords.Publication;
 import top.yealike.pep.control.agents.domain.PlatformRecords.SkillRelease;
-import top.yealike.pep.control.agents.registry.NacosRegistryService;
 import top.yealike.pep.control.agents.store.AgentStore;
 import top.yealike.pep.control.agents.store.AgentStore.McpBindingInput;
 import top.yealike.pep.control.agents.store.AgentStore.SkillBindingInput;
@@ -28,8 +27,6 @@ import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.control.support.JsonSupport;
-import top.yealike.pep.runtime.contract.ComponentNames;
-import top.yealike.pep.runtime.contract.ComponentType;
 import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
@@ -42,7 +39,6 @@ public class AgentService {
     private final SkillStore skills;
     private final AgentCompiler compiler;
     private final PublicationStore publications;
-    private final NacosRegistryService registry;
     private final PolicyService policy;
 
     public AgentService(
@@ -51,14 +47,12 @@ public class AgentService {
             SkillStore skills,
             AgentCompiler compiler,
             PublicationStore publications,
-            NacosRegistryService registry,
             PolicyService policy) {
         this.agents = agents;
         this.mcps = mcps;
         this.skills = skills;
         this.compiler = compiler;
         this.publications = publications;
-        this.registry = registry;
         this.policy = policy;
     }
 
@@ -284,10 +278,6 @@ public class AgentService {
             int toolCount = manifest.mcp().stream()
                     .mapToInt(item -> item.tools().size())
                     .sum();
-            boolean discoveryEnabled = registry.enabled();
-            boolean healthy = !discoveryEnabled
-                    || registry.hasHealthy(
-                            ComponentNames.serviceName(ComponentType.AGENT, release.agentKey(), release.version()));
             result.putIfAbsent(
                     release.agentKey(),
                     new AgentCatalogItem(
@@ -295,14 +285,14 @@ public class AgentService {
                             release.version(),
                             manifest.displayName(),
                             "",
-                            healthy ? "ACTIVE" : "DEGRADED",
+                            "ACTIVE",
                             toolCount,
                             manifest.skills().size(),
                             manifest.skills().stream()
                                     .map(top.yealike.pep.runtime.contract.AgentManifest.SkillBinding::key)
                                     .toList(),
-                            healthy,
-                            discoveryEnabled));
+                            true,
+                            false));
         }
         return new ArrayList<>(result.values());
     }

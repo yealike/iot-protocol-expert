@@ -4,7 +4,6 @@ import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -17,10 +16,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import top.yealike.pep.control.agents.config.PlatformProperties;
-import top.yealike.pep.control.agents.registry.NacosRegistryService;
 import top.yealike.pep.control.support.JsonSupport;
-import top.yealike.pep.runtime.contract.ComponentNames;
-import top.yealike.pep.runtime.contract.ComponentType;
 import top.yealike.pep.runtime.contract.InternalPaths;
 import top.yealike.pep.runtime.contract.InternalSignature;
 import top.yealike.pep.runtime.contract.ReleasePrepareRequest;
@@ -36,13 +32,11 @@ public class RuntimeDispatchClient {
     private static final Logger log = LoggerFactory.getLogger(RuntimeDispatchClient.class);
     private static final int MAX_BODY_CHARS = 4096;
 
-    private final NacosRegistryService registry;
     private final PlatformProperties properties;
     private final RestClient http;
     private final String secret;
 
-    public RuntimeDispatchClient(NacosRegistryService registry, PlatformProperties properties) {
-        this.registry = registry;
+    public RuntimeDispatchClient(PlatformProperties properties) {
         this.properties = properties;
         this.secret = resolveSecret(properties.security());
         var factory = new JdkClientHttpRequestFactory(java.net.http.HttpClient.newBuilder()
@@ -56,46 +50,13 @@ public class RuntimeDispatchClient {
         }
     }
 
-    public List<RuntimeTarget> prepareTargets() {
-        List<RuntimeTarget> targets = new ArrayList<>();
-        if (registry.enabled()) {
-            for (NacosRegistryService.InstanceView instance :
-                    registry.healthyInstances(InternalPaths.RUNTIME_BASE_SERVICE)) {
-                targets.add(new RuntimeTarget(
-                        "http://" + instance.ip() + ":" + instance.port(),
-                        String.valueOf(instance.metadata().getOrDefault("runtimeInstance", "")),
-                        InternalPaths.RUNTIME_BASE_SERVICE));
-            }
-        }
-        addDirectTarget(targets);
-        return List.copyOf(targets);
-    }
-
-    public List<RuntimeTarget> agentTargets(String agentKey, String version) {
-        List<RuntimeTarget> targets = new ArrayList<>();
-        if (registry.enabled()) {
-            String serviceName = ComponentNames.serviceName(ComponentType.AGENT, agentKey, version);
-            for (NacosRegistryService.InstanceView instance : registry.healthyInstances(serviceName)) {
-                targets.add(new RuntimeTarget(
-                        "http://" + instance.ip() + ":" + instance.port(),
-                        String.valueOf(instance.metadata().getOrDefault("runtimeInstance", "")),
-                        serviceName));
-            }
-        }
-        addDirectTarget(targets);
-        return List.copyOf(targets);
-    }
-
-    private void addDirectTarget(List<RuntimeTarget> targets) {
-        if (!properties.runtime().directFallbackEnabled()) {
-            return;
-        }
+    public List<RuntimeTarget> targets() {
         String baseUrl = properties.runtime().baseUrl();
-        if (baseUrl == null || baseUrl.isBlank() || !targets.isEmpty()) {
-            return;
+        if (baseUrl == null || baseUrl.isBlank()) {
+            return List.of();
         }
-        String normalized = baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
-        targets.add(new RuntimeTarget(normalized, "direct", "direct"));
+        String normalized = baseUrl.strip().replaceFirst("/+$", "");
+        return List.of(new RuntimeTarget(normalized, "direct", "direct"));
     }
 
     public PrepareResult prepare(RuntimeTarget target, ReleasePrepareRequest request) {
@@ -216,7 +177,11 @@ public class RuntimeDispatchClient {
         return "";
     }
 
-    public record RuntimeTarget(String baseUrl, String instanceId, String serviceName) {}
+    public record RuntimeTarget(String baseUrl, String instanceId, String serviceName) {
+        public boolean matchesInstance(String owner) {
+            return "direct".equals(serviceName) || owner.equals(instanceId);
+        }
+    }
 
     public record DispatchResult(
             boolean accepted, int status, RunDispatchReceipt receipt, String code, String message) {}

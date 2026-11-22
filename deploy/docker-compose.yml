@@ -47,6 +47,7 @@ services:
     environment:
       PEP_CONTROL_PORT: "19083"
       IPE_CONTROL_BASE_URL: "http://ipe-control:19083"
+      IPE_AGENT_RUNTIME_BASE_URL: "http://ipe-runtime:19084"
       JAVA_TOOL_OPTIONS: "-Xms128m -Xmx768m"
     ports:
       - "127.0.0.1:19083:19083"

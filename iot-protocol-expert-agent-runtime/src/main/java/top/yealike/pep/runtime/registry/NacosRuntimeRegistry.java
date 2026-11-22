@@ -12,9 +12,7 @@ import java.net.NetworkInterface;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -24,14 +22,12 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import top.yealike.pep.runtime.config.RuntimeProperties;
 import top.yealike.pep.runtime.contract.ComponentEndpoint;
-import top.yealike.pep.runtime.contract.ComponentNames;
-import top.yealike.pep.runtime.contract.ComponentType;
 import top.yealike.pep.runtime.contract.InternalPaths;
 
 /**
  * Runtime 的 Nacos 注册。
  *
- * <p>基础服务 {@code ipe-agent-runtime} 用于 Control 发现可接单实例；每个已 prepare 的 Agent 版本单独注册精确服务名。
+ * <p>基础服务可用于 Runtime 部署实例的发现。
  * 业务流量不经过 Nacos。注册失败只影响 readiness，不在 JVM 内反复重启。
  */
 @Component
@@ -41,7 +37,6 @@ public class NacosRuntimeRegistry {
 
     private final RuntimeProperties properties;
     private final String instanceId = "runtime-" + UUID.randomUUID().toString().substring(0, 8);
-    private final Set<Registration> registrations = ConcurrentHashMap.newKeySet();
     private final Object monitor = new Object();
 
     private volatile NamingService namingService;
@@ -124,7 +119,7 @@ public class NacosRuntimeRegistry {
         registerBase();
     }
 
-    /** Nacos 短暂不可用时定期重试基础注册；Agent 注册由 prepare 驱动。 */
+    /** Nacos 短暂不可用时定期重试基础注册。 */
     @Scheduled(fixedDelay = 30_000L, initialDelay = 30_000L)
     public void reconcile() {
         if (!properties.nacos().enabled()) {
@@ -146,50 +141,7 @@ public class NacosRuntimeRegistry {
         }
         if (!baseRegistered) {
             registerBase();
-            if (baseRegistered) {
-                reRegisterAgents();
-            }
         }
-    }
-
-    public void registerAgent(UUID releaseId, String agentKey, String agentVersion, String manifestDigest) {
-        if (!properties.nacos().enabled()) {
-            log.info(
-                    "Nacos registration disabled; agent release kept local: release={} agent={} version={}",
-                    releaseId,
-                    agentKey,
-                    agentVersion);
-            return;
-        }
-        ensureNamingService();
-        String serviceName = ComponentNames.serviceName(ComponentType.AGENT, agentKey, agentVersion);
-        Map<String, String> metadata = new LinkedHashMap<>();
-        metadata.put("path", InternalPaths.runtimeRuns(agentKey, agentVersion));
-        metadata.put("releaseId", releaseId.toString());
-        metadata.put("manifestDigest", manifestDigest);
-        metadata.put("agentKey", agentKey);
-        metadata.put("agentVersion", agentVersion);
-        metadata.put("runtimeInstance", instanceId);
-        Registration registration = new Registration(serviceName, metadata);
-        if (!registrations.add(registration)) {
-            return;
-        }
-        try {
-            namingService.registerInstance(serviceName, properties.nacos().group(), instance(metadata));
-            log.info("runtime agent release registered: service={} release={}", serviceName, releaseId);
-        } catch (NacosException exception) {
-            registrations.remove(registration);
-            throw new IllegalStateException("Agent 版本注册失败");
-        }
-    }
-
-    public void deregisterAgent(String agentKey, String agentVersion) {
-        if (!properties.nacos().enabled()) {
-            return;
-        }
-        String serviceName = ComponentNames.serviceName(ComponentType.AGENT, agentKey, agentVersion);
-        registrations.removeIf(item -> item.serviceName().equals(serviceName));
-        deregister(serviceName);
     }
 
     private void registerBase() {
@@ -271,18 +223,6 @@ public class NacosRuntimeRegistry {
         }
     }
 
-    /** Nacos 恢复后补注册本地仍持有的 Agent 版本；失败保留记录，下一轮再试。 */
-    private void reRegisterAgents() {
-        for (Registration registration : registrations) {
-            try {
-                namingService.registerInstance(
-                        registration.serviceName(), properties.nacos().group(), instance(registration.metadata()));
-            } catch (NacosException exception) {
-                log.debug("agent re-registration failed: service={}", registration.serviceName());
-            }
-        }
-    }
-
     @PreDestroy
     void close() {
         ready = false;
@@ -290,7 +230,6 @@ public class NacosRuntimeRegistry {
             baseRegistered = false;
             return;
         }
-        registrations.forEach(item -> deregister(item.serviceName()));
         if (baseRegistered) {
             deregister(InternalPaths.RUNTIME_BASE_SERVICE);
         }
@@ -336,6 +275,4 @@ public class NacosRuntimeRegistry {
     private static boolean blank(String value) {
         return value == null || value.isBlank();
     }
-
-    private record Registration(String serviceName, Map<String, String> metadata) {}
 }

@@ -20,7 +20,7 @@
 
 设备网关通过 `ProtocolServer` SPI 管理云快充 1.6 和 OCPP 1.6J；设备与交易事实由 `iot-protocol-expert-ops` 保存。模型调用只允许经过 `iot-protocol-expert-model-gateway`，Control 与 Runtime 都不持有上游供应商密钥。
 
-数据库保留 `pep_platform`（身份及项目授权）、`pep_domain`（OPS 业务）、`pep_agent`（Agent Control）和 `pep_metering`（模型网关）。OPS 负责执行平台、运营和 Agent Control 的 Flyway 迁移，Control 与 OPS 须连接同一个数据库并在 OPS 之后启动。配额账本以 PostgreSQL 为权威。Control 通过签名内部接口调度 Runtime；Nacos 可选，仅用于服务与 Runtime 部署实例发现；本地通过 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true` 显式允许静态直连。MCP/Skill 版本与发布由 Control 管理，Higress 承担 REST-to-MCP 和路由。
+数据库保留 `pep_platform`（身份及项目授权）、`pep_domain`（OPS 业务）、`pep_agent`（Agent Control）和 `pep_metering`（模型网关）。OPS 负责执行平台、运营和 Agent Control 的 Flyway 迁移，Control 与 OPS 须连接同一个数据库并在 OPS 之后启动。配额账本以 PostgreSQL 为权威。Control 通过签名内部接口向配置的单个 Runtime 地址派发任务。Nacos 可用于进程级服务发现。MCP/Skill 版本与发布由 Control 管理，Higress 承担 REST-to-MCP 和路由。
 
 ## 本地运行
 
@@ -53,7 +53,7 @@ Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:19085/api/model-gateway/v1
 
 ### 在线 Agent 与 Runtime
 
-需要 Nacos/Higress 时在 `.env.local` 显式设置 `IPE_AI_REGISTRY_ENABLED=true`。在平台配置 MCP 入口，例如 Higress 中已部署的版本化路由。保证 Control 与 Runtime 使用同一个 `IPE_INTERNAL_SERVICE_KEY`，Control 与 Gateway 使用同一个 `PEP_MODEL_GATEWAY_SERVICE_TOKEN`；供应商密钥主密钥只配置在 Gateway。OPS 注册名默认为 `iot-protocol-expert-ops`，Control 为 `iot-protocol-expert-agent-control`，Runtime 为 `iot-protocol-expert-agent-runtime`。Control 通过 Nacos 发现 Runtime，默认禁止直连回退（仅 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true` 时用于本地调试）；`ai_registry_projection` 只保存数据库投影。首次启动或重建后执行：
+需要 Nacos/Higress 时在 `.env.local` 显式设置 `IPE_AI_REGISTRY_ENABLED=true`。在平台配置 MCP 入口，例如 Higress 中已部署的版本化路由。保证 Control 与 Runtime 使用同一个 `IPE_INTERNAL_SERVICE_KEY`，Control 与 Gateway 使用同一个 `PEP_MODEL_GATEWAY_SERVICE_TOKEN`；供应商密钥主密钥只配置在 Gateway。OPS 注册名默认为 `iot-protocol-expert-ops`，Control 为 `iot-protocol-expert-agent-control`，Runtime 为 `iot-protocol-expert-agent-runtime`。通过 `IPE_AGENT_RUNTIME_BASE_URL` 配置单个 Runtime 的地址。Compose 使用 `http://ipe-runtime:19084`。`ai_registry_projection` 保存平台发布状态的数据库投影。首次启动或重建后执行：
 
 ```powershell
 .\scripts\seed-ai.ps1

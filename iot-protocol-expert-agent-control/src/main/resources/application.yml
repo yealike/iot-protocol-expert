@@ -97,7 +97,6 @@ ipe:
         queue-limit: ${IPE_RUNTIME_QUEUE_LIMIT:100}
         per-user-queued: ${IPE_RUNTIME_PER_USER_QUEUED:2}
         per-user-in-flight: ${IPE_RUNTIME_PER_USER_IN_FLIGHT:1}
-        direct-fallback-enabled: ${IPE_RUNTIME_DIRECT_FALLBACK_ENABLED:false}
         base-url: ${IPE_AGENT_RUNTIME_BASE_URL:http://127.0.0.1:19084}
       identity:
         service-name: ${IPE_OPS_SERVICE_NAME:iot-protocol-expert-ops}

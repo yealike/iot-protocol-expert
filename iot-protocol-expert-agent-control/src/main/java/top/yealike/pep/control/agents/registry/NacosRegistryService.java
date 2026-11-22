@@ -131,10 +131,6 @@ public class NacosRegistryService {
         return instances.get(ThreadLocalRandom.current().nextInt(instances.size()));
     }
 
-    public boolean hasHealthy(String serviceName) {
-        return !healthyInstances(serviceName).isEmpty();
-    }
-
     @PreDestroy
     public void close() {
         NamingService service = naming;

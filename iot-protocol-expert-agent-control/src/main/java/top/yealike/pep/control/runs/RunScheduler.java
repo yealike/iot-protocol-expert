@@ -142,7 +142,7 @@ public class RunScheduler {
             return;
         }
 
-        List<RuntimeDispatchClient.RuntimeTarget> targets = runtime.agentTargets(release.agentKey(), release.version());
+        List<RuntimeDispatchClient.RuntimeTarget> targets = runtime.targets();
         if (targets.isEmpty()) {
             releaseOrFail(run, attempt, ErrorCodes.NO_HEALTHY_RUNTIME, "当前没有可用的 Agent Runtime");
             return;
@@ -203,7 +203,7 @@ public class RunScheduler {
         }
         var status = runtime.status(target, run.id(), run.executionToken());
         if (status != null) {
-            runs.markRunning(run.id(), run.executionToken(), target.instanceId(), leaseSeconds());
+            runs.markRunning(run.id(), run.executionToken(), status.instanceId(), leaseSeconds());
             log.info("run dispatch recovered by receipt: run={} status={}", run.id(), status.status());
             return;
         }
@@ -320,7 +320,7 @@ public class RunScheduler {
             return targets.size() == 1 ? targets.getFirst() : null;
         }
         return targets.stream()
-                .filter(item -> instanceId.equals(item.instanceId()))
+                .filter(item -> item.matchesInstance(instanceId))
                 .findFirst()
                 .orElse(null);
     }

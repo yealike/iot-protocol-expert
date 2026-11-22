@@ -53,7 +53,6 @@ $overrides = [ordered]@{
     IPE_PROTOCOL_BASE_URL               = "http://ipe-device-gateway:19080"
     IPE_AGENT_RUNTIME_BASE_URL          = "http://ipe-runtime:19084"
     PEP_MODEL_GATEWAY_BASE_URL          = "http://ipe-model-gateway:19085"
-    IPE_RUNTIME_DIRECT_FALLBACK_ENABLED = "true"
     IPE_LOG_DIR                         = "/app/logs"
     IPE_PROTOCOL_DOCUMENT_DIR           = "/app/data/protocol-documents"
     IPE_OTLP_ENABLED                    = "true"

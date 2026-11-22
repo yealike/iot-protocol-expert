@@ -11,11 +11,9 @@ import top.yealike.pep.control.agents.store.RegistryStore;
 public class RegistryProjectionService {
 
     private final RegistryStore store;
-    private final NacosRegistryService registry;
 
-    public RegistryProjectionService(RegistryStore store, NacosRegistryService registry) {
+    public RegistryProjectionService(RegistryStore store) {
         this.store = store;
-        this.registry = registry;
     }
 
     public void ready(String resourceType, UUID releaseId, String serviceName, String providerId) {
@@ -32,14 +30,6 @@ public class RegistryProjectionService {
 
     public void revoked(String resourceType, UUID releaseId, String serviceName, String providerId) {
         store.upsert(resourceType, releaseId, serviceName, providerId, "REVOKED", "REVOKED", null);
-    }
-
-    public void reconcile(String resourceType, UUID releaseId) {
-        store.find(resourceType, releaseId).ifPresent(projection -> {
-            boolean platformResource = "MCP".equals(resourceType) || "SKILL".equals(resourceType);
-            boolean visible = platformResource || !registry.enabled() || registry.hasHealthy(projection.serviceName());
-            store.markObserved(resourceType, releaseId, visible ? "READY" : "MISSING", visible ? null : "注册中心未发现健康实例");
-        });
     }
 
     public List<RegistryProjection> list() {

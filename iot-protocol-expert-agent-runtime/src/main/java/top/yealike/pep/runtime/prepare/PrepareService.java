@@ -140,12 +140,6 @@ public class PrepareService {
                     tools,
                     warnings,
                     Instant.now());
-            try {
-                nacos.registerAgent(
-                        release.releaseId(), manifest.agentKey(), manifest.version(), release.manifestDigest());
-            } catch (RuntimeException exception) {
-                throw new PrepareException(503, ErrorCodes.REGISTRY_UNAVAILABLE, "Agent Runtime 注册失败，暂不能接收执行");
-            }
             releases.put(release);
             log.info(
                     "release prepared: release={} agent={} version={} digest={} tools={} skills={} warnings={}",

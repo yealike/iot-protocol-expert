@@ -20,7 +20,6 @@ import top.yealike.pep.control.access.policy.PolicyService;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentComponent;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
 import top.yealike.pep.control.agents.domain.PlatformRecords.Publication;
-import top.yealike.pep.control.agents.registry.NacosRegistryService;
 import top.yealike.pep.control.agents.store.AgentStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
@@ -78,7 +77,6 @@ class AgentServiceRollbackTest {
                 mock(SkillStore.class),
                 mock(AgentCompiler.class),
                 publications,
-                mock(NacosRegistryService.class),
                 mock(PolicyService.class));
 
         AgentService.RollbackResult result = service.rollback(agentId, 8L, "1.0.0", "rollback-key");
@@ -160,7 +158,6 @@ class AgentServiceRollbackTest {
                 mock(SkillStore.class),
                 mock(AgentCompiler.class),
                 publications,
-                mock(NacosRegistryService.class),
                 mock(PolicyService.class));
 
         AgentService.RollbackResult result = service.rollback(agentId, 9L, "1.0.0", "rollback-key");

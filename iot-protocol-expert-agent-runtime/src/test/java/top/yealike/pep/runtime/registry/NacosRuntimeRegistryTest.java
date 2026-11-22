@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 
 import com.alibaba.nacos.api.naming.pojo.Instance;
 import java.util.Map;
-import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import top.yealike.pep.runtime.TestFixtures;
 import top.yealike.pep.runtime.contract.ComponentEndpoint;
@@ -21,10 +20,6 @@ class NacosRuntimeRegistryTest {
 
         assertThatCode(registry::onReady).doesNotThrowAnyException();
         assertThat(registry.ready()).isTrue();
-        assertThatCode(() -> registry.registerAgent(UUID.randomUUID(), "protocol-expert", "1.0.0", "a".repeat(64)))
-                .doesNotThrowAnyException();
-        assertThatCode(() -> registry.deregisterAgent("protocol-expert", "1.0.0"))
-                .doesNotThrowAnyException();
     }
 
     @Test

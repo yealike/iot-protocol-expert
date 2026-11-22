@@ -1,9 +1,6 @@
 package top.yealike.pep.runtime.prepare;
 
-import java.time.Duration;
-import java.time.Instant;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -19,7 +16,6 @@ import top.yealike.pep.runtime.control.ControlClient;
 import top.yealike.pep.runtime.control.ControlException;
 import top.yealike.pep.runtime.control.DesiredRelease;
 import top.yealike.pep.runtime.control.DesiredReleasePage;
-import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 
 /**
  * Runtime 重启后的期望版本对账。
@@ -31,23 +27,19 @@ import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 public class ReleaseReconciler {
 
     private static final Logger log = LoggerFactory.getLogger(ReleaseReconciler.class);
-    private static final Duration REGISTRY_WAIT = Duration.ofSeconds(60);
     private static final int MAX_PAGES_PER_RECONCILE = 1_000;
 
     private final ControlClient control;
     private final PrepareService prepareService;
-    private final NacosRuntimeRegistry registry;
     private final ExecutorService executor;
     private final AtomicBoolean reconciling = new AtomicBoolean(false);
 
     public ReleaseReconciler(
             ControlClient control,
             PrepareService prepareService,
-            NacosRuntimeRegistry registry,
             @Qualifier("runtimeReconcileExecutor") ExecutorService executor) {
         this.control = control;
         this.prepareService = prepareService;
-        this.registry = registry;
         this.executor = executor;
     }
 
@@ -82,10 +74,6 @@ public class ReleaseReconciler {
 
     private void runSafely() {
         try {
-            if (!awaitRegistry()) {
-                log.warn("release reconcile skipped: runtime registry is not ready");
-                return;
-            }
             int prepared = 0;
             int failed = 0;
             long cursor = 0L;
@@ -142,25 +130,6 @@ public class ReleaseReconciler {
         } catch (RuntimeException exception) {
             log.warn("release reconcile aborted: code={} reason={}", code(exception), safeMessage(exception));
         }
-    }
-
-    private boolean awaitRegistry() {
-        if (registry.ready()) {
-            return true;
-        }
-        Instant deadline = Instant.now().plus(REGISTRY_WAIT);
-        while (Instant.now().isBefore(deadline)) {
-            try {
-                TimeUnit.MILLISECONDS.sleep(500L);
-            } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
-                return false;
-            }
-            if (registry.ready()) {
-                return true;
-            }
-        }
-        return registry.ready();
     }
 
     private static String code(RuntimeException exception) {

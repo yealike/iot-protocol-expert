@@ -37,10 +37,10 @@ flowchart LR
 | Skill 文件、校验、版本、bundle 摘要、发布与分发 | Control + PostgreSQL |
 | Agent 编译清单、绑定的 MCP/Skill 精确版本、发布/回滚意图、审计 | Control + PostgreSQL |
 | REST-to-MCP、MCP 协议入口、路由及网关访问策略 | Higress |
-| 进程注册发现、Runtime 已装配版本的实例发现 | Nacos Naming（可选） |
+| 进程注册发现 | Nacos Naming（可选） |
 | 发布清单的执行与摘要校验 | Runtime |
 
-Control 不再向 Nacos 注册 MCP/Skill 版本，也不因缺少这类 Naming 实例阻塞发布。组件诊断使用平台发布状态。Runtime 使用已发布描述符中的固定 endpoint，忽略旧的 MCP `serviceName` 发现元数据；已有发布快照可继续使用。Agent 的 Runtime 实例注册仍表示“该进程已装配此版本”，不保存组件内容，也不决定默认版本。
+Control 不再向 Nacos 注册 MCP/Skill 版本，也不因缺少这类 Naming 实例阻塞发布。组件诊断使用平台发布状态。Runtime 使用已发布描述符中的固定 endpoint，忽略旧的 MCP `serviceName` 发现元数据；已有发布快照可继续使用。Agent 发布和派发走配置的单个 Runtime 地址，发布以 Runtime 返回的准备结果为准。
 
 Higress 支持直接配置 REST-to-MCP，无需把 Nacos AI Registry 作为前置条件：[Higress MCP Server 插件](https://higress.cn/en/docs/ai/mcp-server/)。Nacos 本身也有 MCP/Skill 版本管理能力，但本项目选择由业务平台统一治理，避免两个管理入口分别维护版本：[Nacos MCP Registry](https://nacos.io/en/docs/latest/manual/user/ai/mcp-registry/)。
 
@@ -72,7 +72,7 @@ OPS 通过 `pep_platform.flyway_schema_history` 管理平台、运营和 Agent C
 - 旧版本运行中的后端需先使用对应旧脚本停止，再运行新版本脚本，避免旧进程继续占用 19082。新脚本不会按端口强杀未知进程。
 - `.env.local` 按 `.env.example` 更新：OPS 19082、Control 19083；`IPE_OPS_BASE_URL` 与 `IPE_CONTROL_BASE_URL` 分别指向对应进程。
 - 本地脚本只迁移上版内置的本机端口与服务名，不改写秘密文件；IDE 启动需自行更新旧环境变量。
-- 无 Nacos 的本地运行显式设置 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true`；部署环境按路由策略配置。
+- 通过 `IPE_AGENT_RUNTIME_BASE_URL` 配置单个 Runtime 地址，本地和 Compose 已提供默认配置。
 - 先启动 OPS，再启动 Control、模型网关、Runtime、协议网关和模拟器。`scripts/start-local.ps1` 按此顺序执行。
 - 只启动 AI 相关本地服务时运行 `scripts/seed-ai.ps1`。MCP 入口和 Agent 版本在平台配置与发布。
 

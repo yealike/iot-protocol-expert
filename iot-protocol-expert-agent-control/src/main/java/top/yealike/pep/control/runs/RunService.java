@@ -238,13 +238,13 @@ public class RunService {
     }
 
     private RuntimeDispatchClient.RuntimeTarget runtimeTarget(Run run) {
-        var targets = runtime.agentTargets(run.agentKey(), run.agentVersion());
+        var targets = runtime.targets();
         String instanceId = run.runtimeInstanceId();
         if (instanceId == null || instanceId.isBlank()) {
             return targets.isEmpty() ? null : targets.getFirst();
         }
         return targets.stream()
-                .filter(item -> instanceId.equals(item.instanceId()))
+                .filter(item -> item.matchesInstance(instanceId))
                 .findFirst()
                 .orElse(null);
     }

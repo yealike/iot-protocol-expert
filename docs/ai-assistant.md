@@ -14,7 +14,7 @@
 
 Control
   ├─ PostgreSQL pep_platform / pep_domain / pep_agent
-  ├─ Nacos：Control、Runtime 基础服务、已装配 Agent 版本的健康实例
+  ├─ Nacos：Control 与 Runtime 的进程级服务（可选）
   │    ai_registry_projection 仅保存期望/观测投影
   └─ 内部签名 HTTP ────────> Runtime :19084
 
@@ -40,7 +40,7 @@ Runtime
 | MCP 服务 | `/ai-admin/mcps` | MCP 草稿、测试、工具目录和发布 |
 | Skill 编辑 | `/ai-admin/skills` | 文本文件、校验、预览、发布 |
 | Agents | `/ai-admin/agents` | 模型/提示词/预算/Skill/MCP/工具绑定、编译和发布 |
-| 发布与注册 | `/ai-admin/publications` | publication 状态、重试和 Nacos/数据库投影诊断 |
+| 发布与注册 | `/ai-admin/publications` | 发布状态、重试和组件版本诊断 |
 | AI 助手 | `/assistant` | 选择可用 Agent、创建会话、SSE 对话 |
 | 知识索引 | `/ai-knowledge` | 既有协议文档索引，与 Skill 不是同一概念 |
 
@@ -112,7 +112,7 @@ VALIDATING -> PREPARING -> REGISTERING -> PUBLISHED
          +---------+-------------+-> FAILED（可显式 retry）
 ```
 
-Agent 发布时，Control 选择一个健康 Runtime 调用 `releases:prepare`。Runtime 在内存中完成 manifest、Skill bundle、MCP 目录和摘要校验并注册精确版本；Control 验证健康实例后才切 ACTIVE。发布超时为 60 秒，失败按指数退避重试，最多 5 次。
+Agent 发布时，Control 向配置的 Runtime 地址调用 `releases:prepare`。Runtime 装配清单、Skill bundle 和 MCP 工具并校验摘要，返回 `READY` 后 Control 将该版本设为 ACTIVE。升级前停在 `REGISTERING` 的 Agent 发布任务也会重新确认 Runtime 就绪。发布超时为 60 秒，失败按指数退避重试，最多 5 次。
 
 MCP 与 Skill 发布冻结目录/bundle 和入口，写入平台发布事务与 `ai_registry_projection`；不再注册 Nacos MCP/Skill Naming 实例，也不依赖这些实例的健康状态。
 
@@ -125,7 +125,6 @@ Runtime 启动日志应包含：
 - `Started AgentRuntimeApplication`
 - Nacos 启用时：`runtime base service registered: service=iot-protocol-expert-agent-runtime`
 - 完成 prepare 后：`release prepared: release=... agent=... version=... digest=...`
-- 精确版本注册：`runtime agent release registered: service=ipe-agent--...`
 
 健康检查：
 
@@ -214,7 +213,7 @@ Control 必须拒绝过期 token、错误 instanceId、非 ACTIVE release、错�
 | `IPE_CREDENTIAL_MASTER_KEY` / `_FILE` | 凭据加密主密钥；生产必须稳定配置 |
 | `IPE_INTERNAL_SERVICE_KEY` / `_FILE` | Control/Runtime 共享 HMAC 密钥，两端必须一致；Control 当前只读取环境变量，Runtime 还支持 `_FILE` |
 | `IPE_INTERNAL_SERVICE_NAME` / `IPE_RUNTIME_SERVICE_NAME` | 内部调用身份名，本地脚本默认 `control` / `runtime` |
-| `IPE_AGENT_RUNTIME_BASE_URL` | 本地调试直连地址；仅在 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true` 且 Nacos 无健康实例时使用 |
+| `IPE_AGENT_RUNTIME_BASE_URL` | Control 派发到单个 Runtime 的地址。默认 `http://127.0.0.1:19084`，Compose 为 `http://ipe-runtime:19084` |
 | `IPE_OPS_BASE_URL` | OPS 身份接口地址；默认 `http://127.0.0.1:19082`，OPS 不在本机或端口不同时必须显式设置 |
 | `IPE_RUNTIME_MAX_DISPATCH_ATTEMPTS` | Control 最大派发次数，默认 3 |
 | `IPE_RUNTIME_LEASE_SECONDS` | Run 租约，默认至少 30 秒 |
@@ -224,8 +223,8 @@ Control 必须拒绝过期 token、错误 instanceId、非 ACTIVE release、错�
 
 - `IPE_NACOS_DISCOVERY_ENABLED` 控制 Spring Cloud 服务注册；`IPE_AI_REGISTRY_ENABLED` 控制在线 Agent 平台的 Naming 契约，两者不能混为一谈。
 - `IPE_AI_MCP_REGISTRY_ENABLED` 为旧兼容变量；系统工具入口不再订阅 Nacos AI 目录。
-- 本地脚本默认关闭 Nacos，可通过 `IPE_AI_REGISTRY_ENABLED=true` 启用服务/Runtime 实例发现；无 Nacos 时显式允许 Runtime 静态直连。
-- MCP/Skill 的平台发布状态为权威；Nacos 仅用于服务和 Runtime 已装配 Agent 版本的实例发现。
+- 本地脚本默认关闭 Nacos，Control 使用配置的单个 Runtime 地址。
+- Agent、MCP 和 Skill 的版本由平台管理。Nacos 可用于进程级发现。
 - 协议专家只绑定 `resolve_device`、`list_device_frames`、`decode_device_frame`、`search_protocol_knowledge`。第三方设备号先由 `resolve_device` 映射为平台 8 位 SN，报文与文档查询再使用平台身份。
 - `IPE_CONTROL_SERVICE_NAME` 同时影响 Control 的平台 Nacos 服务名和 Runtime 的发现目标，默认统一为 `iot-protocol-expert-agent-control`；如需覆盖，Control 与 Runtime 必须使用同一值。
 
@@ -238,7 +237,7 @@ Control 必须拒绝过期 token、错误 instanceId、非 ACTIVE release、错�
 | `IPE_CONTROL_SERVICE_NAME` / `IPE_RUNTIME_SERVICE_NAME` | Control 发现名 / Runtime HMAC 身份，默认 `iot-protocol-expert-agent-control` / `runtime` |
 | `IPE_RUNTIME_KEY_ID` | 服务密钥标识，默认 `runtime` |
 | `IPE_INTERNAL_SERVICE_KEY` / `_FILE` | 必须与 Control 相同 |
-| `IPE_AI_REGISTRY_ENABLED` | 是否注册 `iot-protocol-expert-agent-runtime` 和精确 Agent 版本 |
+| `IPE_AI_REGISTRY_ENABLED` | 是否注册 Runtime 基础服务 `iot-protocol-expert-agent-runtime` 并启用 Control 的服务发现 |
 | `IPE_NACOS_*` / `IPE_AI_COMPONENT_GROUP` | Nacos 地址、认证、namespace、group |
 | `IPE_RUNTIME_ADVERTISE_IP` | Runtime 的可达广播 IP；远程调用时不能注册 loopback |
 | `IPE_RUNTIME_MAX_ACTIVE` / `IPE_RUNTIME_QUEUE_CAPACITY` | 同时执行 4、等待 8（默认） |
@@ -349,7 +348,7 @@ Higress 使用 Nacos Naming 来源时，OPS 未注册会使调用返回 503；�
 | publication FAILED 后重试 | 先修复依赖，再调用 `POST /api/ai/v1/publications/{id}/retry`；不要重复发布同版本 |
 | Runtime readiness DOWN | `IPE_INTERNAL_SERVICE_KEY`、Control 地址、Nacos 地址/namespace/group/广播 IP |
 | MCP `tools/call` 503 | OPS 是否以 `iot-protocol-expert-ops` 注册 Nacos；`IPE_NACOS_DISCOVERY_ENABLED` 与 `IPE_OPS_ADVERTISE_IP` 是否正确；Higress 能否访问该地址 |
-| 新 Run 一直排队或 503 `NO_HEALTHY_RUNTIME` | Nacos 是否发现对应 Agent 精确版本；`iot-protocol-expert-agent-runtime` 实例是否健康；确认未误开 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED` |
+| 新 Run 一直排队或 503 `NO_HEALTHY_RUNTIME` | 检查 `IPE_AGENT_RUNTIME_BASE_URL`、Runtime 健康状态和发布准备日志 |
 | 429 `RUN_BUSY` | Runtime 并发/等待队列已满；降低并发或扩容；不要读取内部 inflight 配额 |
 | Run `EXECUTION_LOST` | Runtime 停止、网络分区或心跳中断；Control 不会自动重演，需重新提问生成新 Run |
 | 凭据解密失败 | `IPE_CREDENTIAL_MASTER_KEY` 是否被更换或丢失；旧密文无法用新主密钥恢复 |
@@ -363,12 +362,11 @@ Higress 使用 Nacos Naming 来源时，OPS 未注册会使调用返回 503；�
 - 模型可见工具 = Agent 绑定白名单 ∩ 用户策略 ∩ 当前可用 MCP 工具 ∩ 紧急停用规则。
 - 工具正文、Skill 正文和用户输入均按不可信数据处理，不能改变授权规则。
 - `authorize` 会校验 manifest alias、Agent/MCP release 的 `REVOKED`、Run 创建时保存的 `authVersion`、角色策略和站点范围；每次工具调用都会重新向 OPS 解析用户身份与最新 `authVersion`，变化时返回 `AUTH_VERSION_CHANGED`。组件 disable/revoke API 与权限变更故障注入仍待补齐。
-- T06 已默认禁止直连回退：Nacos 无健康 Runtime 时不再使用 `IPE_AGENT_RUNTIME_BASE_URL`；仅显式设置 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true` 才允许本地调试回退。
-- MCP/Skill 版本由 Control 管理，Runtime 使用发布快照中的固定 endpoint；Nacos 仅用于可选的进程/Agent 实例发现，`ai_registry_projection` 不能替代实际实例列表。
+- Control 的发布准备、派发、查询和取消都走配置的单个 Runtime 地址。Runtime 启动后会从 Control 恢复已发布版本。
+- Runtime 使用已发布 MCP 快照中的固定 endpoint。组件诊断读取平台发布状态。
 - `ai_tool_call` 已由新 Runtime 事件入库路径写入，6 行 E2E 记录含组件版本、原始工具名和 alias；两个 MCP 同名工具、参数摘要和失败分支仍需专项核验。`ai_run.compiled_plan` 未填充，平台管理操作也尚未接入 `ai_audit_log`。
 - 凭据轮换会生成新 `secretRevision`，但 Agent manifest 冻结旧 revision；新 Run 不会自动使用新密钥，必须重新发布 Agent。
 - `OpsIdentityClient` 的 Spring 配置默认值已修正为 `http://127.0.0.1:19082`；部署到其他主机或使用其他端口时必须显式设置 `IPE_OPS_BASE_URL`。
-- 发布失败或回滚没有完整撤销已注册的 Nacos Agent Runtime 实例，可能留下过期实例；MCP/Skill 不再作为 Nacos AI Registry 实例管理。
 - Runtime 的 `dependency:tree` 与断网 E2E 尚未形成 T20 证据；当前只确认 POM 无 JDBC/MyBatis/Flyway 依赖。
 - 草稿预览、组件 disable/revoke、发布列表分页、完整 OpenAPI/JSON Schema 尚未实现。
 - 事件入库最终一致性、Nacos 长断、MCP 协议矩阵、Control/Runtime 崩溃窗口和模型密钥轮换仍需故障注入验证。

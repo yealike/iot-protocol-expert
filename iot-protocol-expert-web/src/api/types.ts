@@ -887,6 +887,7 @@ export interface AiRegistryInstance {
 }
 
 export interface AiRegistryVersionDetail {
+  releaseState?: string
   componentType: string
   componentKey: string
   componentVersion?: string

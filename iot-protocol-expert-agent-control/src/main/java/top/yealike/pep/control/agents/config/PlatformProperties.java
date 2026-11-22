@@ -33,8 +33,7 @@ public record PlatformProperties(Registry registry, Security security, Runtime r
             int queueLimit,
             int perUserQueued,
             int perUserInFlight,
-            String baseUrl,
-            boolean directFallbackEnabled) {}
+            String baseUrl) {}
 
     public record Identity(String serviceName, String namespace, String group, String baseUrl, String serviceToken) {}
 }

@@ -17,7 +17,6 @@ import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
 import top.yealike.pep.control.agents.domain.PlatformRecords.McpRelease;
 import top.yealike.pep.control.agents.domain.PlatformRecords.Publication;
 import top.yealike.pep.control.agents.domain.PlatformRecords.SkillRelease;
-import top.yealike.pep.control.agents.registry.NacosRegistryService;
 import top.yealike.pep.control.agents.registry.RegistryProjectionService;
 import top.yealike.pep.control.agents.store.AgentStore;
 import top.yealike.pep.control.agents.store.McpStore;
@@ -41,7 +40,6 @@ public class PublicationCoordinator {
     private final SkillStore skills;
     private final AgentStore agents;
     private final RuntimeDispatchClient runtime;
-    private final NacosRegistryService registry;
     private final RegistryProjectionService projections;
     private final String worker;
     private final TransactionTemplate transactions;
@@ -52,7 +50,6 @@ public class PublicationCoordinator {
             SkillStore skills,
             AgentStore agents,
             RuntimeDispatchClient runtime,
-            NacosRegistryService registry,
             RegistryProjectionService projections,
             PlatformTransactionManager transactionManager) {
         this.publications = publications;
@@ -60,7 +57,6 @@ public class PublicationCoordinator {
         this.skills = skills;
         this.agents = agents;
         this.runtime = runtime;
-        this.registry = registry;
         this.projections = projections;
         this.transactions = new TransactionTemplate(transactionManager);
         this.worker = "publication-" + ManagementFactory.getRuntimeMXBean().getName() + "-"
@@ -207,19 +203,12 @@ public class PublicationCoordinator {
             failPermanent(publication, ErrorCodes.MISSING_DEPENDENCY, "Agent 发布版本不存在");
             return Step.DONE;
         }
-        String serviceName = ComponentNames.serviceName(ComponentType.AGENT, release.agentKey(), release.version());
-        boolean healthy = !registry.enabled() || registry.hasHealthy(serviceName);
-        if ("ACTIVE".equals(release.state()) && healthy) {
-            publications.advance(publication.id(), worker, "PREPARING", "REGISTERING", "REGISTERING", null, null);
-            return Step.WAIT;
-        }
-        var targets = runtime.prepareTargets();
+        var targets = runtime.targets();
         if (targets.isEmpty()) {
             retry(publication, ErrorCodes.NO_HEALTHY_RUNTIME, "没有可用的 Agent Runtime");
             return Step.RETRY;
         }
-        RuntimeDispatchClient.RuntimeTarget target =
-                targets.get(ThreadLocalRandom.current().nextInt(targets.size()));
+        RuntimeDispatchClient.RuntimeTarget target = targets.getFirst();
         RuntimeDispatchClient.PrepareResult result = runtime.prepare(
                 target,
                 new ReleasePrepareRequest(
@@ -241,19 +230,14 @@ public class PublicationCoordinator {
             retry(publication, code, message);
             return Step.RETRY;
         }
-        boolean advanced =
-                publications.advance(publication.id(), worker, "PREPARING", "REGISTERING", "REGISTERING", null, null);
-        if (!advanced) {
-            return Step.WAIT;
-        }
-        return Step.RETRY;
+        return activateAgent(publication, release);
     }
 
     private Step register(Publication publication) {
         return switch (publication.resourceType()) {
             case "MCP" -> registerMcp(publication);
             case "SKILL" -> registerSkill(publication);
-            case "AGENT" -> registerAgent(publication);
+            case "AGENT" -> prepareAgent(publication);
             default -> {
                 failPermanent(publication, "PUBLICATION_TYPE_INVALID", "未知发布类型");
                 yield Step.DONE;
@@ -321,17 +305,8 @@ public class PublicationCoordinator {
         return Step.DONE;
     }
 
-    private Step registerAgent(Publication publication) {
-        AgentRelease release = agentRelease(publication);
-        if (release == null) {
-            failPermanent(publication, ErrorCodes.MISSING_DEPENDENCY, "Agent 发布版本不存在");
-            return Step.DONE;
-        }
+    private Step activateAgent(Publication publication, AgentRelease release) {
         String serviceName = ComponentNames.serviceName(ComponentType.AGENT, release.agentKey(), release.version());
-        if (registry.enabled() && !registry.hasHealthy(serviceName)) {
-            retry(publication, ErrorCodes.REGISTRY_UNAVAILABLE, "注册中心未发现该 Agent 版本的健康实例");
-            return Step.RETRY;
-        }
         boolean completed = Boolean.TRUE.equals(transactions.execute(status -> {
             if ((agents.setReleaseState(release.id(), "ACTIVE") == 0)
                     || !agents.publishComponent(release.agentId(), release.version(), publication.generation())) {

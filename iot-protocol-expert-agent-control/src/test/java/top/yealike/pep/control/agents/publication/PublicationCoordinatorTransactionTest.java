@@ -27,13 +27,13 @@ import top.yealike.pep.control.agents.dispatch.RuntimeDispatchClient;
 import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
 import top.yealike.pep.control.agents.domain.PlatformRecords.McpRelease;
 import top.yealike.pep.control.agents.domain.PlatformRecords.Publication;
-import top.yealike.pep.control.agents.registry.NacosRegistryService;
 import top.yealike.pep.control.agents.registry.RegistryProjectionService;
 import top.yealike.pep.control.agents.store.AgentStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
 import top.yealike.pep.runtime.contract.InternalPaths;
+import top.yealike.pep.runtime.contract.ReleasePrepareRequest;
 
 class PublicationCoordinatorTransactionTest {
 
@@ -116,17 +116,15 @@ class PublicationCoordinatorTransactionTest {
                             100,
                             2,
                             1,
-                            "http://127.0.0.1:" + server.getAddress().getPort(),
-                            true),
+                            "http://127.0.0.1:" + server.getAddress().getPort()),
                     null);
-            var runtime = new RuntimeDispatchClient(mock(NacosRegistryService.class), properties);
+            var runtime = new RuntimeDispatchClient(properties);
             var coordinator = new PublicationCoordinator(
                     fixture.publications,
                     fixture.mcps,
                     fixture.skills,
                     fixture.agents,
                     runtime,
-                    fixture.registry,
                     fixture.projections,
                     fixture.transactions);
 
@@ -141,13 +139,70 @@ class PublicationCoordinatorTransactionTest {
         }
     }
 
+    @Test
+    void resumesLegacyRegisteringPublicationAfterDirectRuntimeIsReady() {
+        var fixture = new Fixture(true);
+        var now = Instant.now();
+        var publication = new Publication(
+                UUID.randomUUID(),
+                "AGENT",
+                fixture.resourceId,
+                "1.1.3",
+                1L,
+                "REGISTERING",
+                "REGISTERING",
+                1L,
+                "test",
+                null,
+                null,
+                0,
+                now,
+                now.plusSeconds(60),
+                now,
+                now);
+        var release = new AgentRelease(
+                UUID.randomUUID(), fixture.resourceId, "demo", "1.1.3", null, "digest", "STAGED", 1L, 1L, now);
+        var runtime = mock(RuntimeDispatchClient.class);
+        var target = new RuntimeDispatchClient.RuntimeTarget("http://localhost:19084", "direct", "direct");
+        var request = new ReleasePrepareRequest(release.id(), "digest", 1L, publication.id());
+        when(runtime.targets()).thenReturn(List.of(target));
+        when(runtime.prepare(target, request))
+                .thenReturn(new RuntimeDispatchClient.PrepareResult(true, "READY", "runtime-1", null, null, 200));
+        when(fixture.publications.claimPending(anyString(), anyInt(), anyInt())).thenReturn(List.of(publication));
+        when(fixture.agents.releases(fixture.resourceId)).thenReturn(List.of(release));
+        when(fixture.agents.setReleaseState(release.id(), "ACTIVE")).thenReturn(1);
+        when(fixture.agents.publishComponent(fixture.resourceId, "1.1.3", 1L)).thenReturn(true);
+        when(fixture.publications.advance(
+                        eq(publication.id()),
+                        anyString(),
+                        eq("REGISTERING"),
+                        eq("PUBLISHED"),
+                        eq("PUBLISHED"),
+                        isNull(),
+                        isNull()))
+                .thenReturn(true);
+        var coordinator = new PublicationCoordinator(
+                fixture.publications,
+                fixture.mcps,
+                fixture.skills,
+                fixture.agents,
+                runtime,
+                fixture.projections,
+                fixture.transactions);
+
+        coordinator.tick();
+
+        verify(runtime).prepare(target, request);
+        verify(fixture.agents).setReleaseState(release.id(), "ACTIVE");
+        assertThat(fixture.transactions.commits).isEqualTo(1);
+    }
+
     private static final class Fixture {
 
         private final PublicationStore publications = mock(PublicationStore.class);
         private final McpStore mcps = mock(McpStore.class);
         private final SkillStore skills = mock(SkillStore.class);
         private final AgentStore agents = mock(AgentStore.class);
-        private final NacosRegistryService registry = mock(NacosRegistryService.class);
         private final RegistryProjectionService projections = mock(RegistryProjectionService.class);
         private final RecordingTransactionManager transactions = new RecordingTransactionManager();
         private final UUID resourceId = UUID.randomUUID();
@@ -185,8 +240,6 @@ class PublicationCoordinatorTransactionTest {
         private final PublicationCoordinator coordinator;
 
         private Fixture(boolean complete) {
-            when(registry.enabled()).thenReturn(true);
-            when(registry.hasHealthy(anyString())).thenReturn(false);
             when(publications.claimOutbox(anyString(), anyInt(), anyInt())).thenReturn(List.of());
             when(publications.claimPending(anyString(), anyInt(), anyInt())).thenReturn(List.of(publication));
             when(publications.renewLease(any(), anyString(), anyInt())).thenReturn(true);
@@ -205,14 +258,7 @@ class PublicationCoordinatorTransactionTest {
             when(publications.fail(any(), anyString(), anyString(), anyString(), anyString(), any()))
                     .thenReturn(false);
             coordinator = new PublicationCoordinator(
-                    publications,
-                    mcps,
-                    skills,
-                    agents,
-                    mock(RuntimeDispatchClient.class),
-                    registry,
-                    projections,
-                    transactions);
+                    publications, mcps, skills, agents, mock(RuntimeDispatchClient.class), projections, transactions);
         }
     }
 

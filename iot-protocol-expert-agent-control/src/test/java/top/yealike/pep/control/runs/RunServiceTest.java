@@ -7,6 +7,8 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import top.yealike.pep.control.access.policy.PolicyService;
@@ -16,6 +18,7 @@ import top.yealike.pep.control.agents.dispatch.RuntimeDispatchClient;
 import top.yealike.pep.control.conversations.ConversationRecords.Conversation;
 import top.yealike.pep.control.conversations.ConversationRepository;
 import top.yealike.pep.control.observability.AiObservability;
+import top.yealike.pep.control.runs.RunRecords.Run;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
@@ -220,11 +223,47 @@ class RunServiceTest {
         verify(runs, org.mockito.Mockito.never()).countUserActive("user", null);
     }
 
+    @Test
+    void cancelsAnAcceptedRunThroughTheConfiguredRuntimeAddress() {
+        var conversations = mock(ConversationRepository.class);
+        var runs = mock(RunRepository.class);
+        var policy = mock(PolicyService.class);
+        var runtime = mock(RuntimeDispatchClient.class);
+        var runId = UUID.randomUUID();
+        var conversationId = UUID.randomUUID();
+        var identity = identity();
+        var run = mock(Run.class);
+        var target = new RuntimeDispatchClient.RuntimeTarget("http://localhost:19084", "direct", "direct");
+        when(runs.find(runId)).thenReturn(Optional.of(run));
+        when(run.conversationId()).thenReturn(conversationId);
+        when(run.agentKey()).thenReturn("agent");
+        when(run.status()).thenReturn(RunRecords.CANCEL_REQUESTED);
+        when(run.runtimeInstanceId()).thenReturn("runtime-1");
+        when(run.executionToken()).thenReturn(7L);
+        when(conversations.find(conversationId)).thenReturn(Optional.of(conversation(conversationId)));
+        when(policy.canUseAgent(identity, "agent")).thenReturn(new PolicyService.Decision(true, null, "v1"));
+        when(runtime.targets()).thenReturn(List.of(target));
+        var service = new RunService(
+                conversations,
+                runs,
+                mock(RunEventService.class),
+                policy,
+                mock(AgentService.class),
+                runtime,
+                new io.micrometer.core.instrument.simple.SimpleMeterRegistry(),
+                mock(AiObservability.class),
+                platform(100, 2, 1));
+
+        assertThat(service.cancel(identity, runId)).isEqualTo(RunRecords.CANCEL_REQUESTED);
+
+        verify(runtime).cancel(target, runId, 7L);
+    }
+
     private static PlatformProperties platform(int queueLimit, int perUserQueued, int perUserInFlight) {
         return new PlatformProperties(
                 null,
                 null,
-                new PlatformProperties.Runtime(3, 30, queueLimit, perUserQueued, perUserInFlight, null, false),
+                new PlatformProperties.Runtime(3, 30, queueLimit, perUserQueued, perUserInFlight, null),
                 null);
     }
 

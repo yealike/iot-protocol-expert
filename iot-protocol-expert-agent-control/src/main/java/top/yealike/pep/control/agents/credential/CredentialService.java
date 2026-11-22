@@ -74,17 +74,6 @@ public class CredentialService {
         return cipher.keyId();
     }
 
-    public void disable(UUID id) {
-        Credential credential = require(id);
-        if (!credential.enabled()) {
-            return;
-        }
-        if (store.references(id) > 0) {
-            throw AiExceptions.conflict(ErrorCodes.COMPONENT_IN_USE, "凭据仍被模型或 MCP 发布引用");
-        }
-        store.setEnabled(id, false);
-    }
-
     public java.util.Map<String, Object> summary(Credential credential) {
         java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
         data.put("id", credential.id());

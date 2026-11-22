@@ -118,7 +118,7 @@ class RuntimeRunCoordinatorExecutionGuardTest {
                 policy,
                 events,
                 ingest,
-                new PlatformProperties(null, null, new PlatformProperties.Runtime(3, 30, 100, 2, 1, null, false), null),
+                new PlatformProperties(null, null, new PlatformProperties.Runtime(3, 30, 100, 2, 1, null), null),
                 new AiProperties("test", null, 0, null, null, new AiProperties.Run(4, 6, 12, 120_000, 20), null),
                 transactionManager);
     }

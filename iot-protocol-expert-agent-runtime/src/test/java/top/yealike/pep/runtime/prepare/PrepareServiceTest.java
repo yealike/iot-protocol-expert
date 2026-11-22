@@ -57,7 +57,6 @@ class PrepareServiceTest {
         releases = new PreparedReleaseRegistry();
         service = new PrepareService(control, mcpPool, releases, nacos, properties);
         lenient().when(nacos.instanceId()).thenReturn("runtime-test");
-        lenient().doNothing().when(nacos).registerAgent(any(), any(), any(), any());
     }
 
     @Test
@@ -79,7 +78,6 @@ class PrepareServiceTest {
         assertThat(second.instanceId()).isEqualTo("runtime-test");
         assertThat(second.manifestDigest()).isEqualTo(digest);
         verify(control, times(1)).manifest(releaseId);
-        verify(nacos, times(1)).registerAgent(eq(releaseId), eq("protocol-expert"), eq("1.0.0"), eq(digest));
 
         PreparedRelease release = releases.find(releaseId).orElseThrow();
         assertThat(release.tools()).hasSize(1);
@@ -103,7 +101,6 @@ class PrepareServiceTest {
                     assertThat(prepareException.status()).isEqualTo(422);
                     assertThat(prepareException.code()).isEqualTo("MANIFEST_DIGEST_MISMATCH");
                 });
-        verify(nacos, never()).registerAgent(any(), any(), any(), any());
     }
 
     @Test
