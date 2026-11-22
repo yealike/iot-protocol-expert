@@ -43,21 +43,6 @@ POST   /api/control/v1/investigations/{id}/approvals/{approvalId}/use
 
 状态机：`OPEN → INVESTIGATING → WAITING_USER / WAITING_APPROVAL / WAITING_QUOTA → VALIDATING → RESOLVED / INCONCLUSIVE / CANCELLED`。每次跃迁要求 `expectedVersion`，防止并发覆盖。
 
-### 身份与资源
-
-```text
-GET  /api/control/v1/tenants
-GET  /api/control/v1/tenants/{tenantId}/projects
-GET  /api/control/v1/projects/{projectId}/members
-PUT  /api/control/v1/projects/{projectId}/members/{userId}
-GET  /api/control/v1/roles
-GET  /api/control/v1/service-accounts
-POST /api/control/v1/projects/{projectId}/access-keys
-POST /api/control/v1/projects/{projectId}/resource-grants
-```
-
-访问密钥明文只在创建响应出现一次，数据库保存摘要、前缀和状态。
-
 ### 模型网关与配额
 
 ```text

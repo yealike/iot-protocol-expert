@@ -114,7 +114,6 @@ class RunSchedulerLeaseTest {
                         null,
                         new PlatformProperties.Security(null, null, "control", "runtime", null, "test", 15),
                         new PlatformProperties.Runtime(3, 30, 100, 2, 1, null, false),
-                        null,
                         null),
                 new AiProperties("test", null, 0, null, null, new AiProperties.Run(4, 6, 12, 120_000, 20), null),
                 observability);

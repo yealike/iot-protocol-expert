@@ -17,8 +17,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import top.yealike.pep.control.access.AccessService;
 import top.yealike.pep.control.access.CurrentUser;
-import top.yealike.pep.control.access.mapper.AccessAdminMapper;
-import top.yealike.pep.control.access.mapper.AccessAdminMapper.QuotaSubject;
+import top.yealike.pep.control.access.mapper.QuotaSubjectMapper;
+import top.yealike.pep.control.access.mapper.QuotaSubjectMapper.QuotaSubject;
 import top.yealike.pep.control.agents.model.ModelGatewayClient;
 import top.yealike.pep.control.config.ModelGatewayProperties;
 import top.yealike.pep.control.support.AiExceptions;
@@ -33,13 +33,13 @@ public class QuotaProxyController {
 
     private final ModelGatewayClient gateway;
     private final AccessService access;
-    private final AccessAdminMapper subjects;
+    private final QuotaSubjectMapper subjects;
     private final ModelGatewayProperties modelGatewayProperties;
 
     public QuotaProxyController(
             ModelGatewayClient gateway,
             AccessService access,
-            AccessAdminMapper subjects,
+            QuotaSubjectMapper subjects,
             ModelGatewayProperties modelGatewayProperties) {
         this.gateway = gateway;
         this.access = access;

@@ -59,7 +59,6 @@ $overrides = [ordered]@{
     IPE_OTLP_ENABLED                    = "true"
     IPE_NACOS_DISCOVERY_ENABLED         = "false"
     IPE_AI_REGISTRY_ENABLED             = "false"
-    IPE_AI_BOOTSTRAP_ENABLED            = "true"
     IPE_LANGFUSE_ENABLED                = "true"
     IPE_LANGFUSE_SERVER_URL             = if ($LangfuseServerUrl) { $LangfuseServerUrl } else { "http://${ServerAddress}:3005" }
     IPE_RUNTIME_OTEL_CONTENT_ENABLED    = "true"

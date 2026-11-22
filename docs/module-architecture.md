@@ -74,6 +74,6 @@ OPS 通过 `pep_platform.flyway_schema_history` 管理平台、运营和 Agent C
 - 本地脚本只迁移上版内置的本机端口与服务名，不改写秘密文件；IDE 启动需自行更新旧环境变量。
 - 无 Nacos 的本地运行显式设置 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true`；部署环境按路由策略配置。
 - 先启动 OPS，再启动 Control、模型网关、Runtime、协议网关和模拟器。`scripts/start-local.ps1` 按此顺序执行。
-- 需要种子发布时运行 `scripts/seed-ai.ps1`，提前配置可访问的 Higress MCP 入口。
+- 只启动 AI 相关本地服务时运行 `scripts/seed-ai.ps1`。MCP 入口和 Agent 版本在平台配置与发布。
 
 2026-11-18 已完成本地真实 PostgreSQL、Higress/Nacos、真实模型与 Agent/Trace 全流程验收；剩余外部部署迁移及长时故障/压力矩阵。

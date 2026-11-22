@@ -1,6 +1,5 @@
 package top.yealike.pep.control.access;
 
-import java.util.UUID;
 import org.springframework.stereotype.Service;
 import top.yealike.pep.control.access.mapper.AccessMapper;
 import top.yealike.pep.control.support.AiExceptions;
@@ -19,34 +18,6 @@ public class AccessService {
         this.access = access;
     }
 
-    public record Scope(UserIdentity actor, long userId, UUID tenantId, UUID projectId) {}
-
-    public Scope requireProject(UUID projectId) {
-        return requireProject(projectId, null);
-    }
-
-    public Scope requireProject(UUID projectId, String permission) {
-        UserIdentity actor = CurrentUser.require();
-        long userId = userId(actor);
-        if (!access.isActiveUser(userId)) {
-            throw AiExceptions.unauthorized("账号已停用");
-        }
-        AccessMapper.ProjectScope project = access.findProject(projectId);
-        if (project == null) {
-            throw AiExceptions.notFound("项目不存在");
-        }
-        if (!"ACTIVE".equals(project.projectState()) || !"ACTIVE".equals(project.tenantState())) {
-            throw AiExceptions.forbidden("SCOPE_INACTIVE", "项目或租户已停用");
-        }
-        if (!access.isProjectMember(projectId, userId) && !access.isTenantMember(project.tenantId(), userId)) {
-            throw AiExceptions.forbidden("PROJECT_FORBIDDEN", "不属于该项目");
-        }
-        if (permission != null && !access.hasPermission(userId, permission, project.tenantId(), project.projectId())) {
-            throw AiExceptions.forbidden("PERMISSION_DENIED", "缺少权限：" + permission);
-        }
-        return new Scope(actor, userId, project.tenantId(), project.projectId());
-    }
-
     public boolean hasPlatformPermission(UserIdentity actor, String permission) {
         return access.isActiveUser(userId(actor)) && access.hasPlatformPermission(userId(actor), permission);
     }
@@ -61,22 +32,6 @@ public class AccessService {
             throw AiExceptions.forbidden("PERMISSION_DENIED", "缺少平台权限：" + permission);
         }
         return actor;
-    }
-
-    public Scope requireTenant(UUID tenantId, String permission) {
-        UserIdentity actor = CurrentUser.require();
-        long userId = userId(actor);
-        if (!access.isActiveUser(userId)) {
-            throw AiExceptions.unauthorized("账号已停用");
-        }
-        boolean platformAdmin = access.hasPlatformPermission(userId, "platform:admin");
-        if (!platformAdmin && !access.isTenantMember(tenantId, userId)) {
-            throw AiExceptions.forbidden("TENANT_FORBIDDEN", "不属于该租户");
-        }
-        if (permission != null && !platformAdmin && !access.hasPermission(userId, permission, tenantId, null)) {
-            throw AiExceptions.forbidden("PERMISSION_DENIED", "缺少权限：" + permission);
-        }
-        return new Scope(actor, userId, tenantId, null);
     }
 
     static long userId(UserIdentity actor) {

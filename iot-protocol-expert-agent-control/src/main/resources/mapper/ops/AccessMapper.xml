@@ -10,43 +10,6 @@
              where id = #{userId} and state = 'ACTIVE')
     </select>
 
-    <select id="findProject"
-            resultType="top.yealike.pep.control.access.mapper.AccessMapper$ProjectScope">
-        select p.id as projectId,
-               p.tenant_id as tenantId,
-               p.state as projectState,
-               t.state as tenantState
-          from pep_platform.project p
-          join pep_platform.tenant t on t.id = p.tenant_id
-         where p.id = #{projectId}
-    </select>
-
-    <select id="isProjectMember" resultType="boolean">
-        select exists (
-            select 1 from pep_platform.project_member
-             where project_id = #{projectId} and user_id = #{userId} and state = 'ACTIVE')
-    </select>
-
-    <select id="isTenantMember" resultType="boolean">
-        select exists (
-            select 1 from pep_platform.tenant_member
-             where tenant_id = #{tenantId} and user_id = #{userId} and state = 'ACTIVE')
-    </select>
-
-    <select id="hasPermission" resultType="boolean">
-        select exists (
-            select 1
-              from pep_platform.role_binding b
-              join pep_platform.role_permission p on p.role_id = b.role_id
-             where b.principal_type in ('USER', 'GROUP')
-               and b.principal_id = #{userId}::text
-               and p.permission_code = #{permission}
-               and (
-                    (b.scope_type = 'PLATFORM' and b.scope_id = '*')
-                 or (b.scope_type = 'TENANT' and b.scope_id = #{tenantId}::text)
-                 or (b.scope_type = 'PROJECT' and b.scope_id = #{projectId}::text)))
-    </select>
-
     <select id="hasPlatformPermission" resultType="boolean">
         select exists (
             select 1

@@ -106,20 +106,8 @@ public class PolicyService {
                 .anyMatch(rule -> matches(rule.agentKeys(), agentKey) && matches(rule.toolNames(), toolName));
         return new Decision(allowed, allowed ? "OK" : "无权调用该工具", current().version());
     }
+    
 
-    public List<String> allowedAgents(UserIdentity identity) {
-        List<String> result = new ArrayList<>();
-        for (Rule rule : rulesFor(identity)) {
-            result.addAll(rule.agentKeys());
-        }
-        return result;
-    }
-
-    public Optional<Rule> ruleFor(String role) {
-        return current().rules().stream()
-                .filter(rule -> rule.role().equals(role))
-                .findFirst();
-    }
 
     private static boolean matches(Set<String> candidates, String value) {
         return candidates.contains(ALL) || candidates.contains(value);

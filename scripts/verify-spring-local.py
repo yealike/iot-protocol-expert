@@ -202,7 +202,6 @@ env['IPE_PROTOCOL_BASE_URL'] = 'http://127.0.0.1:29080'
 env['IPE_SIMULATOR_BASE_URL'] = 'http://127.0.0.1:29081'
 env['IPE_NACOS_DISCOVERY_ENABLED'] = 'false'
 env['IPE_MODEL_ENABLED'] = 'false'
-env['IPE_AI_BOOTSTRAP_ENABLED'] = 'false'
 env['IPE_AI_PLATFORM_BOOTSTRAP_ENABLED'] = 'false'
 env['IPE_AI_PLATFORM_REGISTRY_ENABLED'] = 'false'
 database_name, admin_url, database_kwargs, verification_url, database_user, database_password = (

@@ -4,8 +4,7 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 
 /** 在线 Agent 平台的运行配置。密钥只从环境变量或挂载文件读取。 */
 @ConfigurationProperties(prefix = "ipe.ai.platform")
-public record PlatformProperties(
-        Registry registry, Security security, Runtime runtime, Identity identity, Bootstrap bootstrap) {
+public record PlatformProperties(Registry registry, Security security, Runtime runtime, Identity identity) {
 
     public record Registry(
             boolean enabled,
@@ -38,16 +37,4 @@ public record PlatformProperties(
             boolean directFallbackEnabled) {}
 
     public record Identity(String serviceName, String namespace, String group, String baseUrl, String serviceToken) {}
-
-    public record Bootstrap(
-            boolean enabled,
-            String modelCredentialKey,
-            String modelApiKey,
-            String modelBaseUrl,
-            String modelName,
-            String skillVersion,
-            java.util.List<String> reviewedReadOnlyTools,
-            String opsMcpEndpoint,
-            String knowledgeMcpEndpoint,
-            java.util.List<String> knowledgeReviewedReadOnlyTools) {}
 }

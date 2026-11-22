@@ -53,13 +53,13 @@ Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:19085/api/model-gateway/v1
 
 ### 在线 Agent 与 Runtime
 
-需要 Nacos/Higress 时在 `.env.local` 显式设置 `IPE_AI_REGISTRY_ENABLED=true`；MCP 入口设置 `IPE_AI_MCP_URL`，例如 Higress 中已部署的版本化路由，并保证 Control 与 Runtime 使用同一个 `IPE_INTERNAL_SERVICE_KEY`，Control 与 Gateway 使用同一个 `PEP_MODEL_GATEWAY_SERVICE_TOKEN`；供应商密钥主密钥只配置在 Gateway。OPS 注册名默认为 `iot-protocol-expert-ops`，Control 为 `iot-protocol-expert-agent-control`，Runtime 为 `iot-protocol-expert-agent-runtime`。Control 通过 Nacos 发现 Runtime，默认禁止直连回退（仅 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true` 时用于本地调试）；`ai_registry_projection` 只保存数据库投影。首次启动或重建后执行：
+需要 Nacos/Higress 时在 `.env.local` 显式设置 `IPE_AI_REGISTRY_ENABLED=true`。在平台配置 MCP 入口，例如 Higress 中已部署的版本化路由。保证 Control 与 Runtime 使用同一个 `IPE_INTERNAL_SERVICE_KEY`，Control 与 Gateway 使用同一个 `PEP_MODEL_GATEWAY_SERVICE_TOKEN`；供应商密钥主密钥只配置在 Gateway。OPS 注册名默认为 `iot-protocol-expert-ops`，Control 为 `iot-protocol-expert-agent-control`，Runtime 为 `iot-protocol-expert-agent-runtime`。Control 通过 Nacos 发现 Runtime，默认禁止直连回退（仅 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true` 时用于本地调试）；`ai_registry_projection` 只保存数据库投影。首次启动或重建后执行：
 
 ```powershell
 .\scripts\seed-ai.ps1
 ```
 
-脚本确保 OPS/Gateway/Runtime/Control 已启动，并以 `IPE_AI_BOOTSTRAP_ENABLED=true` 触发一次 Control 的模型/MCP/Skill/Agent 引导。清理 `pep_agent` 在线 Agent 数据时执行 `.\scripts\reset-ai.ps1 -Confirm -StopServices`（或先自行停止服务后使用 `-Confirm`）。脚本保留历史调查记录、Flyway 历史、权限、知识库和审计。
+脚本启动 OPS、Model Gateway、Control 和 Runtime。首次使用时，在平台配置模型、凭据、MCP 和 Skill，按需导入知识文档，再配置并发布 Agent。清理 `pep_agent` 在线 Agent 数据时执行 `.\scripts\reset-ai.ps1 -Confirm -StopServices`（或先自行停止服务后使用 `-Confirm`）。脚本保留历史调查记录、Flyway 历史、权限、知识库和审计。
 
 健康检查：OPS `GET http://127.0.0.1:19082/actuator/health`，Control `GET http://127.0.0.1:19083/actuator/health`，Gateway `19085`，Runtime `GET http://127.0.0.1:19084/actuator/health/readiness`。配置、发布、内部接口和故障排查见 [AI 助手与在线 Agent 平台](docs/ai-assistant.md) 与 [重构实施记录](docs/refactor-implementation.md)。
 

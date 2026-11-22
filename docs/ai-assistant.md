@@ -210,17 +210,12 @@ Control 必须拒绝过期 token、错误 instanceId、非 ACTIVE release、错�
 | `IPE_AI_ADVERTISE_IP` / `IPE_CONTROL_SERVICE_NAME` | 可被 Runtime 访问的 Control 地址/服务名 |
 | `IPE_AI_MCP_GATEWAY_BASE` | 显式拼接既有 Higress `/ipe-mcp/{serverName}` 入口 |
 | `IPE_AI_MCP_REGISTRY_ENABLED` | 旧兼容变量，不再触发 MCP 目录订阅 |
-| `IPE_AI_OPS_MCP_URL` / `IPE_AI_MCP_TOKEN` | Higress 暴露的设备报文 MCP 入口和共享令牌；`IPE_AI_MCP_URL` 作为 Ops 地址兼容回退 |
-| `IPE_AI_KNOWLEDGE_MCP_URL` | Higress 暴露的 Control 协议知识检索 MCP 入口 |
-| `IPE_AI_BOOTSTRAP_REVIEWED_READ_ONLY_TOOLS` / `IPE_AI_BOOTSTRAP_KNOWLEDGE_READ_ONLY_TOOLS` | 引导时自动审核的只读工具，默认覆盖设备报文三工具和知识检索工具 |
+| `IPE_AI_MCP_TOKEN` | OPS MCP 服务校验的共享令牌，在平台登记对应调用凭据 |
 | `IPE_CREDENTIAL_MASTER_KEY` / `_FILE` | 凭据加密主密钥；生产必须稳定配置 |
 | `IPE_INTERNAL_SERVICE_KEY` / `_FILE` | Control/Runtime 共享 HMAC 密钥，两端必须一致；Control 当前只读取环境变量，Runtime 还支持 `_FILE` |
 | `IPE_INTERNAL_SERVICE_NAME` / `IPE_RUNTIME_SERVICE_NAME` | 内部调用身份名，本地脚本默认 `control` / `runtime` |
 | `IPE_AGENT_RUNTIME_BASE_URL` | 本地调试直连地址；仅在 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED=true` 且 Nacos 无健康实例时使用 |
 | `IPE_OPS_BASE_URL` | OPS 身份接口地址；默认 `http://127.0.0.1:19082`，OPS 不在本机或端口不同时必须显式设置 |
-| `IPE_AI_BOOTSTRAP_ENABLED` | 启动后补齐演示模型/MCP/Skill/Agent；默认 `false` |
-| `IPE_MODEL_CREDENTIAL_KEY` / `IPE_MODEL_API_KEY` | bootstrap 首次创建模型凭据使用，不用于每次运行 |
-| `IPE_MODEL_BASE_URL` / `IPE_MODEL_NAME` | bootstrap 模型地址和名称 |
 | `IPE_RUNTIME_MAX_DISPATCH_ATTEMPTS` | Control 最大派发次数，默认 3 |
 | `IPE_RUNTIME_LEASE_SECONDS` | Run 租约，默认至少 30 秒 |
 | `IPE_RUNTIME_QUEUE_LIMIT` / `IPE_RUNTIME_PER_USER_QUEUED` / `IPE_RUNTIME_PER_USER_IN_FLIGHT` | 队列和用户限额 |
@@ -281,20 +276,20 @@ Higress 使用 Nacos Naming 来源时，OPS 未注册会使调用返回 503；�
 - `.env.local` 从 `.env.example` 复制并填写真实值；不要提交 `.env.local`。
 - 需要服务发现时显式设置 `IPE_AI_REGISTRY_ENABLED=true`，MCP 使用实际的 Higress endpoint。
 - OPS 必须先启动，Higress 后端须可达；采用 Naming 来源时再启用 `IPE_NACOS_DISCOVERY_ENABLED=true` 并正确配置广播 IP。
-- `start-local.ps1` 会启动 OPS、AI、协议服务和模拟器，但不启动 Runtime；它启动的 AI 使用 `run/ai.pid`。`seed-ai.ps1` 默认检测到该进程会拒绝重复启动；使用 `seed-ai.ps1 -Restart` 可校验 PID 与 jar 后停止并接管，或改用单独启动 OPS 的方式。
+- `start-local.ps1` 启动完整本地服务。只需 AI 相关服务时可运行 `seed-ai.ps1`。
 - 本机默认使用 `IPE_OPS_BASE_URL=http://127.0.0.1:19082`；OPS 地址不同时必须在 `.env.local` 或进程环境中显式覆盖。
 
 ### 8.2 启动
 
 ```powershell
 # 1. 先启动 OPS，并确认 Nacos 中有 iot-protocol-expert-ops
-# 2. 构建并按 Runtime → Control 顺序启动，触发 bootstrap 并等待发布摘要
+# 2. 构建并启动服务，等待健康检查通过
 .\scripts\seed-ai.ps1
 
 # 强制重建并重启已由本项目脚本启动的进程
 .\scripts\seed-ai.ps1 -Restart
 
-# 已构建且只需重启/引导时跳过 Maven
+# 已构建且只需启动服务时跳过 Maven
 .\scripts\seed-ai.ps1 -SkipBuild
 
 # 只启动单个进程（调试时）
@@ -302,7 +297,7 @@ Higress 使用 Nacos Naming 来源时，OPS 未注册会使调用返回 503；�
 .\scripts\start-runtime-local.ps1
 ```
 
-`seed-ai.ps1` 不打印 `.env.local` 的值；它先用 `IPE_AI_BOOTSTRAP_ENABLED=false` 预启动 Control（Runtime readiness 需要 Control 可达），再启动 Runtime 并等待 readiness，最后重启 Control 并开启 bootstrap，等待 health 后输出最新 Agent release/publication 摘要。启动前会无条件尽力检查 OPS 19082 健康与 Nacos `iot-protocol-expert-ops` 注册状态（Nacos 3.x 走登录后的 v3 admin API），因为该注册是 Higress MCP 的前置条件，与 `IPE_AI_REGISTRY_ENABLED` 无关。平台注册开启时绑定 `0.0.0.0` 以匹配 Nacos 广播地址，直连模式绑定 `127.0.0.1`。`logs/control.pid` 的 Control 已运行时会复用；要应用新的 bootstrap 环境或重建 jar 时使用 `-Restart`。
+`seed-ai.ps1` 启动 OPS、Model Gateway、Control 和 Runtime。首次使用时，在平台配置模型、凭据、MCP 地址和工具策略，按需配置 Skill 与导入知识文档，再为 Agent 配置提示词和工具绑定并发布。
 
 ### 8.3 最小验证
 

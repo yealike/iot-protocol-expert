@@ -118,7 +118,6 @@ class PublicationCoordinatorTransactionTest {
                             1,
                             "http://127.0.0.1:" + server.getAddress().getPort(),
                             true),
-                    null,
                     null);
             var runtime = new RuntimeDispatchClient(mock(NacosRegistryService.class), properties);
             var coordinator = new PublicationCoordinator(

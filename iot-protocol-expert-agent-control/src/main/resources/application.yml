@@ -105,17 +105,6 @@ ipe:
         group: ${IPE_OPS_SERVICE_GROUP:DEFAULT_GROUP}
         base-url: ${IPE_OPS_BASE_URL:http://127.0.0.1:19082}
         service-token: ${IPE_OPS_SERVICE_TOKEN:}
-      bootstrap:
-        enabled: ${IPE_AI_BOOTSTRAP_ENABLED:false}
-        model-credential-key: ${IPE_MODEL_CREDENTIAL_KEY:model-default}
-        model-api-key: ${IPE_MODEL_API_KEY:}
-        model-base-url: ${IPE_MODEL_BASE_URL:}
-        model-name: ${IPE_MODEL_NAME:deepseek-flash}
-        skill-version: ${IPE_BOOTSTRAP_SKILL_VERSION:1.0.0}
-        ops-mcp-endpoint: ${IPE_AI_OPS_MCP_URL:${IPE_AI_MCP_URL:}}
-        knowledge-mcp-endpoint: ${IPE_AI_KNOWLEDGE_MCP_URL:}
-        reviewed-read-only-tools: ${IPE_AI_BOOTSTRAP_REVIEWED_READ_ONLY_TOOLS:resolve_device,list_device_frames,decode_device_frame}
-        knowledge-reviewed-read-only-tools: ${IPE_AI_BOOTSTRAP_KNOWLEDGE_READ_ONLY_TOOLS:search_protocol_knowledge}
     mcp:
       token: ${IPE_AI_MCP_TOKEN:}
       url: ${IPE_AI_MCP_URL:}

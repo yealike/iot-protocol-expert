@@ -225,7 +225,6 @@ class RunServiceTest {
                 null,
                 null,
                 new PlatformProperties.Runtime(3, 30, queueLimit, perUserQueued, perUserInFlight, null, false),
-                null,
                 null);
     }
 
