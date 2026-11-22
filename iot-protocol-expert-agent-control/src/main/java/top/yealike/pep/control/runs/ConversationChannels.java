@@ -19,16 +19,6 @@ public class ConversationChannels {
 
     private final Map<UUID, Set<Consumer<RunEvent>>> listeners = new ConcurrentHashMap<>();
 
-    public AutoCloseable register(UUID conversationId, Consumer<RunEvent> listener) {
-        Set<Consumer<RunEvent>> set = listeners.computeIfAbsent(conversationId, key -> new CopyOnWriteArraySet<>());
-        set.add(listener);
-        return () -> {
-            set.remove(listener);
-            if (set.isEmpty()) {
-                listeners.remove(conversationId, set);
-            }
-        };
-    }
 
     public void publish(RunEvent event) {
         Set<Consumer<RunEvent>> set = listeners.get(event.conversationId());
@@ -42,10 +32,5 @@ public class ConversationChannels {
                 // 单个订阅者失败不能影响其他订阅者与主流程
             }
         }
-    }
-
-    public int listenerCount(UUID conversationId) {
-        Set<Consumer<RunEvent>> set = listeners.get(conversationId);
-        return set == null ? 0 : set.size();
     }
 }

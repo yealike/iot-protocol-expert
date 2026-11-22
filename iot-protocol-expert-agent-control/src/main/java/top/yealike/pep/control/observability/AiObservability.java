@@ -48,16 +48,6 @@ public class AiObservability {
         }
     }
 
-    public java.util.function.Supplier<Void> observeRunnable(String name, Runnable task) {
-        return () -> {
-            observeSupplier(name, () -> {
-                task.run();
-                return null;
-            });
-            return null;
-        };
-    }
-
     public Runnable restore(String traceparent, String name, Runnable task) {
         TraceContext parent = parseTraceparent(traceparent);
         if (parent == null) return null;
@@ -78,10 +68,6 @@ public class AiObservability {
         };
     }
 
-    public Runnable restoreOrWrap(String traceparent, String name, Runnable task) {
-        Runnable restored = restore(traceparent, name, task);
-        return restored == null ? wrap(task) : restored;
-    }
 
     private TraceContext parseTraceparent(String value) {
         if (value == null) return null;

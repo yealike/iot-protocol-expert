@@ -364,13 +364,4 @@ public class KnowledgeService {
     public Instant now() {
         return Instant.now();
     }
-
-    /** 供审计与前端展示：不返回原文，只返回摘要。 */
-    public static String describe(Hit hit) {
-        return hit.title() + (hit.sectionPath() == null ? "" : " / " + hit.sectionPath());
-    }
-
-    static String utf8(byte[] content) {
-        return new String(content, StandardCharsets.UTF_8);
-    }
 }

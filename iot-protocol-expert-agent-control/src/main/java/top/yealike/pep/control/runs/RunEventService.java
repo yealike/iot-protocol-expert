@@ -41,7 +41,4 @@ public class RunEventService {
         return runs.eventsAfter(conversationId, afterCursor, limit);
     }
 
-    public long latestCursor(UUID conversationId) {
-        return runs.latestCursor(conversationId);
-    }
 }

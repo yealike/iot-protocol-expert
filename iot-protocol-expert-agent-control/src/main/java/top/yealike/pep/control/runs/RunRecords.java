@@ -10,7 +10,6 @@ public final class RunRecords {
 
     private RunRecords() {}
 
-    public static final String QUEUED = "QUEUED";
     public static final String DISPATCHING = "DISPATCHING";
     public static final String RUNNING = "RUNNING";
     public static final String CANCEL_REQUESTED = "CANCEL_REQUESTED";
