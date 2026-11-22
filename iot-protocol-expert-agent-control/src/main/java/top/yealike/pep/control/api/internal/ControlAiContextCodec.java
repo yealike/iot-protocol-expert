@@ -16,7 +16,8 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
-import top.yealike.pep.control.config.AiProperties;
+import top.yealike.pep.control.api.internal.dto.Context;
+import top.yealike.pep.control.config.properties.AiProperties;
 
 /** 校验由 Runtime 注入、按工具名绑定的一次性可信调用上下文。 */
 @Component
@@ -110,6 +111,4 @@ public class ControlAiContextCodec {
             super("Context already consumed");
         }
     }
-
-    public record Context(String actor, String session) {}
 }

@@ -8,10 +8,11 @@ import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.pep.control.runs.RunRecords.Run;
-import top.yealike.pep.control.runs.RunRecords.RunEvent;
-import top.yealike.pep.control.runs.RunRecords.RuntimeEventInsert;
-import top.yealike.pep.control.runs.RunRecords.ToolCall;
+import top.yealike.pep.control.runs.domain.Run;
+import top.yealike.pep.control.runs.domain.RunEvent;
+import top.yealike.pep.control.runs.domain.RuntimeEventFingerprint;
+import top.yealike.pep.control.runs.domain.RuntimeEventInsert;
+import top.yealike.pep.control.runs.domain.ToolCall;
 import top.yealike.pep.control.runs.mapper.RunMapper;
 import top.yealike.pep.control.support.JsonSupport;
 
@@ -74,6 +75,7 @@ public class RunRepository {
     public Optional<Run> findByIdempotency(UUID conversationId, String idempotencyKey) {
         return mapper.findByIdempotency(conversationId, idempotencyKey).stream().findFirst();
     }
+
     public Optional<Run> current(UUID conversationId) {
         return mapper.current(conversationId).stream().findFirst();
     }
@@ -140,12 +142,9 @@ public class RunRepository {
         return mapper.heartbeat(id, executionToken, instanceId, leaseSeconds) > 0;
     }
 
-
-
     public boolean markCompleted(UUID id, long executionToken, String instanceId, Map<String, Object> usage) {
         return mapper.markCompletedWithToken(JsonSupport.write(usage), id, executionToken, instanceId) > 0;
     }
-
 
     public boolean markFailed(
             UUID id, long executionToken, String instanceId, String code, String message, Map<String, Object> usage) {
@@ -156,8 +155,6 @@ public class RunRepository {
     public String terminateExpired(UUID id, long executionToken, String instanceId, String code, String message) {
         return mapper.terminateExpired(id, executionToken, instanceId, code, message);
     }
-
-
 
     public boolean markCancelled(UUID id, long executionToken, String instanceId, Map<String, Object> usage) {
         return mapper.markCancelledWithToken(JsonSupport.write(usage), id, executionToken, instanceId) > 0;
@@ -179,8 +176,6 @@ public class RunRepository {
         mapper.requestCancel(id);
     }
 
-
-
     public int countQueued() {
         Integer count = mapper.countQueued();
         return count == null ? 0 : count;
@@ -200,13 +195,11 @@ public class RunRepository {
         mapper.lockQuota(scope);
     }
 
-
-
     public boolean lockRuntimeEventRun(UUID id, long executionToken, String instanceId) {
         return mapper.lockRuntimeEventRun(id, executionToken, instanceId) != null;
     }
 
-    public List<RunRecords.RuntimeEventFingerprint> runtimeEventFingerprints(UUID runId, List<Long> sourceSeqs) {
+    public List<RuntimeEventFingerprint> runtimeEventFingerprints(UUID runId, List<Long> sourceSeqs) {
         return mapper.runtimeEventFingerprints(runId, sourceSeqs);
     }
 
@@ -241,9 +234,7 @@ public class RunRepository {
         return mapper.eventsAfter(conversationId, cursor, limit);
     }
 
-
     // ------------------------------------------------------------ tool calls
-
 
     public void insertRuntimeToolCall(
             UUID id,

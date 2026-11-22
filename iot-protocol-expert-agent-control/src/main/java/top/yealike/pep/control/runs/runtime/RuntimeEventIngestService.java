@@ -15,13 +15,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import top.yealike.pep.control.runs.ConversationChannels;
-import top.yealike.pep.control.runs.RunRecords;
 import top.yealike.pep.control.runs.RunRepository;
+import top.yealike.pep.control.runs.domain.RunEvent;
+import top.yealike.pep.control.runs.domain.RuntimeEventFingerprint;
+import top.yealike.pep.control.runs.domain.RuntimeEventInsert;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.control.support.JsonSupport;
 import top.yealike.pep.observability.SensitiveDataSanitizer;
 import top.yealike.pep.runtime.contract.ErrorCodes;
-import top.yealike.pep.runtime.contract.RunEvent;
 import top.yealike.pep.runtime.contract.RunEventAck;
 import top.yealike.pep.runtime.contract.RunEventBatch;
 
@@ -54,7 +55,7 @@ public class RuntimeEventIngestService {
             throw AiExceptions.badRequest("单批事件不能超过 " + MAX_EVENTS + " 条");
         }
         Set<Long> seqs = new HashSet<>();
-        for (RunEvent event : batch.events()) {
+        for (top.yealike.pep.runtime.contract.RunEvent event : batch.events()) {
             if (event.sourceSeq() <= 0 || !seqs.add(event.sourceSeq())) {
                 throw AiExceptions.badRequest("sourceSeq 必须为单 Run 内唯一正整数");
             }
@@ -66,7 +67,7 @@ public class RuntimeEventIngestService {
                 throw AiExceptions.badRequest("单条事件不能超过 64 KiB");
             }
         }
-        List<RunRecords.RunEvent> acceptedEvents = new ArrayList<>();
+        List<RunEvent> acceptedEvents = new ArrayList<>();
         List<Long> acceptedSeq = new ArrayList<>();
         transactions.executeWithoutResult(status -> {
             if (!runs.lockRuntimeEventRun(batch.runId(), batch.executionToken(), batch.instanceId())) {
@@ -76,13 +77,13 @@ public class RuntimeEventIngestService {
             int count = batch.events().size();
             long lastCursor = runs.reserveEventCursors(conversationId, count);
             long firstCursor = lastCursor - count + 1;
-            Map<Long, RunRecords.RuntimeEventInsert> inserts = new LinkedHashMap<>();
-            Map<Long, RunEvent> sourceEvents = new LinkedHashMap<>();
+            Map<Long, RuntimeEventInsert> inserts = new LinkedHashMap<>();
+            Map<Long, top.yealike.pep.runtime.contract.RunEvent> sourceEvents = new LinkedHashMap<>();
             for (int index = 0; index < count; index++) {
-                RunEvent event = batch.events().get(index);
+                top.yealike.pep.runtime.contract.RunEvent event = batch.events().get(index);
                 UUID eventId = event.eventId() == null ? UUID.randomUUID() : event.eventId();
                 long cursor = firstCursor + index;
-                RunRecords.RuntimeEventInsert insert = new RunRecords.RuntimeEventInsert(
+                RuntimeEventInsert insert = new RuntimeEventInsert(
                         conversationId,
                         batch.runId(),
                         cursor,
@@ -96,15 +97,15 @@ public class RuntimeEventIngestService {
                 sourceEvents.put(event.sourceSeq(), event);
             }
             Set<Long> inserted = runs.insertRuntimeEvents(List.copyOf(inserts.values()));
-            for (RunRecords.RuntimeEventInsert insert : inserts.values()) {
-                RunEvent source = sourceEvents.get(insert.sourceSeq());
+            for (RuntimeEventInsert insert : inserts.values()) {
+                top.yealike.pep.runtime.contract.RunEvent source = sourceEvents.get(insert.sourceSeq());
                 acceptedSeq.add(insert.sourceSeq());
                 if (!inserted.contains(insert.sourceSeq())) {
                     log.debug(
                             "runtime event already persisted: run={} sourceSeq={}", batch.runId(), insert.sourceSeq());
                     continue;
                 }
-                acceptedEvents.add(new RunRecords.RunEvent(
+                acceptedEvents.add(new RunEvent(
                         insert.cursor(),
                         insert.conversationId(),
                         insert.runId(),
@@ -121,13 +122,13 @@ public class RuntimeEventIngestService {
     }
 
     private void rejectContentConflicts(RunEventBatch batch) {
-        Map<Long, RunEvent> incoming = new LinkedHashMap<>();
-        for (RunEvent event : batch.events()) {
+        Map<Long, top.yealike.pep.runtime.contract.RunEvent> incoming = new LinkedHashMap<>();
+        for (top.yealike.pep.runtime.contract.RunEvent event : batch.events()) {
             incoming.put(event.sourceSeq(), event);
         }
-        for (RunRecords.RuntimeEventFingerprint existing :
+        for (RuntimeEventFingerprint existing :
                 runs.runtimeEventFingerprints(batch.runId(), List.copyOf(incoming.keySet()))) {
-            RunEvent event = incoming.get(existing.sourceSeq());
+            top.yealike.pep.runtime.contract.RunEvent event = incoming.get(existing.sourceSeq());
             if (event == null) {
                 continue;
             }
@@ -142,7 +143,7 @@ public class RuntimeEventIngestService {
         }
     }
 
-    private void recordToolCall(RunEventBatch batch, RunRecords.RunEvent event) {
+    private void recordToolCall(RunEventBatch batch, RunEvent event) {
         Object rawToolCallId = event.payload().get("toolCallId");
         if (rawToolCallId == null || String.valueOf(rawToolCallId).isBlank()) {
             return;

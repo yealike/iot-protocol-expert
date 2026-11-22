@@ -17,7 +17,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
-import top.yealike.pep.control.runs.RunRecords.Run;
+import top.yealike.pep.control.runs.domain.Run;
 import top.yealike.pep.control.runs.mapper.RunMapper;
 
 class RunRepositoryQuotaTest {

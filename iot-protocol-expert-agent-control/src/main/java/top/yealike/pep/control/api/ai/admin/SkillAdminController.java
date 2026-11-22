@@ -21,6 +21,11 @@ import top.yealike.pep.control.access.CurrentUser;
 import top.yealike.pep.control.agents.domain.SkillDraftFile;
 import top.yealike.pep.control.agents.domain.SkillRelease;
 import top.yealike.pep.control.agents.skill.SkillService;
+import top.yealike.pep.control.agents.skill.domain.PublishResult;
+import top.yealike.pep.control.api.ai.admin.dto.SkillCreate;
+import top.yealike.pep.control.api.ai.admin.dto.SkillFileSave;
+import top.yealike.pep.control.api.ai.admin.dto.SkillPublish;
+import top.yealike.pep.control.api.ai.admin.dto.SkillUpdate;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
 /** Skill 草稿文件、校验与不可变发布。 */
@@ -100,19 +105,10 @@ public class SkillAdminController {
 
     @PostMapping("/skills/{id}/publish")
     @Operation(summary = "发布 Skill 版本", description = "冻结 Skill 文件包并异步注册组件版本")
-    public ResponseEntity<SkillService.PublishResult> publishSkill(
-            @PathVariable UUID id, @RequestBody SkillPublish request) {
+    public ResponseEntity<PublishResult> publishSkill(@PathVariable UUID id, @RequestBody SkillPublish request) {
         UserIdentity actor = CurrentUser.require();
-        SkillService.PublishResult result =
+        PublishResult result =
                 skills.publish(actor, id, request.version(), request.expectedRevision(), request.idempotencyKey());
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(result);
     }
-
-    public record SkillCreate(String key, String displayName, String description) {}
-
-    public record SkillUpdate(long expectedRevision, String displayName, String description, boolean enabled) {}
-
-    public record SkillFileSave(String content, long expectedRevision) {}
-
-    public record SkillPublish(String version, long expectedRevision, String idempotencyKey) {}
 }

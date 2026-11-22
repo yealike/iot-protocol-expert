@@ -5,7 +5,7 @@
 <mapper namespace="top.yealike.pep.control.access.mapper.QuotaSubjectMapper">
 
     <select id="findQuotaUsers"
-            resultType="top.yealike.pep.control.access.mapper.QuotaSubjectMapper$QuotaSubject">
+            resultType="top.yealike.pep.control.access.domain.QuotaSubject">
         select u.id::text as id, u.username as code, u.display_name as name, u.state, null::text as context
           from pep_platform.app_user u
          where #{query} = '' or u.id::text = #{query}
@@ -17,7 +17,7 @@
     </select>
 
     <select id="findQuotaServiceAccounts"
-            resultType="top.yealike.pep.control.access.mapper.QuotaSubjectMapper$QuotaSubject">
+            resultType="top.yealike.pep.control.access.domain.QuotaSubject">
         select s.id::text as id, s.code, s.name, s.state, p.name as context
           from pep_platform.service_account s
           left join pep_platform.project p on p.id = s.project_id

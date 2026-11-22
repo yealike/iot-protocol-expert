@@ -15,7 +15,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import org.springframework.stereotype.Service;
-import top.yealike.pep.control.config.PlatformProperties;
+import top.yealike.pep.control.agents.mcp.domain.CatalogEntry;
+import top.yealike.pep.control.config.properties.PlatformProperties;
 import top.yealike.pep.control.support.AiExceptions;
 
 /** 旧 Nacos 目录的只读迁移适配器，默认关闭；新资源应直接配置 Higress MCP 入口。 */
@@ -130,6 +131,4 @@ public class NacosMcpCatalogService {
             }
         }
     }
-
-    public record CatalogEntry(String serverName, String version, String endpoint, List<Map<String, Object>> tools) {}
 }

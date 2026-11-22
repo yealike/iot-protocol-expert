@@ -6,7 +6,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.boot.web.server.context.WebServerInitializedEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
-import top.yealike.pep.control.config.PlatformProperties;
+import top.yealike.pep.control.config.properties.PlatformProperties;
 import top.yealike.pep.control.integration.registry.NacosRegistryService;
 
 /** Control 自身注册为 {@code ipe-ai-control}，供 Runtime 与应用诊断定位内部接口。 */

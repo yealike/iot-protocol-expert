@@ -339,7 +339,7 @@ Higress 使用 Nacos Naming 来源时，OPS 未注册会使调用返回 503；�
 ## 9. 既有知识库与助手
 
 - 协议问答仍支持解析 PDF/MD/TXT、分块、关键词索引、发布和引用。
-- 管理接口：`GET /api/ai/v1/knowledge/stats`、`GET /api/ai/v1/knowledge/documents`、`POST /api/ai/v1/knowledge/index`、`POST /api/ai/v1/knowledge/documents/{id}/publish|archive`。
+- 管理接口：`GET /api/ai/v1/knowledge/documents`、`POST /api/ai/v1/knowledge/index`、`POST /api/ai/v1/knowledge/documents/{id}/publish|archive`。
 - `POST /api/ai/v1/knowledge/index` 需要 `ai:admin`；`publish=true` 表示本次操作完成审核发布并写审计。
 - 页码不可靠时返回空页码，不伪造；证据不足时返回 warning，由 Agent 明确缺失。
 - pgvector 迁移是可选能力，当前关键词检索仍是主路径。

@@ -2,7 +2,6 @@ package top.yealike.pep.control.api.ai.admin;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.Map;
 import java.util.UUID;
@@ -14,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.yealike.pep.control.access.CurrentUser;
+import top.yealike.pep.control.api.ai.admin.dto.IndexRequest;
 import top.yealike.pep.control.audit.AiAuditLogMapper;
 import top.yealike.pep.control.knowledge.KnowledgeService;
 import top.yealike.pep.runtime.contract.UserIdentity;
@@ -30,17 +30,6 @@ public class KnowledgeAdminController {
     public KnowledgeAdminController(KnowledgeService knowledge, AiAuditLogMapper auditLog) {
         this.knowledge = knowledge;
         this.auditLog = auditLog;
-    }
-
-    public record IndexRequest(
-            @Schema(description = "索引完成后是否直接发布") Boolean publish) {}
-
-    @GetMapping("/knowledge/stats")
-    @Operation(summary = "查询知识库索引统计")
-    @PreAuthorize("hasAuthority('ai:admin')")
-    public Map<String, Object> knowledgeStats() {
-        CurrentUser.require();
-        return knowledge.stats();
     }
 
     @GetMapping("/knowledge/documents")

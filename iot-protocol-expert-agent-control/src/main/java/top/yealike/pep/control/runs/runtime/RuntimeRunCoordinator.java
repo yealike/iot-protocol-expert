@@ -24,16 +24,16 @@ import top.yealike.pep.control.agents.model.GatewayTokenIssuer;
 import top.yealike.pep.control.agents.store.CredentialStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
-import top.yealike.pep.control.config.AiProperties;
-import top.yealike.pep.control.config.PlatformProperties;
-import top.yealike.pep.control.conversations.ConversationRecords.Citation;
-import top.yealike.pep.control.conversations.ConversationRecords.Message;
+import top.yealike.pep.control.config.properties.AiProperties;
+import top.yealike.pep.control.config.properties.PlatformProperties;
 import top.yealike.pep.control.conversations.ConversationRepository;
+import top.yealike.pep.control.conversations.domain.Citation;
+import top.yealike.pep.control.conversations.domain.Message;
 import top.yealike.pep.control.integration.OpsIdentityClient;
 import top.yealike.pep.control.runs.RunEventService;
-import top.yealike.pep.control.runs.RunRecords;
-import top.yealike.pep.control.runs.RunRecords.Run;
 import top.yealike.pep.control.runs.RunRepository;
+import top.yealike.pep.control.runs.RunStatus;
+import top.yealike.pep.control.runs.domain.Run;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.model.contract.ModelGatewayCredentials;
 import top.yealike.pep.runtime.contract.AgentManifest;
@@ -109,14 +109,14 @@ public class RuntimeRunCoordinator {
 
     public RunClaimResponse claim(RunClaimRequest request) {
         Run run = runs.find(request.runId()).orElseThrow(() -> AiExceptions.notFound("Run 不存在"));
-        boolean directOwner = RunRecords.DISPATCHING.equals(run.status())
+        boolean directOwner = RunStatus.DISPATCHING.equals(run.status())
                 && (run.runtimeInstanceId() == null || "direct".equals(run.runtimeInstanceId()));
         boolean tokenValid = run.executionToken() == request.executionToken()
                 && (Objects.equals(run.runtimeInstanceId(), request.instanceId()) || directOwner);
         if (!tokenValid
-                || (!RunRecords.DISPATCHING.equals(run.status())
-                        && !RunRecords.RUNNING.equals(run.status())
-                        && !RunRecords.CANCEL_REQUESTED.equals(run.status()))) {
+                || (!RunStatus.DISPATCHING.equals(run.status())
+                        && !RunStatus.RUNNING.equals(run.status())
+                        && !RunStatus.CANCEL_REQUESTED.equals(run.status()))) {
             return new RunClaimResponse(
                     false,
                     ErrorCodes.STALE_EXECUTION_TOKEN,
@@ -146,7 +146,7 @@ public class RuntimeRunCoordinator {
             return deniedClaim(run, "AGENT_RELEASE_MISSING", false);
         }
         AgentRelease release = agents.release(run.agentReleaseId());
-        if (RunRecords.DISPATCHING.equals(run.status())) {
+        if (RunStatus.DISPATCHING.equals(run.status())) {
             try {
                 UserIdentity current = identities.resolveActor(run.actor());
                 long stored = run.actorAuthVersion() == null ? 0 : run.actorAuthVersion();
@@ -157,7 +157,7 @@ public class RuntimeRunCoordinator {
                 return deniedClaim(run, "IDENTITY_UNAVAILABLE", false);
             }
         }
-        boolean cancelRequired = RunRecords.CANCEL_REQUESTED.equals(run.status()) || "REVOKED".equals(release.state());
+        boolean cancelRequired = RunStatus.CANCEL_REQUESTED.equals(run.status()) || "REVOKED".equals(release.state());
         if (!runs.heartbeat(run.id(), run.executionToken(), request.instanceId(), leaseSeconds())) {
             return deniedClaim(run, ErrorCodes.STALE_EXECUTION_TOKEN, false);
         }
@@ -248,9 +248,8 @@ public class RuntimeRunCoordinator {
                     || (current.deadlineAt() != null && !current.deadlineAt().isAfter(Instant.now()))) {
                 throw AiExceptions.conflict(ErrorCodes.STALE_EXECUTION_TOKEN, "Run 执行权已失效或已超时");
             }
-            RunTerminalStatus status = RunRecords.CANCEL_REQUESTED.equals(current.status())
-                    ? RunTerminalStatus.CANCELLED
-                    : requestedStatus;
+            RunTerminalStatus status =
+                    RunStatus.CANCEL_REQUESTED.equals(current.status()) ? RunTerminalStatus.CANCELLED : requestedStatus;
             boolean changed;
             String type;
             Map<String, Object> payload = new LinkedHashMap<>();
@@ -451,9 +450,9 @@ public class RuntimeRunCoordinator {
         if (run.deadlineAt() != null && !run.deadlineAt().isAfter(Instant.now())) {
             throw AiExceptions.conflict("RUN_TIMEOUT", "Run 已超过执行截止时间");
         }
-        boolean active = RunRecords.DISPATCHING.equals(run.status())
-                || RunRecords.RUNNING.equals(run.status())
-                || (allowCancellationPending && RunRecords.CANCEL_REQUESTED.equals(run.status()));
+        boolean active = RunStatus.DISPATCHING.equals(run.status())
+                || RunStatus.RUNNING.equals(run.status())
+                || (allowCancellationPending && RunStatus.CANCEL_REQUESTED.equals(run.status()));
         if (!active || run.leaseUntil() == null || !run.leaseUntil().isAfter(Instant.now())) {
             throw AiExceptions.conflict(ErrorCodes.STALE_EXECUTION_TOKEN, "Run 执行权已失效或已终结");
         }

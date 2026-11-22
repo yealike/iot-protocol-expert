@@ -10,6 +10,7 @@ import org.apache.pdfbox.text.PDFTextStripper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import top.yealike.pep.control.knowledge.domain.Page;
 
 /** 文档文本抽取：PDF 按页抽取以保留页码；纯文本单页，页码标注为不可用。 */
 @Component
@@ -17,17 +18,17 @@ public class DocumentTextExtractor {
 
     private static final Logger log = LoggerFactory.getLogger(DocumentTextExtractor.class);
 
-    public List<TextChunker.Page> extract(byte[] content, String contentType, String filename) {
+    public List<Page> extract(byte[] content, String contentType, String filename) {
         String type = contentType == null ? "" : contentType.toLowerCase(java.util.Locale.ROOT);
         String name = filename == null ? "" : filename.toLowerCase(java.util.Locale.ROOT);
         if (type.contains("pdf") || name.endsWith(".pdf")) {
             return extractPdf(content);
         }
-        return List.of(new TextChunker.Page(null, decode(content)));
+        return List.of(new Page(null, decode(content)));
     }
 
-    private List<TextChunker.Page> extractPdf(byte[] content) {
-        List<TextChunker.Page> pages = new ArrayList<>();
+    private List<Page> extractPdf(byte[] content) {
+        List<Page> pages = new ArrayList<>();
         try (PDDocument document = Loader.loadPDF(content)) {
             PDFTextStripper stripper = new PDFTextStripper();
             stripper.setSortByPosition(true);
@@ -42,7 +43,7 @@ public class DocumentTextExtractor {
                     log.warn("pdf page extraction failed: page={}", page, exception);
                     text = "";
                 }
-                pages.add(new TextChunker.Page(page, text));
+                pages.add(new Page(page, text));
             }
         } catch (IOException | RuntimeException exception) {
             log.warn("pdf extraction failed", exception);

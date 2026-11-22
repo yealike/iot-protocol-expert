@@ -17,7 +17,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import top.yealike.pep.control.config.PlatformProperties;
+import top.yealike.pep.control.config.properties.PlatformProperties;
+import top.yealike.pep.control.integration.registry.dto.InstanceView;
 import top.yealike.pep.control.support.AiExceptions;
 
 /**
@@ -209,6 +210,4 @@ public class NacosRegistryService {
             return "127.0.0.1";
         }
     }
-
-    public record InstanceView(String ip, int port, Map<String, String> metadata) {}
 }

@@ -2,11 +2,12 @@ package top.yealike.pep.control.access.policy;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.stereotype.Service;
+import top.yealike.pep.control.access.policy.domain.Decision;
 import top.yealike.pep.control.access.policy.domain.PolicyRule;
+import top.yealike.pep.control.access.policy.domain.PolicySnapshot;
 import top.yealike.pep.control.access.policy.mapper.PermissionPolicyMapper;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
@@ -24,37 +25,34 @@ public class PolicyService {
 
     private final PermissionPolicyMapper mapper;
     private final String environment;
-    private final AtomicReference<Snapshot> snapshot = new AtomicReference<>(new Snapshot(List.of(), "v1"));
+    private final AtomicReference<PolicySnapshot> snapshot = new AtomicReference<>(new PolicySnapshot(List.of(), "v1"));
 
-    public PolicyService(PermissionPolicyMapper mapper, top.yealike.pep.control.config.AiProperties properties) {
+    public PolicyService(
+            PermissionPolicyMapper mapper, top.yealike.pep.control.config.properties.AiProperties properties) {
         this.mapper = mapper;
         this.environment = properties.environment();
     }
-
-    public record Snapshot(List<PolicyRule> rules, String version) {}
-
-    public record Decision(boolean allowed, String reason, String policyVersion) {}
 
     private volatile long lastAttemptMillis;
 
     /**
      * 重新加载策略。数据库不可用时保留空策略（等价于全部拒绕）并记录错误，
-     * 不让一个下游故障拖垮整个服务启动；恢复后由管理接口或下一次调用重试。
+     * 不让一个下游故障拖垮整个服务启动；恢复后由下一次调用重试。
      */
     public void reload() {
         lastAttemptMillis = System.currentTimeMillis();
         try {
             List<PolicyRule> rules = mapper.selectEnabled(environment);
             String version = mapper.selectLatestVersion().stream().findFirst().orElse("v1");
-            snapshot.set(new Snapshot(List.copyOf(rules), version));
+            snapshot.set(new PolicySnapshot(List.copyOf(rules), version));
         } catch (RuntimeException exception) {
             log.warn("ai permission policy load failed, denying all agent and tool access", exception);
-            snapshot.set(new Snapshot(List.of(), "unavailable"));
+            snapshot.set(new PolicySnapshot(List.of(), "unavailable"));
         }
     }
 
-    private Snapshot current() {
-        Snapshot value = snapshot.get();
+    private PolicySnapshot current() {
+        PolicySnapshot value = snapshot.get();
         // 空策略可能是“尚未加载”或“加载失败”，限频重试，避免每个请求都打数据库
         if (value.rules().isEmpty() && System.currentTimeMillis() - lastAttemptMillis > 10_000) {
             reload();
@@ -107,13 +105,5 @@ public class PolicyService {
 
     private static boolean matches(Set<String> candidates, String value) {
         return candidates.contains(ALL) || candidates.contains(value);
-    }
-
-    public Map<String, Object> describe() {
-        List<Map<String, Object>> rows = new ArrayList<>();
-        for (PolicyRule rule : current().rules()) {
-            rows.add(Map.of("role", rule.role(), "agentKeys", rule.agentKeys(), "toolNames", rule.toolNames()));
-        }
-        return Map.of("version", current().version(), "rules", rows);
     }
 }

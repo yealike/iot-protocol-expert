@@ -1,12 +1,10 @@
 package top.yealike.pep.control.knowledge;
 
-import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HexFormat;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -14,10 +12,15 @@ import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import top.yealike.pep.control.config.AiProperties;
+import top.yealike.pep.control.config.properties.AiProperties;
 import top.yealike.pep.control.integration.OpsClient;
+import top.yealike.pep.control.knowledge.domain.Chunk;
 import top.yealike.pep.control.knowledge.domain.ChunkRow;
 import top.yealike.pep.control.knowledge.domain.DocumentRow;
+import top.yealike.pep.control.knowledge.domain.Hit;
+import top.yealike.pep.control.knowledge.domain.IngestReport;
+import top.yealike.pep.control.knowledge.domain.IngestResult;
+import top.yealike.pep.control.knowledge.domain.Page;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
@@ -51,23 +54,6 @@ public class KnowledgeService {
         this.properties = properties;
         this.transaction = new org.springframework.transaction.support.TransactionTemplate(transactionManager);
     }
-
-    public record IngestResult(
-            String documentId, String title, String status, int chunks, String reason, boolean skipped) {}
-
-    public record IngestReport(int total, int indexed, int skipped, int failed, List<IngestResult> items) {}
-
-    public record Hit(
-            String documentId,
-            String sourceDocumentId,
-            String title,
-            String protocolCode,
-            String protocolVersion,
-            String sectionPath,
-            Integer pageNo,
-            String content,
-            String snippet,
-            int score) {}
 
     public IngestReport ingestAll(UserIdentity identity, boolean publish) {
         List<Map<String, Object>> documents = ops.documents(identity);
@@ -161,8 +147,8 @@ public class KnowledgeService {
                 INDEX_VERSION,
                 null);
 
-        List<TextChunker.Page> pages = extractor.extract(content, contentType, filename);
-        List<TextChunker.Chunk> chunks = TextChunker.split(
+        List<Page> pages = extractor.extract(content, contentType, filename);
+        List<Chunk> chunks = TextChunker.split(
                 pages,
                 properties.knowledge().chunkSize(),
                 properties.knowledge().chunkOverlap());
@@ -320,13 +306,6 @@ public class KnowledgeService {
 
     public List<Map<String, Object>> preview(UUID documentId) {
         return repository.preview(documentId);
-    }
-
-    public Map<String, Object> stats() {
-        Map<String, Object> stats = new LinkedHashMap<>(repository.stats());
-        stats.put("indexVersion", INDEX_VERSION);
-        stats.put("pgvector", "OPTIONAL");
-        return stats;
     }
 
     public void publish(UUID documentId) {

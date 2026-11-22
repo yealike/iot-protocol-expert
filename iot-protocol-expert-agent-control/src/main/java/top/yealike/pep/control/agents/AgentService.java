@@ -12,16 +12,17 @@ import org.springframework.transaction.annotation.Transactional;
 import top.yealike.pep.control.access.policy.PolicyService;
 import top.yealike.pep.control.agents.domain.AgentCatalogItem;
 import top.yealike.pep.control.agents.domain.AgentComponent;
-import top.yealike.pep.control.agents.domain.AgentMcpBinding;
+import top.yealike.pep.control.agents.domain.AgentDetail;
 import top.yealike.pep.control.agents.domain.AgentRelease;
-import top.yealike.pep.control.agents.domain.AgentSkillBinding;
 import top.yealike.pep.control.agents.domain.CompileResult;
+import top.yealike.pep.control.agents.domain.McpBindingInput;
 import top.yealike.pep.control.agents.domain.McpRelease;
 import top.yealike.pep.control.agents.domain.Publication;
+import top.yealike.pep.control.agents.domain.PublishResult;
+import top.yealike.pep.control.agents.domain.RollbackResult;
+import top.yealike.pep.control.agents.domain.SkillBindingInput;
 import top.yealike.pep.control.agents.domain.SkillRelease;
 import top.yealike.pep.control.agents.store.AgentStore;
-import top.yealike.pep.control.agents.store.AgentStore.McpBindingInput;
-import top.yealike.pep.control.agents.store.AgentStore.SkillBindingInput;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
@@ -384,14 +385,4 @@ public class AgentService {
     private static boolean blank(String value) {
         return value == null || value.isBlank();
     }
-
-    public record AgentDetail(
-            AgentComponent agent,
-            List<AgentMcpBinding> mcpBindings,
-            List<AgentSkillBinding> skillBindings,
-            List<AgentRelease> releases) {}
-
-    public record PublishResult(UUID releaseId, UUID publicationId, String version, String manifestDigest) {}
-
-    public record RollbackResult(UUID releaseId, UUID publicationId, String version, long generation, String state) {}
 }

@@ -20,6 +20,7 @@ import top.yealike.pep.control.access.policy.PolicyService;
 import top.yealike.pep.control.agents.domain.AgentComponent;
 import top.yealike.pep.control.agents.domain.AgentRelease;
 import top.yealike.pep.control.agents.domain.Publication;
+import top.yealike.pep.control.agents.domain.RollbackResult;
 import top.yealike.pep.control.agents.store.AgentStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
@@ -79,7 +80,7 @@ class AgentServiceRollbackTest {
                 publications,
                 mock(PolicyService.class));
 
-        AgentService.RollbackResult result = service.rollback(agentId, 8L, "1.0.0", "rollback-key");
+        RollbackResult result = service.rollback(agentId, 8L, "1.0.0", "rollback-key");
 
         assertThat(result.releaseId()).isEqualTo(targetReleaseId);
         assertThat(result.publicationId()).isEqualTo(publicationId);
@@ -160,7 +161,7 @@ class AgentServiceRollbackTest {
                 publications,
                 mock(PolicyService.class));
 
-        AgentService.RollbackResult result = service.rollback(agentId, 9L, "1.0.0", "rollback-key");
+        RollbackResult result = service.rollback(agentId, 9L, "1.0.0", "rollback-key");
 
         assertThat(result.publicationId()).isEqualTo(publicationId);
         assertThat(result.state()).isEqualTo("REGISTERING");

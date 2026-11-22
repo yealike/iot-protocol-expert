@@ -8,6 +8,8 @@ import top.yealike.pep.control.agents.domain.AgentComponent;
 import top.yealike.pep.control.agents.domain.AgentMcpBinding;
 import top.yealike.pep.control.agents.domain.AgentRelease;
 import top.yealike.pep.control.agents.domain.AgentSkillBinding;
+import top.yealike.pep.control.agents.domain.McpBindingInput;
+import top.yealike.pep.control.agents.domain.SkillBindingInput;
 import top.yealike.pep.control.agents.mapper.AgentPlatformMapper;
 import top.yealike.pep.control.support.JsonSupport;
 import top.yealike.pep.runtime.contract.AgentManifest;
@@ -185,8 +187,4 @@ public class AgentStore {
             mapper.insertSkillBinding(agentId, binding.skillReleaseId(), binding.order(), binding.loadMode());
         }
     }
-
-    public record McpBindingInput(UUID mcpReleaseId, String toolName, boolean required, int executionOrder) {}
-
-    public record SkillBindingInput(UUID skillReleaseId, int order, String loadMode) {}
 }

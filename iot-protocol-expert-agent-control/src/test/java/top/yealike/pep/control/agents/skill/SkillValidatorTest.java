@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import top.yealike.pep.control.agents.skill.domain.Validation;
 import top.yealike.pep.runtime.contract.SkillFile;
 
 class SkillValidatorTest {
@@ -27,7 +28,7 @@ class SkillValidatorTest {
                 Report the template in assets/report.html.
                 """;
 
-        SkillValidator.Validation result = validator.validate(
+        Validation result = validator.validate(
                 "device-offline-check",
                 List.of(
                         file("SKILL.md", entry),
@@ -53,7 +54,7 @@ class SkillValidatorTest {
                 body
                 """;
 
-        SkillValidator.Validation result = validator.validate("bad-name", List.of(file("SKILL.md", entry)));
+        Validation result = validator.validate("bad-name", List.of(file("SKILL.md", entry)));
 
         assertThat(result.errors())
                 .extracting(issue -> issue.code())
@@ -71,7 +72,7 @@ class SkillValidatorTest {
                 Run scripts/missing.py.
                 """.formatted("x".repeat(501));
 
-        SkillValidator.Validation result = validator.validate("protocol-check", List.of(file("SKILL.md", entry)));
+        Validation result = validator.validate("protocol-check", List.of(file("SKILL.md", entry)));
 
         assertThat(result.errors())
                 .extracting(issue -> issue.code())
@@ -90,7 +91,7 @@ class SkillValidatorTest {
                 body
                 """;
 
-        SkillValidator.Validation result = validator.validate("protocol-check", List.of(file("SKILL.md", entry)));
+        Validation result = validator.validate("protocol-check", List.of(file("SKILL.md", entry)));
 
         assertThat(result.errors()).extracting(issue -> issue.code()).contains("SKILL_METADATA_INVALID");
     }
@@ -105,7 +106,7 @@ class SkillValidatorTest {
                 Run scripts/check.py.
                 """;
 
-        SkillValidator.Validation result = validator.validate(
+        Validation result = validator.validate(
                 "protocol-check",
                 List.of(
                         file("SKILL.md", entry),
@@ -127,7 +128,7 @@ class SkillValidatorTest {
                 description: Check a protocol payload
                 ---""";
 
-        SkillValidator.Validation result = validator.validate("protocol-check", List.of(file("SKILL.md", entry)));
+        Validation result = validator.validate("protocol-check", List.of(file("SKILL.md", entry)));
 
         assertThat(result.errors()).isEmpty();
     }

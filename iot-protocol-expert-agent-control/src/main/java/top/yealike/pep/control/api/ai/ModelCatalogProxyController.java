@@ -12,6 +12,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.yealike.pep.control.access.CurrentUser;
 import top.yealike.pep.control.agents.model.ModelCatalogGatewayClient;
+import top.yealike.pep.control.api.ai.dto.ModelCreate;
+import top.yealike.pep.control.api.ai.dto.ProviderCreate;
 import top.yealike.pep.control.support.AiExceptions;
 
 @RestController
@@ -34,7 +36,7 @@ public class ModelCatalogProxyController {
 
     @Operation(summary = "登记模型供应商", description = "上游密钥只写不读")
     @PostMapping("/providers")
-    public Map<String, Object> registerProvider(@RequestBody ModelCatalogDtos.ProviderCreate request) {
+    public Map<String, Object> registerProvider(@RequestBody ProviderCreate request) {
         CurrentUser.require();
         requireText(request.code(), "供应商编码");
         requireText(request.name(), "供应商名称");
@@ -57,7 +59,7 @@ public class ModelCatalogProxyController {
 
     @Operation(summary = "登记逻辑模型")
     @PostMapping("/models")
-    public Map<String, Object> registerModel(@RequestBody ModelCatalogDtos.ModelCreate request) {
+    public Map<String, Object> registerModel(@RequestBody ModelCreate request) {
         CurrentUser.require();
         requireText(request.key(), "逻辑模型 key");
         requireText(request.displayName(), "显示名称");

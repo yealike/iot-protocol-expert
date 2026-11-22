@@ -6,7 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.pep.control.runs.RunRecords.RunEvent;
+import top.yealike.pep.control.runs.domain.RunEvent;
 
 /** 事件发布：游标分配与事件落库在同一事务，先落库再广播，保证断线重放不丢事件。 */
 @Service
@@ -40,5 +40,4 @@ public class RunEventService {
     public List<RunEvent> replay(UUID conversationId, long afterCursor, int limit) {
         return runs.eventsAfter(conversationId, afterCursor, limit);
     }
-
 }

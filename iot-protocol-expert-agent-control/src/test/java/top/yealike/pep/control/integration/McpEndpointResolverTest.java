@@ -3,7 +3,9 @@ package top.yealike.pep.control.integration;
 import static org.junit.jupiter.api.Assertions.*;
 
 import org.junit.jupiter.api.Test;
-import top.yealike.pep.control.config.AiProperties;
+import top.yealike.pep.control.config.properties.AiMcp;
+import top.yealike.pep.control.config.properties.AiProperties;
+import top.yealike.pep.control.config.properties.AiRegistry;
 
 class McpEndpointResolverTest {
     @Test
@@ -32,11 +34,11 @@ class McpEndpointResolverTest {
     private static AiProperties properties(String fallbackUrl) {
         return new AiProperties(
                 "local",
-                new AiProperties.Mcp(
+                new AiMcp(
                         "token",
                         fallbackUrl,
                         "http://gateway:8088",
-                        new AiProperties.Registry(true, "ipe-ops-rest", null, "public")),
+                        new AiRegistry(true, "ipe-ops-rest", null, "public")),
                 8000,
                 null,
                 null,

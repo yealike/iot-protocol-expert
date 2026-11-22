@@ -2,10 +2,8 @@ package top.yealike.pep.control.api.ai.admin;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,11 +19,19 @@ import org.springframework.web.bind.annotation.RestController;
 import top.yealike.pep.control.access.CurrentUser;
 import top.yealike.pep.control.agents.AgentService;
 import top.yealike.pep.control.agents.domain.AgentComponent;
-import top.yealike.pep.control.agents.domain.AgentRelease;
+import top.yealike.pep.control.agents.domain.AgentDetail;
+import top.yealike.pep.control.agents.domain.McpBindingInput;
+import top.yealike.pep.control.agents.domain.PublishResult;
+import top.yealike.pep.control.agents.domain.RollbackResult;
+import top.yealike.pep.control.agents.domain.SkillBindingInput;
 import top.yealike.pep.control.agents.mcp.McpService;
 import top.yealike.pep.control.agents.skill.SkillService;
-import top.yealike.pep.control.agents.store.AgentStore.McpBindingInput;
-import top.yealike.pep.control.agents.store.AgentStore.SkillBindingInput;
+import top.yealike.pep.control.api.ai.admin.dto.AgentCreate;
+import top.yealike.pep.control.api.ai.admin.dto.AgentPublish;
+import top.yealike.pep.control.api.ai.admin.dto.AgentRollback;
+import top.yealike.pep.control.api.ai.admin.dto.AgentUpdate;
+import top.yealike.pep.control.api.ai.admin.dto.McpBindingRequest;
+import top.yealike.pep.control.api.ai.admin.dto.SkillBindingRequest;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
 /** Agent 草稿编排、编译校验、发布与回滚。 */
@@ -52,7 +58,7 @@ public class AgentAdminController {
     }
 
     @GetMapping("/agents/{id}")
-    public AgentService.AgentDetail agent(@PathVariable UUID id) {
+    public AgentDetail agent(@PathVariable UUID id) {
         return agents.detail(id);
     }
 
@@ -89,50 +95,25 @@ public class AgentAdminController {
                 request.skillBindings() == null ? null : skillInputs(request.skillBindings()));
     }
 
-    @PutMapping("/agents/{id}/bindings")
-    public AgentService.AgentDetail updateAgentBindings(@PathVariable UUID id, @RequestBody AgentBindings request) {
-        AgentService.AgentDetail detail = agents.detail(id);
-        agents.update(
-                id,
-                request.expectedRevision(),
-                detail.agent().displayName(),
-                detail.agent().description(),
-                detail.agent().modelProfileId(),
-                detail.agent().systemPrompt(),
-                detail.agent().modelOptions(),
-                detail.agent().budget(),
-                detail.agent().enabled(),
-                mcpInputs(request.mcpBindings()),
-                skillInputs(request.skillBindings()));
-        return agents.detail(id);
-    }
-
     @PostMapping("/agents/{id}/validate")
     @Operation(summary = "编译校验 Agent")
     public Object validateAgent(@Parameter(description = "Agent 组件 ID") @PathVariable UUID id) {
         return agents.validate(id);
     }
 
-    @GetMapping("/agents/{id}/releases")
-    public List<AgentRelease> agentReleases(@PathVariable UUID id) {
-        return agents.releases(id);
-    }
-
     @PostMapping("/agents/{id}/publish")
     @Operation(summary = "发布 Agent 版本", description = "准备 Runtime 后激活指定版本")
-    public ResponseEntity<AgentService.PublishResult> publishAgent(
-            @PathVariable UUID id, @RequestBody AgentPublish request) {
+    public ResponseEntity<PublishResult> publishAgent(@PathVariable UUID id, @RequestBody AgentPublish request) {
         UserIdentity actor = CurrentUser.require();
-        AgentService.PublishResult result =
+        PublishResult result =
                 agents.publish(actor, id, request.version(), request.expectedRevision(), request.idempotencyKey());
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(result);
     }
 
     @PostMapping("/agents/{id}/rollback")
     @Operation(summary = "回滚 Agent 版本")
-    public ResponseEntity<AgentService.RollbackResult> rollbackAgent(
-            @PathVariable UUID id, @RequestBody AgentRollback request) {
-        AgentService.RollbackResult result =
+    public ResponseEntity<RollbackResult> rollbackAgent(@PathVariable UUID id, @RequestBody AgentRollback request) {
+        RollbackResult result =
                 agents.rollback(id, request.expectedRevision(), request.targetVersion(), request.idempotencyKey());
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(result);
     }
@@ -170,45 +151,4 @@ public class AgentAdminController {
                         binding.loadMode() == null ? "AUTO" : binding.loadMode()))
                 .toList();
     }
-
-    public record McpBindingRequest(
-            UUID mcpReleaseId,
-            String componentKey,
-            String version,
-            String toolName,
-            Boolean required,
-            Integer executionOrder) {}
-
-    public record SkillBindingRequest(
-            UUID skillReleaseId, String componentKey, String version, Integer order, String loadMode) {}
-
-    public record AgentCreate(
-            @Schema(description = "Agent 唯一标识") String key,
-            @Schema(description = "Agent 显示名称") String displayName,
-            @Schema(description = "用途说明") String description,
-            @Schema(description = "绑定的模型配置 ID") UUID modelProfileId,
-            @Schema(description = "系统提示词") String systemPrompt,
-            @Schema(description = "模型调用参数") Map<String, Object> modelOptions,
-            @Schema(description = "Run 轮数、工具调用数和超时预算") Map<String, Object> budget,
-            List<McpBindingRequest> mcpBindings,
-            List<SkillBindingRequest> skillBindings) {}
-
-    public record AgentUpdate(
-            long expectedRevision,
-            String displayName,
-            String description,
-            UUID modelProfileId,
-            String systemPrompt,
-            Map<String, Object> modelOptions,
-            Map<String, Object> budget,
-            boolean enabled,
-            List<McpBindingRequest> mcpBindings,
-            List<SkillBindingRequest> skillBindings) {}
-
-    public record AgentBindings(
-            long expectedRevision, List<McpBindingRequest> mcpBindings, List<SkillBindingRequest> skillBindings) {}
-
-    public record AgentPublish(String version, long expectedRevision, String idempotencyKey) {}
-
-    public record AgentRollback(String targetVersion, long expectedRevision, String idempotencyKey) {}
 }

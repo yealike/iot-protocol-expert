@@ -8,7 +8,7 @@ import java.util.Set;
 import org.junit.jupiter.api.Test;
 import top.yealike.pep.control.access.policy.domain.PolicyRule;
 import top.yealike.pep.control.access.policy.mapper.PermissionPolicyMapper;
-import top.yealike.pep.control.config.AiProperties;
+import top.yealike.pep.control.config.properties.AiProperties;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
 class PolicyServiceRoleCompatibilityTest {

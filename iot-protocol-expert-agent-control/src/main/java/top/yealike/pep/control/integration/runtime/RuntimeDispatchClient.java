@@ -15,7 +15,11 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
-import top.yealike.pep.control.config.PlatformProperties;
+import top.yealike.pep.control.config.properties.PlatformProperties;
+import top.yealike.pep.control.config.properties.PlatformSecurity;
+import top.yealike.pep.control.integration.runtime.dto.DispatchResult;
+import top.yealike.pep.control.integration.runtime.dto.PrepareResult;
+import top.yealike.pep.control.integration.runtime.dto.RuntimeTarget;
 import top.yealike.pep.control.support.JsonSupport;
 import top.yealike.pep.runtime.contract.InternalPaths;
 import top.yealike.pep.runtime.contract.InternalSignature;
@@ -169,25 +173,13 @@ public class RuntimeDispatchClient {
         return message == null || message.isBlank() ? exception.getClass().getSimpleName() : message;
     }
 
-    private static String resolveSecret(PlatformProperties.Security security) {
+    private static String resolveSecret(PlatformSecurity security) {
         if (security.internalServiceKey() != null
                 && !security.internalServiceKey().isBlank()) {
             return security.internalServiceKey().strip();
         }
         return "";
     }
-
-    public record RuntimeTarget(String baseUrl, String instanceId, String serviceName) {
-        public boolean matchesInstance(String owner) {
-            return "direct".equals(serviceName) || owner.equals(instanceId);
-        }
-    }
-
-    public record DispatchResult(
-            boolean accepted, int status, RunDispatchReceipt receipt, String code, String message) {}
-
-    public record PrepareResult(
-            boolean ready, String state, String instanceId, String errorCode, String errorMessage, int status) {}
 
     private record ErrorBody(String code, String message) {}
 

@@ -20,8 +20,8 @@ public final class EndpointPolicy {
         return URI.create(parseAllowed(endpoint).toUri());
     }
 
-    /** 发起请求前调用：解析全部 A/AAAA 记录，任一地址不安全即拒绝。 */
-    public static URI requireAllowedAndResolvable(String endpoint) {
+    /** 解析并校验入口，返回规范化后的组件入口，避免调用方再次字符串解析。 */
+    public static ComponentEndpoint requireAllowedResolved(String endpoint) {
         ComponentEndpoint parsed = parseAllowed(endpoint);
         InetAddress[] addresses;
         try {
@@ -35,7 +35,12 @@ public final class EndpointPolicy {
         for (InetAddress address : addresses) {
             rejectUnsafeAddress(address);
         }
-        return URI.create(parsed.toUri());
+        return parsed;
+    }
+
+    /** 发起请求前调用：解析全部 A/AAAA 记录，任一地址不安全即拒绝。 */
+    public static URI requireAllowedAndResolvable(String endpoint) {
+        return URI.create(requireAllowedResolved(endpoint).toUri());
     }
 
     private static ComponentEndpoint parseAllowed(String endpoint) {

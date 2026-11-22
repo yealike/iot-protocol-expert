@@ -2,10 +2,8 @@ package top.yealike.pep.control.api.ai.admin;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -21,6 +19,11 @@ import org.springframework.web.bind.annotation.RestController;
 import top.yealike.pep.control.access.CurrentUser;
 import top.yealike.pep.control.agents.domain.McpRelease;
 import top.yealike.pep.control.agents.mcp.McpService;
+import top.yealike.pep.control.agents.mcp.domain.PublishResult;
+import top.yealike.pep.control.api.ai.admin.dto.McpCreate;
+import top.yealike.pep.control.api.ai.admin.dto.McpPublish;
+import top.yealike.pep.control.api.ai.admin.dto.McpToolPolicyUpdate;
+import top.yealike.pep.control.api.ai.admin.dto.McpUpdate;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
 /** MCP 草稿、连通性测试、工具审核与不可变发布。 */
@@ -103,34 +106,10 @@ public class McpAdminController {
 
     @PostMapping("/mcps/{id}/publish")
     @Operation(summary = "发布 MCP 版本", description = "冻结工具目录并异步注册组件版本")
-    public ResponseEntity<McpService.PublishResult> publishMcp(@PathVariable UUID id, @RequestBody McpPublish request) {
+    public ResponseEntity<PublishResult> publishMcp(@PathVariable UUID id, @RequestBody McpPublish request) {
         UserIdentity actor = CurrentUser.require();
-        McpService.PublishResult result = mcps.publish(
+        PublishResult result = mcps.publish(
                 actor, id, request.version(), request.reportId(), request.expectedRevision(), request.idempotencyKey());
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(result);
     }
-
-    public record McpCreate(
-            String key,
-            String displayName,
-            String description,
-            String origin,
-            Map<String, Object> nativeRegistryRef,
-            Map<String, Object> draft) {}
-
-    public record McpUpdate(
-            long expectedRevision,
-            String displayName,
-            String description,
-            Map<String, Object> nativeRegistryRef,
-            Map<String, Object> draft,
-            boolean enabled) {}
-
-    public record McpPublish(
-            @Schema(description = "发布版本", example = "1.0.0") String version,
-            @Schema(description = "MCP 连通性测试报告 ID") UUID reportId,
-            @Schema(description = "草稿版本号，用于乐观锁") long expectedRevision,
-            @Schema(description = "幂等键，用于发布请求重试") String idempotencyKey) {}
-
-    public record McpToolPolicyUpdate(String toolName, String executionCategory) {}
 }

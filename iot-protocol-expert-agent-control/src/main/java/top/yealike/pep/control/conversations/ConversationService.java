@@ -7,11 +7,12 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import top.yealike.pep.control.access.policy.PolicyService;
+import top.yealike.pep.control.access.policy.domain.Decision;
 import top.yealike.pep.control.agents.AgentService;
 import top.yealike.pep.control.agents.domain.AgentRelease;
-import top.yealike.pep.control.conversations.ConversationRecords.Conversation;
-import top.yealike.pep.control.conversations.ConversationRecords.ConversationDetail;
-import top.yealike.pep.control.conversations.ConversationRecords.Message;
+import top.yealike.pep.control.conversations.domain.Conversation;
+import top.yealike.pep.control.conversations.domain.ConversationDetail;
+import top.yealike.pep.control.conversations.domain.Message;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
@@ -37,7 +38,7 @@ public class ConversationService {
             throw AiExceptions.badRequest("必须指定 Agent");
         }
         String key = agentKey;
-        PolicyService.Decision decision = policy.canUseAgent(identity, key);
+        Decision decision = policy.canUseAgent(identity, key);
         if (!decision.allowed()) {
             throw AiExceptions.forbidden("AGENT_DENIED", decision.reason());
         }

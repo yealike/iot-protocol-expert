@@ -6,8 +6,9 @@ import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
-import top.yealike.pep.control.config.PlatformProperties;
+import top.yealike.pep.control.config.properties.PlatformProperties;
 import top.yealike.pep.control.integration.registry.NacosRegistryService;
+import top.yealike.pep.control.integration.registry.dto.InstanceView;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.control.support.JsonSupport;
 import top.yealike.pep.runtime.contract.UserIdentity;
@@ -109,8 +110,7 @@ public class OpsIdentityClient {
         if (configured != null && !configured.isBlank()) {
             return configured.endsWith("/") ? configured.substring(0, configured.length() - 1) : configured;
         }
-        NacosRegistryService.InstanceView instance =
-                registry.pickHealthy(properties.identity().serviceName());
+        InstanceView instance = registry.pickHealthy(properties.identity().serviceName());
         if (instance == null) {
             throw AiExceptions.upstream("OPS 身份服务不可用");
         }

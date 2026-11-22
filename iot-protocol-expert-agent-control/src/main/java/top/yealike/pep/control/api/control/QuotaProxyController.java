@@ -17,9 +17,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import top.yealike.pep.control.access.AccessService;
 import top.yealike.pep.control.access.CurrentUser;
+import top.yealike.pep.control.access.domain.QuotaSubject;
 import top.yealike.pep.control.access.mapper.QuotaSubjectMapper;
-import top.yealike.pep.control.access.mapper.QuotaSubjectMapper.QuotaSubject;
 import top.yealike.pep.control.agents.model.ModelGatewayClient;
+import top.yealike.pep.control.api.control.dto.GrantRequest;
 import top.yealike.pep.control.config.ModelGatewayProperties;
 import top.yealike.pep.control.support.AiExceptions;
 
@@ -46,18 +47,6 @@ public class QuotaProxyController {
         this.subjects = subjects;
         this.modelGatewayProperties = modelGatewayProperties;
     }
-
-    public record GrantRequest(
-            String scopeKind,
-            String subjectId,
-            String mode,
-            long limitUnits,
-            Long durationSeconds,
-            String policyKey,
-            String reason,
-            String actorId) {}
-
-    public record AdjustmentRequest(UUID modelCallId, long deltaUnits, String reason, String operatorId) {}
 
     @Operation(summary = "查询自己的模型额度")
     @GetMapping("/me/quota")
@@ -134,35 +123,6 @@ public class QuotaProxyController {
         body.put("reason", request.reason() == null ? "" : request.reason());
         body.put("actorId", request.actorId() == null ? "admin" : request.actorId());
         return gateway.grant(body, idempotencyKey);
-    }
-
-    @Operation(summary = "停用或恢复额度账户")
-    @PostMapping("/admin/quota-accounts/{accountId}/state")
-    public Map<String, Object> state(
-            @PathVariable UUID accountId,
-            @RequestParam String state,
-            @RequestParam(defaultValue = "system") String actorId,
-            @RequestParam(defaultValue = "") String reason) {
-        access.requirePlatformPermission("quota:grant");
-        return gateway.setAccountState(accountId, state, actorId, reason);
-    }
-
-    @Operation(summary = "追加用量调整")
-    @PostMapping("/admin/usage-adjustments")
-    public Map<String, Object> adjust(
-            @RequestHeader("Idempotency-Key") String idempotencyKey, @RequestBody AdjustmentRequest request) {
-        access.requirePlatformPermission("quota:grant");
-        return gateway.adjustUsage(
-                Map.of(
-                        "modelCallId",
-                        request.modelCallId(),
-                        "deltaUnits",
-                        request.deltaUnits(),
-                        "reason",
-                        request.reason() == null ? "" : request.reason(),
-                        "operatorId",
-                        request.operatorId() == null ? "admin" : request.operatorId()),
-                idempotencyKey);
     }
 
     @Operation(summary = "对不确定调用做释放对账")

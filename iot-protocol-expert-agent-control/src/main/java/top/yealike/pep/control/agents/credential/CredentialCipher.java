@@ -12,7 +12,8 @@ import javax.crypto.spec.SecretKeySpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import top.yealike.pep.control.config.PlatformProperties;
+import top.yealike.pep.control.agents.credential.domain.Encrypted;
+import top.yealike.pep.control.config.properties.PlatformProperties;
 import top.yealike.pep.control.support.AiExceptions;
 
 /**
@@ -120,17 +121,6 @@ public class CredentialCipher {
             return MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
         } catch (java.security.NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 unavailable", exception);
-        }
-    }
-
-    public record Encrypted(byte[] ciphertext, byte[] nonce, String keyId) {
-        public String masked() {
-            return "******";
-        }
-
-        @Override
-        public String toString() {
-            return "Encrypted{ciphertext=" + ciphertext.length + " bytes, keyId=" + keyId + "}";
         }
     }
 }

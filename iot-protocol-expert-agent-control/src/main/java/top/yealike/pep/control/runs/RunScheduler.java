@@ -15,11 +15,13 @@ import org.springframework.stereotype.Service;
 import top.yealike.pep.control.access.policy.PolicyService;
 import top.yealike.pep.control.agents.AgentService;
 import top.yealike.pep.control.agents.domain.AgentRelease;
-import top.yealike.pep.control.config.AiProperties;
-import top.yealike.pep.control.config.PlatformProperties;
+import top.yealike.pep.control.config.properties.AiProperties;
+import top.yealike.pep.control.config.properties.PlatformProperties;
 import top.yealike.pep.control.integration.runtime.RuntimeDispatchClient;
+import top.yealike.pep.control.integration.runtime.dto.DispatchResult;
+import top.yealike.pep.control.integration.runtime.dto.RuntimeTarget;
 import top.yealike.pep.control.observability.AiObservability;
-import top.yealike.pep.control.runs.RunRecords.Run;
+import top.yealike.pep.control.runs.domain.Run;
 import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.runtime.contract.RunDispatchRequest;
 import top.yealike.pep.runtime.contract.UserIdentity;
@@ -142,12 +144,12 @@ public class RunScheduler {
             return;
         }
 
-        List<RuntimeDispatchClient.RuntimeTarget> targets = runtime.targets();
+        List<RuntimeTarget> targets = runtime.targets();
         if (targets.isEmpty()) {
             releaseOrFail(run, attempt, ErrorCodes.NO_HEALTHY_RUNTIME, "当前没有可用的 Agent Runtime");
             return;
         }
-        RuntimeDispatchClient.RuntimeTarget target = retry
+        RuntimeTarget target = retry
                 ? targetFor(run, targets)
                 : targets.get(ThreadLocalRandom.current().nextInt(targets.size()));
         if (target == null) {
@@ -172,8 +174,7 @@ public class RunScheduler {
                 run.deadlineAt(),
                 platform.security().internalServiceName(),
                 run.traceContext());
-        RuntimeDispatchClient.DispatchResult result =
-                runtime.dispatch(target, release.agentKey(), release.version(), request);
+        DispatchResult result = runtime.dispatch(target, release.agentKey(), release.version(), request);
         if (result.accepted()) {
             String instanceId = result.receipt() == null || result.receipt().instanceId() == null
                     ? target.instanceId()
@@ -244,9 +245,7 @@ public class RunScheduler {
         for (Run run : runs.expiredLeases(20)) {
             boolean deadlineExpired =
                     run.deadlineAt() != null && !run.deadlineAt().isAfter(now);
-            if (!deadlineExpired
-                    && RunRecords.DISPATCHING.equals(run.status())
-                    && run.dispatchNextAttemptAt() != null) {
+            if (!deadlineExpired && RunStatus.DISPATCHING.equals(run.status()) && run.dispatchNextAttemptAt() != null) {
                 continue;
             }
             String code = deadlineExpired ? "RUN_TIMED_OUT" : ErrorCodes.EXECUTION_LOST;
@@ -256,12 +255,12 @@ public class RunScheduler {
             if (terminal == null) {
                 continue;
             }
-            if (RunRecords.CANCELLED.equals(terminal)) {
+            if (RunStatus.CANCELLED.equals(terminal)) {
                 events.publish(
                         run.conversationId(),
                         run.id(),
                         "run.cancelled",
-                        Map.of("status", RunRecords.CANCELLED, "note", "Runtime 取消确认超时，由 Control 终结"));
+                        Map.of("status", RunStatus.CANCELLED, "note", "Runtime 取消确认超时，由 Control 终结"));
                 log.warn("run cancellation converged by expiry: run={} instance={}", run.id(), run.runtimeInstanceId());
             } else {
                 events.publish(
@@ -286,7 +285,7 @@ public class RunScheduler {
                         run.conversationId(),
                         run.id(),
                         "run.cancelled",
-                        Map.of("status", RunRecords.CANCELLED, "note", "Runtime 取消确认超时，由 Control 终结"));
+                        Map.of("status", RunStatus.CANCELLED, "note", "Runtime 取消确认超时，由 Control 终结"));
             }
         }
     }
@@ -314,7 +313,7 @@ public class RunScheduler {
         }
     }
 
-    private RuntimeDispatchClient.RuntimeTarget targetFor(Run run, List<RuntimeDispatchClient.RuntimeTarget> targets) {
+    private RuntimeTarget targetFor(Run run, List<RuntimeTarget> targets) {
         String instanceId = run.runtimeInstanceId();
         if (instanceId == null || instanceId.isBlank()) {
             return targets.size() == 1 ? targets.getFirst() : null;

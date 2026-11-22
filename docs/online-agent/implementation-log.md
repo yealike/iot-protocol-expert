@@ -121,7 +121,7 @@ Runtime 的 Maven 依赖未声明 JDBC 驱动、MyBatis、Flyway 或数据源 st
 | 凭据 | `GET/POST /credentials`、`PUT /credentials/{id}`（轮换，不回显明文） |
 | MCP | `GET/POST /mcps`、`PUT/DELETE /mcps/{id}`、`POST /mcps/{id}/test`、`GET /mcps/{id}/tools`、`GET /mcps/{id}/releases`、`POST /mcps/{id}/publish` |
 | Skill | `GET/POST /skills`、`PUT/DELETE /skills/{id}`、文件读写删除、`POST /skills/{id}/validate`、`GET /skills/{id}/releases`、`POST /skills/{id}/publish` |
-| Agent | `GET/POST /agents`、`GET/PUT/DELETE /agents/{id}`、`PUT /agents/{id}/bindings`、`POST /agents/{id}/validate`、`GET /agents/{id}/releases`、`POST /agents/{id}/publish`、`POST /agents/{id}/rollback` |
+| Agent | `GET/POST /agents`、`GET/PUT/DELETE /agents/{id}`、`POST /agents/{id}/validate`、`POST /agents/{id}/publish`、`POST /agents/{id}/rollback` |
 | 发布/注册 | `GET /publications/{id}`、`POST /publications/{id}/retry`、`GET /registry/components`、`GET /registry/components/{type}/{key}/versions/{version}` |
 
 当前未实现设计稿中的草稿预览 Run、组件 disable/revoke、发布列表分页和完整 OpenAPI/JSON Schema 导出；不得把现有接口说明为已具备这些能力。错误体当前是 `{error,message}`，不是设计要求的 ProblemDetail + `code,traceId`；Skill 路径非法在保存时返回 400，而设计/T14 期望 422。
@@ -134,7 +134,7 @@ Runtime 的 Maven 依赖未声明 JDBC 驱动、MyBatis、Flyway 或数据源 st
 | `POST /conversations` | `{agentKey, version?, title?}`，无版本时锁定默认 ACTIVE 版本 |
 | `GET /conversations`、`GET /conversations/{id}` | 会话分页与快照 |
 | `POST /conversations/{id}/runs` | `{content/question, idempotencyKey, priority?}`，返回 202 |
-| `GET /runs/{id}`、`POST /runs/{id}/cancel` | Run 详情与取消 |
+| `POST /runs/{id}/cancel` | Run 取消 |
 | `GET /conversations/{id}/events?afterCursor=N` | SSE，按持久化 cursor 重放和续传 |
 
 ### 4.3 内部接口

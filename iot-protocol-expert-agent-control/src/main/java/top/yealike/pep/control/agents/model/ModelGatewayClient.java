@@ -94,33 +94,6 @@ public class ModelGatewayClient {
         return post("/api/model-gateway/v1/admin/models", request);
     }
 
-    public Map<String, Object> setAccountState(UUID accountId, String state, String actor, String reason) {
-        String path = org.springframework.web.util.UriComponentsBuilder.fromPath(
-                        "/api/model-gateway/v1/admin/quota-accounts/{id}/state")
-                .queryParam("state", state)
-                .queryParam("actorId", actor)
-                .queryParam("reason", reason == null ? "" : reason)
-                .buildAndExpand(accountId)
-                .encode()
-                .toUriString();
-        return post(path, Map.of());
-    }
-
-    public Map<String, Object> adjustUsage(Map<String, Object> request, String idempotencyKey) {
-        try {
-            String response = http.post()
-                    .uri(baseUrl() + "/api/model-gateway/v1/admin/usage-adjustments")
-                    .header("X-PEP-Service-Token", serviceToken())
-                    .header("Idempotency-Key", idempotencyKey)
-                    .body(request)
-                    .retrieve()
-                    .body(String.class);
-            return JsonSupport.readMap(response);
-        } catch (RuntimeException exception) {
-            throw AiExceptions.unavailable("模型网关用量调整暂不可用");
-        }
-    }
-
     public Map<String, Object> reconcileRelease(UUID reservationId) {
         return post("/api/model-gateway/v1/admin/calls/" + reservationId + "/reconcile-release", Map.of());
     }

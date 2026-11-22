@@ -5,6 +5,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
+import top.yealike.pep.control.knowledge.domain.Chunk;
 import top.yealike.pep.control.knowledge.domain.ChunkRow;
 import top.yealike.pep.control.knowledge.domain.DocumentRow;
 import top.yealike.pep.control.knowledge.mapper.KnowledgeMapper;
@@ -61,8 +62,8 @@ public class KnowledgeRepository {
         return mapper.preview(documentId);
     }
 
-    public void insertChunks(UUID documentId, String indexVersion, List<TextChunker.Chunk> chunks) {
-        for (TextChunker.Chunk chunk : chunks) {
+    public void insertChunks(UUID documentId, String indexVersion, List<Chunk> chunks) {
+        for (Chunk chunk : chunks) {
             mapper.insertChunk(
                     UUID.randomUUID(),
                     documentId,
@@ -104,15 +105,5 @@ public class KnowledgeRepository {
     public void recordIndexVersion(
             String id, String description, String embeddingModel, int dimensions, int chunkSize, int overlap) {
         mapper.recordIndexVersion(id, description, embeddingModel, dimensions, chunkSize, overlap);
-    }
-
-    public Map<String, Object> stats() {
-        Integer documents = mapper.countDocuments();
-        Integer published = mapper.countPublishedDocuments();
-        Integer chunks = mapper.countChunks();
-        return Map.of(
-                "documents", documents == null ? 0 : documents,
-                "published", published == null ? 0 : published,
-                "chunks", chunks == null ? 0 : chunks);
     }
 }

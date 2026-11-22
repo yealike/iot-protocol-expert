@@ -12,6 +12,8 @@ import org.springframework.transaction.annotation.Transactional;
 import top.yealike.pep.control.agents.domain.SkillComponent;
 import top.yealike.pep.control.agents.domain.SkillDraftFile;
 import top.yealike.pep.control.agents.domain.SkillRelease;
+import top.yealike.pep.control.agents.skill.domain.PublishResult;
+import top.yealike.pep.control.agents.skill.domain.Validation;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
 import top.yealike.pep.control.support.AiExceptions;
@@ -124,7 +126,7 @@ public class SkillService {
 
     public Map<String, Object> validate(UUID id) {
         SkillComponent component = require(id);
-        SkillValidator.Validation validation = validator.validate(component.key(), draftFiles(id));
+        Validation validation = validator.validate(component.key(), draftFiles(id));
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("valid", validation.errors().isEmpty());
         result.put("errors", validation.errors());
@@ -167,7 +169,7 @@ public class SkillService {
                 : requireVersion(version);
         recomputeDraftDigests(id);
         List<SkillFile> files = draftFiles(id);
-        SkillValidator.Validation validation = validator.validate(component.key(), files);
+        Validation validation = validator.validate(component.key(), files);
         if (!validation.errors().isEmpty()) {
             throw new AiExceptions.AiException(
                     422,
@@ -307,6 +309,4 @@ public class SkillService {
         String[] parts = current.split("\\.");
         return parts[0] + "." + parts[1] + "." + (Integer.parseInt(parts[2]) + 1);
     }
-
-    public record PublishResult(UUID releaseId, UUID publicationId, String version, String digest) {}
 }

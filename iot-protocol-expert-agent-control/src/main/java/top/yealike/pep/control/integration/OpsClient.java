@@ -7,8 +7,9 @@ import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
-import top.yealike.pep.control.config.AiProperties;
-import top.yealike.pep.control.config.PlatformProperties;
+import top.yealike.pep.control.config.properties.AiProperties;
+import top.yealike.pep.control.config.properties.PlatformIdentity;
+import top.yealike.pep.control.config.properties.PlatformProperties;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
@@ -20,7 +21,7 @@ public class OpsClient {
     private final int maxDocumentBytes;
 
     public OpsClient(RestClient.Builder builder, AiProperties properties, PlatformProperties platformProperties) {
-        PlatformProperties.Identity identity = platformProperties.identity();
+        PlatformIdentity identity = platformProperties.identity();
         if (identity == null || identity.baseUrl() == null || identity.baseUrl().isBlank()) {
             throw new IllegalStateException("缺少 IPE_OPS_BASE_URL");
         }

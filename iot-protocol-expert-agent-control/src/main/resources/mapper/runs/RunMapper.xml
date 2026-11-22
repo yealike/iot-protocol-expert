@@ -2,7 +2,7 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="top.yealike.pep.control.runs.mapper.RunMapper">
 
-    <resultMap id="RunMap" type="top.yealike.pep.control.runs.RunRecords$Run">
+    <resultMap id="RunMap" type="top.yealike.pep.control.runs.domain.Run">
         <constructor>
             <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
             <arg column="conversation_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
@@ -57,7 +57,7 @@
         </choose>
     </sql>
 
-    <resultMap id="RunEventMap" type="top.yealike.pep.control.runs.RunRecords$RunEvent">
+    <resultMap id="RunEventMap" type="top.yealike.pep.control.runs.domain.RunEvent">
         <constructor>
             <arg column="cursor" javaType="_long"/>
             <arg column="conversation_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
@@ -68,7 +68,7 @@
         </constructor>
     </resultMap>
 
-    <resultMap id="ToolCallMap" type="top.yealike.pep.control.runs.RunRecords$ToolCall">
+    <resultMap id="ToolCallMap" type="top.yealike.pep.control.runs.domain.ToolCall">
         <constructor>
             <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
             <arg column="run_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
@@ -390,7 +390,7 @@
            for update
     </select>
 
-    <resultMap id="RuntimeEventFingerprintMap" type="top.yealike.pep.control.runs.RunRecords$RuntimeEventFingerprint">
+    <resultMap id="RuntimeEventFingerprintMap" type="top.yealike.pep.control.runs.domain.RuntimeEventFingerprint">
         <constructor>
             <arg column="source_seq" javaType="_long"/>
             <arg column="type" javaType="java.lang.String"/>

@@ -18,7 +18,8 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
-import top.yealike.pep.control.config.AiProperties;
+import top.yealike.pep.control.config.properties.AiMcp;
+import top.yealike.pep.control.config.properties.AiProperties;
 
 class ControlAiContextCodecTest {
 
@@ -72,7 +73,7 @@ class ControlAiContextCodecTest {
     }
 
     private static ControlAiContextCodec newCodec(Clock clock, int maxConsumedContexts) {
-        var mcp = new AiProperties.Mcp(SECRET, null, null, null);
+        var mcp = new AiMcp(SECRET, null, null, null);
         var properties = new AiProperties("test", mcp, 1000, null, null, null, null);
         return new ControlAiContextCodec(properties, clock, maxConsumedContexts);
     }

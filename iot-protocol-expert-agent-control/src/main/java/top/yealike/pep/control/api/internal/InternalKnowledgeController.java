@@ -9,8 +9,10 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import top.yealike.pep.control.api.internal.dto.Context;
 import top.yealike.pep.control.integration.OpsIdentityClient;
 import top.yealike.pep.control.knowledge.KnowledgeService;
+import top.yealike.pep.control.knowledge.domain.Hit;
 import top.yealike.pep.control.support.AiExceptions;
 
 /** Higress REST-to-MCP 使用的只读协议知识检索入口。 */
@@ -33,14 +35,14 @@ public class InternalKnowledgeController {
 
     @PostMapping("/search_protocol_knowledge")
     public Map<String, Object> search(@RequestBody Map<String, Object> args) {
-        ControlAiContextCodec.Context context = context(args);
+        Context context = context(args);
         // OpsIdentityClient.resolveActor 会再次校验账号可用性与 ai:use 权限。
         identities.resolveActor(context.actor());
 
         String documentId = requiredText(args, "protocol_document_id", 64);
         String query = requiredText(args, "query", 512);
         int topK = optionalTopK(args.get("top_k"));
-        List<KnowledgeService.Hit> hits = knowledge.searchBySourceDocument(documentId, query, topK);
+        List<Hit> hits = knowledge.searchBySourceDocument(documentId, query, topK);
         if (hits.isEmpty()) {
             throw new AiExceptions.AiException(404, "EVIDENCE_NOT_FOUND", "该协议文档中没有找到与查询匹配的证据");
         }
@@ -60,9 +62,9 @@ public class InternalKnowledgeController {
         return envelope;
     }
 
-    private ControlAiContextCodec.Context context(Map<String, Object> args) {
+    private Context context(Map<String, Object> args) {
         try {
-            ControlAiContextCodec.Context context = contexts.decode(OPERATION, args.get("_ipe_context"));
+            Context context = contexts.decode(OPERATION, args.get("_ipe_context"));
             if (context.actor() == null || context.actor().isBlank()) {
                 throw new IllegalArgumentException("Missing actor");
             }
@@ -72,7 +74,7 @@ public class InternalKnowledgeController {
         }
     }
 
-    private static Map<String, Object> hitView(KnowledgeService.Hit hit) {
+    private static Map<String, Object> hitView(Hit hit) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("title", hit.title());
         item.put("protocol", hit.protocolCode());

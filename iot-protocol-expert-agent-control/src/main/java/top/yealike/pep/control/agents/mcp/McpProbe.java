@@ -4,17 +4,15 @@ import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.spec.McpSchema;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
+import top.yealike.pep.control.agents.mcp.domain.ProbeResult;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.control.support.JsonSupport;
-import top.yealike.pep.runtime.contract.ComponentDigests;
 import top.yealike.pep.runtime.contract.ComponentEndpoint;
 import top.yealike.pep.runtime.contract.EndpointPolicy;
 import top.yealike.pep.runtime.contract.ErrorCodes;
@@ -24,151 +22,98 @@ import top.yealike.pep.runtime.contract.McpToolDescriptor;
 @Component
 public class McpProbe {
 
-    private static final int MAX_PAGES = 20;
-    private static final int MAX_TOOLS = 200;
-    private static final int MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
+    private static final Logger log = LoggerFactory.getLogger(McpProbe.class);
+    private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
+    private static final int MAX_CATALOG_BYTES = 2 * 1024 * 1024;
+    private static final String CLIENT_NAME = "ipe-agent-control";
+    private static final String CLIENT_VERSION = "1.0.0";
 
     public ProbeResult probe(String endpoint, String authorization, int timeoutMs) {
-        ComponentEndpoint target;
-        try {
-            target = ComponentEndpoint.parse(
-                    EndpointPolicy.requireAllowedAndResolvable(endpoint).toString());
-        } catch (RuntimeException exception) {
-            throw AiExceptions.unprocessable(ErrorCodes.MCP_INIT_FAILED, "MCP 入口地址无法解析");
-        }
-        String path = target.path().isBlank() ? "/" : target.path();
-        String requestPath = path + (target.query().isBlank() ? "" : "?" + target.query());
+        ComponentEndpoint target = resolveEndpoint(endpoint);
         Duration timeout = Duration.ofMillis(Math.max(1000, timeoutMs));
         long started = System.nanoTime();
+        long deadline = started + timeout.toNanos();
         McpSyncClient client = null;
         try {
-            HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(target.baseUrl())
-                    .endpoint(requestPath)
-                    .connectTimeout(Duration.ofSeconds(3))
-                    .httpRequestCustomizer((builder, method, requestUri, body, context) -> {
-                        if (authorization != null && !authorization.isBlank()) {
-                            builder.header("Authorization", authorization);
-                        }
-                    })
-                    .build();
-            client = McpClient.sync(transport)
-                    .requestTimeout(timeout)
-                    .initializationTimeout(timeout)
-                    .build();
+            client = openClient(target, authorization, timeout);
             McpSchema.InitializeResult init = client.initialize();
-            List<McpToolDescriptor> tools = listAll(client);
-            String serialized = JsonSupport.write(tools);
-            if (serialized.getBytes(java.nio.charset.StandardCharsets.UTF_8).length > MAX_RESPONSE_BYTES) {
-                throw AiExceptions.unprocessable(ErrorCodes.MCP_INIT_FAILED, "MCP 工具目录超过 2 MiB 上限");
-            }
+            List<McpToolDescriptor> tools = McpToolCatalog.readAll(client, deadline);
+            ensureCatalogSize(tools);
+            McpSchema.Implementation serverInfo = init.serverInfo();
             return new ProbeResult(
-                    init.serverInfo() == null ? "" : init.serverInfo().name(),
-                    init.serverInfo() == null ? "" : init.serverInfo().version(),
+                    serverInfo == null ? "" : serverInfo.name(),
+                    serverInfo == null ? "" : serverInfo.version(),
                     init.protocolVersion(),
                     tools,
                     Duration.ofNanos(System.nanoTime() - started).toMillis());
         } catch (AiExceptions.AiException exception) {
             throw exception;
         } catch (RuntimeException exception) {
+            log.warn("MCP 探测失败 host={} error={}", target.baseUrl(), rootMessage(exception));
+            log.debug("MCP 探测失败详情", exception);
             throw AiExceptions.unprocessable(ErrorCodes.MCP_INIT_FAILED, "MCP 初始化或 tools/list 失败");
         } finally {
-            if (client != null) {
-                try {
-                    client.closeGracefully();
-                } catch (RuntimeException ignored) {
-                    // cleanup is best effort
-                }
+            closeQuietly(client);
+        }
+    }
+
+    private static ComponentEndpoint resolveEndpoint(String endpoint) {
+        try {
+            return EndpointPolicy.requireAllowedResolved(endpoint);
+        } catch (IllegalArgumentException exception) {
+            throw AiExceptions.unprocessable(ErrorCodes.MCP_INIT_FAILED, "MCP 入口地址无法解析");
+        }
+    }
+
+    private static McpSyncClient openClient(ComponentEndpoint target, String authorization, Duration timeout) {
+        String path = target.path().isBlank() ? "/" : target.path();
+        if (!target.query().isBlank()) {
+            path = path + "?" + target.query();
+        }
+        HttpClientStreamableHttpTransport transport = HttpClientStreamableHttpTransport.builder(target.baseUrl())
+                .endpoint(path)
+                .connectTimeout(CONNECT_TIMEOUT)
+                .httpRequestCustomizer((request, method, uri, body, context) -> {
+                    if (authorization != null && !authorization.isBlank()) {
+                        request.header("Authorization", authorization);
+                    }
+                })
+                .build();
+        return McpClient.sync(transport)
+                .requestTimeout(timeout)
+                .initializationTimeout(timeout)
+                .clientInfo(new McpSchema.Implementation(CLIENT_NAME, CLIENT_VERSION))
+                .build();
+    }
+
+    private static void ensureCatalogSize(List<McpToolDescriptor> tools) {
+        String serialized = JsonSupport.write(tools);
+        if (serialized.getBytes(StandardCharsets.UTF_8).length > MAX_CATALOG_BYTES) {
+            throw AiExceptions.unprocessable(ErrorCodes.MCP_INIT_FAILED, "MCP 工具目录超过 2 MiB 上限");
+        }
+    }
+
+    private static String rootMessage(Throwable exception) {
+        Throwable root = exception;
+        while (root.getCause() != null && root.getCause() != root) {
+            root = root.getCause();
+        }
+        String message = root.getMessage();
+        return message == null || message.isBlank() ? root.getClass().getSimpleName() : message;
+    }
+
+    private static void closeQuietly(McpSyncClient client) {
+        if (client == null) {
+            return;
+        }
+        try {
+            client.closeGracefully();
+        } catch (RuntimeException exception) {
+            try {
+                client.close();
+            } catch (RuntimeException ignored) {
+                log.debug("MCP 探测客户端关闭失败", exception);
             }
         }
     }
-
-    private List<McpToolDescriptor> listAll(McpSyncClient client) {
-        List<McpToolDescriptor> tools = new ArrayList<>();
-        Set<String> cursors = new HashSet<>();
-        String cursor = null;
-        for (int page = 0; page < MAX_PAGES; page++) {
-            McpSchema.ListToolsResult result = cursor == null ? client.listTools() : client.listTools(cursor);
-            for (McpSchema.Tool tool : result.tools()) {
-                tools.add(descriptor(tool));
-                if (tools.size() > MAX_TOOLS) {
-                    throw AiExceptions.unprocessable(ErrorCodes.MCP_INIT_FAILED, "MCP 工具数量超过 200 上限");
-                }
-            }
-            cursor = result.nextCursor();
-            if (cursor == null || cursor.isBlank()) {
-                return List.copyOf(tools);
-            }
-            if (!cursors.add(cursor)) {
-                throw AiExceptions.unprocessable(ErrorCodes.MCP_INIT_FAILED, "MCP 工具分页游标重复");
-            }
-        }
-        throw AiExceptions.unprocessable(ErrorCodes.MCP_INIT_FAILED, "MCP 工具分页超过 20 页上限");
-    }
-
-    private static McpToolDescriptor descriptor(McpSchema.Tool tool) {
-        Map<String, Object> input = inputSchema(tool.inputSchema());
-        Map<String, Object> output = tool.outputSchema() == null ? Map.of() : new LinkedHashMap<>(tool.outputSchema());
-        Map<String, Object> annotations = annotations(tool.annotations());
-        boolean readOnly = Boolean.TRUE.equals(annotations.get("readOnlyHint"));
-        return new McpToolDescriptor(
-                tool.name(),
-                tool.description() == null ? "" : tool.description(),
-                input,
-                output,
-                annotations,
-                ComponentDigests.mcpTool(input),
-                readOnly);
-    }
-
-    private static Map<String, Object> inputSchema(McpSchema.JsonSchema schema) {
-        if (schema == null) {
-            return Map.of();
-        }
-        Map<String, Object> input = new LinkedHashMap<>();
-        input.put("type", schema.type() == null ? "object" : schema.type());
-        input.put("properties", schema.properties() == null ? Map.of() : schema.properties());
-        if (schema.required() != null) {
-            input.put("required", schema.required());
-        }
-        if (schema.additionalProperties() != null) {
-            input.put("additionalProperties", schema.additionalProperties());
-        }
-        if (schema.defs() != null && !schema.defs().isEmpty()) {
-            input.put("$defs", schema.defs());
-        }
-        if (schema.definitions() != null && !schema.definitions().isEmpty()) {
-            input.put("definitions", schema.definitions());
-        }
-        return input;
-    }
-
-    private static Map<String, Object> annotations(McpSchema.ToolAnnotations annotations) {
-        if (annotations == null) {
-            return Map.of();
-        }
-        Map<String, Object> data = new LinkedHashMap<>();
-        if (annotations.title() != null) {
-            data.put("title", annotations.title());
-        }
-        if (annotations.readOnlyHint() != null) {
-            data.put("readOnlyHint", annotations.readOnlyHint());
-        }
-        if (annotations.destructiveHint() != null) {
-            data.put("destructiveHint", annotations.destructiveHint());
-        }
-        if (annotations.idempotentHint() != null) {
-            data.put("idempotentHint", annotations.idempotentHint());
-        }
-        if (annotations.openWorldHint() != null) {
-            data.put("openWorldHint", annotations.openWorldHint());
-        }
-        return data;
-    }
-
-    public record ProbeResult(
-            String serverName,
-            String serverVersion,
-            String protocolVersion,
-            List<McpToolDescriptor> tools,
-            long latencyMs) {}
 }

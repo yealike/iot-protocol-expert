@@ -18,6 +18,8 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import top.yealike.pep.control.agents.domain.SkillComponent;
 import top.yealike.pep.control.agents.domain.SkillDraftFile;
+import top.yealike.pep.control.agents.skill.domain.Metadata;
+import top.yealike.pep.control.agents.skill.domain.Validation;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
 import top.yealike.pep.runtime.contract.Digests;
@@ -46,8 +48,7 @@ class SkillServicePublicationTest {
         when(store.files(skillId)).thenReturn(List.of(file));
         when(publications.findByIdempotency("SKILL", skillId, "key")).thenReturn(Optional.empty());
         when(validator.validate(eq("test-skill"), any()))
-                .thenReturn(new SkillValidator.Validation(
-                        List.of(), List.of(), new SkillValidator.Metadata("test-skill", "test", Map.of())));
+                .thenReturn(new Validation(List.of(), List.of(), new Metadata("test-skill", "test", Map.of())));
         when(store.findRelease("test-skill", "1.0.0")).thenReturn(Optional.empty());
         when(publications.nextGeneration("SKILL", skillId)).thenReturn(8L);
         when(store.insertRelease(

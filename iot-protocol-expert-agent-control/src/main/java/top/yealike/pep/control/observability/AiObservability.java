@@ -68,7 +68,6 @@ public class AiObservability {
         };
     }
 
-
     private TraceContext parseTraceparent(String value) {
         if (value == null) return null;
         var match = TRACEPARENT.matcher(value);

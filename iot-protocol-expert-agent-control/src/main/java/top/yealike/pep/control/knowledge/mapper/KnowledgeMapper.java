@@ -64,10 +64,4 @@ public interface KnowledgeMapper {
             @Param("dimensions") int dimensions,
             @Param("chunkSize") int chunkSize,
             @Param("overlap") int overlap);
-
-    Integer countDocuments();
-
-    Integer countPublishedDocuments();
-
-    Integer countChunks();
 }

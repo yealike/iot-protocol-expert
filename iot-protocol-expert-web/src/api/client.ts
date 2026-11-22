@@ -1,11 +1,9 @@
 import type {
-  AiAgentBindingsUpdate,
   AiAgentCatalogItem,
   AiAgentCompileResult,
   AiAgentComponent,
   AiAgentCreate,
   AiAgentDetail,
-  AiAgentRelease,
   AiAgentUpdate,
   AiConversation,
   AiConversationDetail,
@@ -410,15 +408,11 @@ export const api = {
 
   aiAgents: () => aiRequest<AiAgentComponent[]>('/agents'),
   aiAgent: (id: string) => aiRequest<AiAgentDetail>(`/agents/${encodeURIComponent(id)}`),
-  aiAgentReleases: (id: string) =>
-    aiRequest<AiAgentRelease[]>(`/agents/${encodeURIComponent(id)}/releases`),
   aiCreateAgent: (body: AiAgentCreate) => aiRequest<AiAgentComponent>('/agents', aiJson(body)),
   aiUpdateAgent: (id: string, body: AiAgentUpdate) =>
     aiRequest<AiAgentComponent>(`/agents/${encodeURIComponent(id)}`, aiJson(body, 'PUT')),
   aiDeleteAgent: (id: string) =>
     aiRequest<void>(`/agents/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  aiUpdateAgentBindings: (id: string, body: AiAgentBindingsUpdate) =>
-    aiRequest<AiAgentDetail>(`/agents/${encodeURIComponent(id)}/bindings`, aiJson(body, 'PUT')),
   aiValidateAgent: (id: string) =>
     aiRequest<AiAgentCompileResult>(`/agents/${encodeURIComponent(id)}/validate`, {
       method: 'POST'
@@ -478,8 +472,6 @@ export const api = {
         method: 'POST'
       }
     ),
-  aiRun: (runId: string) => aiRequest<AiRun>(`/runs/${encodeURIComponent(runId)}`),
-
   myQuota: () => request<QuotaSnapshot>('/api/control/v1/me/quota'),
   myUsage: (limit = 100) => request<UsageItem[]>(`/api/control/v1/me/usage?limit=${limit}`),
   quotaSubjects: (scopeKind: QuotaGrantRequest['scopeKind'], query: string) =>

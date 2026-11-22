@@ -2,7 +2,6 @@ package top.yealike.pep.control.api.ai;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -19,11 +18,13 @@ import org.springframework.web.bind.annotation.RestController;
 import top.yealike.pep.control.access.CurrentUser;
 import top.yealike.pep.control.agents.AgentService;
 import top.yealike.pep.control.agents.domain.AgentCatalogItem;
-import top.yealike.pep.control.conversations.ConversationRecords.Conversation;
+import top.yealike.pep.control.api.ai.dto.CreateConversation;
+import top.yealike.pep.control.api.ai.dto.SubmitRun;
 import top.yealike.pep.control.conversations.ConversationService;
+import top.yealike.pep.control.conversations.domain.Conversation;
 import top.yealike.pep.control.runs.ConversationRunViewService;
-import top.yealike.pep.control.runs.RunRecords.Run;
 import top.yealike.pep.control.runs.RunService;
+import top.yealike.pep.control.runs.domain.Run;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
 /** 会话与 Run 的 HTTP 契约：提交与事件流分离，提交负责幂等，事件流负责续传。 */
@@ -47,27 +48,6 @@ public class ConversationController {
         this.runs = runs;
         this.agents = agents;
     }
-
-    public record CreateConversation(
-            @Schema(description = "Agent 唯一标识", example = "protocol-expert")
-            String agentKey,
-
-            @Schema(description = "指定已发布版本；省略时使用当前可用版本", example = "1.0.0")
-            String version,
-
-            @Schema(description = "会话标题；省略时由服务端生成") String title) {}
-
-    public record SubmitRun(
-            @Schema(description = "本轮用户输入；优先使用此字段", example = "分析这条协议报文")
-            String content,
-
-            @Schema(description = "兼容旧客户端的用户问题字段") String question,
-
-            @Schema(description = "客户端生成的幂等键，用于安全重试", example = "6d44b82c-...")
-            String idempotencyKey,
-
-            @Schema(description = "任务优先级；当前仅支持 100", example = "100")
-            Integer priority) {}
 
     @GetMapping("/agent-catalog")
     @Operation(summary = "查询可用 Agent", description = "返回当前用户有权使用且已发布的 Agent 目录")
@@ -124,28 +104,10 @@ public class ConversationController {
         return ResponseEntity.accepted().body(runs.toView(run));
     }
 
-    @GetMapping("/runs/{id}")
-    @Operation(summary = "查询 Run 状态")
-    public Object run(@Parameter(description = "Run ID") @PathVariable UUID id) {
-        UserIdentity identity = CurrentUser.require();
-        return runs.view(identity, id);
-    }
-
     @PostMapping("/runs/{id}/cancel")
     @Operation(summary = "取消 Run", description = "发出协作式取消请求；已发送到外部工具的请求不保证撤回")
     public Map<String, Object> cancel(@Parameter(description = "Run ID") @PathVariable UUID id) {
         String status = runs.cancel(CurrentUser.require(), id);
         return Map.of("ok", true, "status", status, "note", "已发出的外部请求不保证远端未执行；工具调用状态可能为 UNKNOWN");
-    }
-
-    @GetMapping("/conversations/{id}/runs")
-    @Operation(summary = "查询对话运行历史")
-    public List<Run> history(
-            @Parameter(description = "会话 ID") @PathVariable UUID id,
-            @Parameter(description = "最多返回条数，范围 1 到 100", example = "20") @RequestParam(defaultValue = "20")
-                    int limit) {
-        UserIdentity identity = CurrentUser.require();
-        conversations.require(identity, id);
-        return runs.history(id, limit);
     }
 }

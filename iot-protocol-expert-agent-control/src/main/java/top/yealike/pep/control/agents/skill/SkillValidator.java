@@ -13,6 +13,8 @@ import org.yaml.snakeyaml.LoaderOptions;
 import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 import top.yealike.pep.control.agents.domain.CompileIssue;
+import top.yealike.pep.control.agents.skill.domain.Metadata;
+import top.yealike.pep.control.agents.skill.domain.Validation;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.SkillFile;
 
@@ -202,24 +204,5 @@ public class SkillValidator {
             end--;
         }
         return path.substring(0, end);
-    }
-
-    public record Metadata(
-            String name,
-            String description,
-            Map<String, String> metadata,
-            String license,
-            String compatibility,
-            String allowedTools) {
-        public Metadata(String name, String description, Map<String, String> metadata) {
-            this(name, description, metadata, null, null, null);
-        }
-    }
-
-    public record Validation(List<CompileIssue> errors, List<CompileIssue> warnings, Metadata metadata) {
-        public Validation {
-            errors = List.copyOf(errors);
-            warnings = List.copyOf(warnings);
-        }
     }
 }

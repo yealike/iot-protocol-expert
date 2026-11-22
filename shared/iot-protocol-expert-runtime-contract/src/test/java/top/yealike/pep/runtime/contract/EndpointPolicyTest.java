@@ -14,6 +14,15 @@ class EndpointPolicyTest {
     }
 
     @Test
+    void resolvesEndpointWithoutReparsingTheUriString() {
+        ComponentEndpoint endpoint = EndpointPolicy.requireAllowedResolved("HTTPS://10.0.0.8:8443/mcp?tenant=1");
+
+        assertThat(endpoint.baseUrl()).isEqualTo("https://10.0.0.8:8443");
+        assertThat(endpoint.path()).isEqualTo("/mcp");
+        assertThat(endpoint.query()).isEqualTo("tenant=1");
+    }
+
+    @Test
     void rejectsLoopbackLinkLocalMulticastAndMetadataAddresses() {
         for (String endpoint : new String[] {
             "http://2852039166/",

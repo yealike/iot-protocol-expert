@@ -4,7 +4,8 @@ import java.net.URI;
 import java.util.List;
 import java.util.Set;
 import org.springframework.stereotype.Component;
-import top.yealike.pep.control.config.AiProperties;
+import top.yealike.pep.control.config.properties.AiProperties;
+import top.yealike.pep.control.integration.dto.Snapshot;
 
 /** 系统级 OPS 工具入口由部署配置指向 Higress；组件版本由平台发布清单管理。 */
 @Component
@@ -58,7 +59,4 @@ public class McpEndpointResolver {
         }
         return uri;
     }
-
-    public record Snapshot(
-            String serverName, String version, URI endpoint, Set<String> tools, String source, String problem) {}
 }

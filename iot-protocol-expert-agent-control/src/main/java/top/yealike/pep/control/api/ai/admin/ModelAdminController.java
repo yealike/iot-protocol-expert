@@ -2,9 +2,7 @@ package top.yealike.pep.control.api.ai.admin;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.media.Schema;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,6 +15,10 @@ import org.springframework.web.bind.annotation.RestController;
 import top.yealike.pep.control.access.CurrentUser;
 import top.yealike.pep.control.agents.credential.CredentialService;
 import top.yealike.pep.control.agents.model.ModelProfileService;
+import top.yealike.pep.control.api.ai.admin.dto.CredentialCreate;
+import top.yealike.pep.control.api.ai.admin.dto.CredentialRotate;
+import top.yealike.pep.control.api.ai.admin.dto.ModelCreate;
+import top.yealike.pep.control.api.ai.admin.dto.ModelUpdate;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
 /** 模型配置与供应商凭据管理。 */
@@ -98,31 +100,4 @@ public class ModelAdminController {
         UserIdentity actor = CurrentUser.require();
         return credentials.summary(credentials.rotate(actor, id, request.secret()));
     }
-
-    public record CredentialCreate(
-            @Schema(description = "凭据唯一键") String key,
-            @Schema(description = "凭据显示名称") String displayName,
-            @Schema(description = "供应商 API 密钥；只在本次请求中传递") String secret) {}
-
-    public record CredentialRotate(
-            @Schema(description = "新的供应商 API 密钥") String secret) {}
-
-    public record ModelCreate(
-            @Schema(description = "模型配置唯一键") String key,
-            @Schema(description = "模型显示名称") String displayName,
-            @Schema(description = "用途说明") String description,
-            @Schema(description = "OpenAI 兼容 API 根地址") String baseUrl,
-            @Schema(description = "供应商模型名称") String modelName,
-            @Schema(description = "关联的凭据 ID") UUID credentialId,
-            @Schema(description = "模型调用参数") Map<String, Object> options) {}
-
-    public record ModelUpdate(
-            long expectedRevision,
-            String displayName,
-            String description,
-            String baseUrl,
-            String modelName,
-            UUID credentialId,
-            Map<String, Object> options,
-            boolean enabled) {}
 }

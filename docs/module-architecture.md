@@ -23,19 +23,24 @@ OPS 的 Java 包为 `top.yealike.pep.ops`，Agent 控制面保留 `top.yealike.p
 | 包 / 目录 | 职责 |
 | --- | --- |
 | `api.ai`、`api.ai.admin`、`api.internal`、`api.control` | 用户、管理员和内部 HTTP 契约；不承载业务规则 |
+| `api.*.dto` | HTTP 请求体等传输结构；与 Controller 相邻放置但在独立叶子包中维护 |
 | `agents` | Agent、MCP、Skill、模型、凭据、发布与注册投影；`agents.domain` 只放跨包使用的领域记录 |
 | `runs` | Run 生命周期、调度、Runtime 回调、事件广播和历史 |
 | `conversations` | 会话与消息持久化；不反向依赖 Run |
 | `knowledge` | 协议文档索引与检索 |
 | `access` | 用户身份、站点范围和 `access.policy` 授权策略 |
 | `integration` | OPS、Runtime、Nacos 和 MCP 网关等外部适配器 |
-| `config`、`audit`、`mybatis`、`support`、`observability` | 配置、审计、MyBatis 类型处理与通用基础设施 |
+| `config`、`config.properties`、`audit`、`mybatis`、`support`、`observability` | 基础设施配置；`config.properties` 只放 Spring 配置绑定记录 |
 
 依赖方向固定为 `api -> 功能服务 -> store/mapper`，跨功能只允许调用明确的应用服务；外部系统调用只能放在
 `integration`。Mapper 只依赖叶子 `domain` 包中的行记录（如 `agents.domain`、`knowledge.domain`、
 `access.policy.domain`），不得反向依赖 Service、Store 或 Repository。`agents` 不依赖 `runs`；会话详情所需的
 当前 Run 由 `runs.ConversationRunViewService` 组装，避免 `conversations` 与 `runs` 双向引用。
 `ConversationChannels` 属于 Run 事件广播，保留在 `runs`。
+
+各功能包遵循同一归置规则：领域模型、查询行和服务结果放 `domain`，HTTP 或外部传输结构放 `dto`，
+Spring 配置绑定放 `config.properties`；Controller、Service、Store、Mapper 等主体代码不再内嵌公共 record。
+仅在强耦合且不跨包使用时，才允许保留 private 内部 record。
 
 ```mermaid
 flowchart LR

@@ -4,6 +4,7 @@ import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import top.yealike.pep.control.agents.credential.domain.Encrypted;
 import top.yealike.pep.control.agents.domain.Credential;
 import top.yealike.pep.control.agents.domain.CredentialSecret;
 import top.yealike.pep.control.agents.store.CredentialStore;
@@ -91,7 +92,7 @@ public class CredentialService {
 
     private void rotateInternal(Credential credential, String secret) {
         long revision = credential.currentSecretRevision() + 1;
-        CredentialCipher.Encrypted encrypted = cipher.encrypt(credential.id().toString(), revision, secret);
+        Encrypted encrypted = cipher.encrypt(credential.id().toString(), revision, secret);
         store.insertSecret(
                 credential.id(), revision, encrypted.ciphertext(), encrypted.nonce(), encrypted.keyId(), "system");
     }

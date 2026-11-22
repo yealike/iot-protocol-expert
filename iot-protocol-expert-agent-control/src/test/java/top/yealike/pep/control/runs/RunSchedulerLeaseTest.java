@@ -17,13 +17,19 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import top.yealike.pep.control.access.policy.PolicyService;
+import top.yealike.pep.control.access.policy.domain.Decision;
 import top.yealike.pep.control.agents.AgentService;
 import top.yealike.pep.control.agents.domain.AgentRelease;
-import top.yealike.pep.control.config.AiProperties;
-import top.yealike.pep.control.config.PlatformProperties;
+import top.yealike.pep.control.config.properties.AiProperties;
+import top.yealike.pep.control.config.properties.AiRun;
+import top.yealike.pep.control.config.properties.PlatformProperties;
+import top.yealike.pep.control.config.properties.PlatformRuntime;
+import top.yealike.pep.control.config.properties.PlatformSecurity;
 import top.yealike.pep.control.integration.runtime.RuntimeDispatchClient;
+import top.yealike.pep.control.integration.runtime.dto.DispatchResult;
+import top.yealike.pep.control.integration.runtime.dto.RuntimeTarget;
 import top.yealike.pep.control.observability.AiObservability;
-import top.yealike.pep.control.runs.RunRecords.Run;
+import top.yealike.pep.control.runs.domain.Run;
 import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.runtime.contract.RuntimeRunStatus;
 
@@ -113,10 +119,10 @@ class RunSchedulerLeaseTest {
                 runtime,
                 new PlatformProperties(
                         null,
-                        new PlatformProperties.Security(null, null, "control", "runtime", null, "test", 15),
-                        new PlatformProperties.Runtime(3, 30, 100, 2, 1, null),
+                        new PlatformSecurity(null, null, "control", "runtime", null, "test", 15),
+                        new PlatformRuntime(3, 30, 100, 2, 1, null),
                         null),
-                new AiProperties("test", null, 0, null, null, new AiProperties.Run(4, 6, 12, 120_000, 20), null),
+                new AiProperties("test", null, 0, null, null, new AiRun(4, 6, 12, 120_000, 20), null),
                 observability);
     }
 
@@ -131,7 +137,7 @@ class RunSchedulerLeaseTest {
         when(runs.bindDispatchTarget(run.id(), run.executionToken(), target.instanceId(), 30))
                 .thenReturn(true);
         when(runtime.dispatch(eq(target), eq(run.agentKey()), eq(run.agentVersion()), any()))
-                .thenReturn(new RuntimeDispatchClient.DispatchResult(
+                .thenReturn(new DispatchResult(
                         false, 422, null, ErrorCodes.SCHEMA_DRIFT, "MCP 工具 Schema 已漂移：read_document"));
         String reason = "MCP 工具 Schema 已漂移：read_document。请联系管理员核对 MCP 工具并发布新的 Agent 版本。";
         when(runs.failDispatch(run.id(), run.executionToken(), ErrorCodes.SCHEMA_DRIFT, reason))
@@ -156,8 +162,7 @@ class RunSchedulerLeaseTest {
         when(runs.dispatchRetries(10)).thenReturn(List.of(run));
         when(runs.claimDispatchRetry(run, 30)).thenReturn(true);
         when(runtime.dispatch(eq(target), eq(run.agentKey()), eq(run.agentVersion()), any()))
-                .thenReturn(new RuntimeDispatchClient.DispatchResult(
-                        false, 409, null, ErrorCodes.RELEASE_NOT_ACTIVE, "未准备"));
+                .thenReturn(new DispatchResult(false, 409, null, ErrorCodes.RELEASE_NOT_ACTIVE, "未准备"));
 
         scheduler().tick();
 
@@ -175,12 +180,12 @@ class RunSchedulerLeaseTest {
         Run run =
                 run("DISPATCHING", Instant.now().plusSeconds(30), Instant.now().plusSeconds(60), Instant.now(), 1);
         dispatchTarget(run);
-        var target = new RuntimeDispatchClient.RuntimeTarget("http://localhost:19084", "direct", "direct");
+        var target = new RuntimeTarget("http://localhost:19084", "direct", "direct");
         when(runtime.targets()).thenReturn(List.of(target));
         when(runs.dispatchRetries(10)).thenReturn(List.of(run));
         when(runs.claimDispatchRetry(run, 30)).thenReturn(true);
         when(runtime.dispatch(eq(target), eq(run.agentKey()), eq(run.agentVersion()), any()))
-                .thenReturn(new RuntimeDispatchClient.DispatchResult(false, 503, null, "RUNTIME_UNAVAILABLE", ""));
+                .thenReturn(new DispatchResult(false, 503, null, "RUNTIME_UNAVAILABLE", ""));
         when(runtime.status(target, run.id(), run.executionToken()))
                 .thenReturn(new RuntimeRunStatus(
                         run.id(), run.executionToken(), "RUNNING", run.runtimeInstanceId(), null, null, null, null));
@@ -190,7 +195,7 @@ class RunSchedulerLeaseTest {
         verify(runs).markRunning(run.id(), run.executionToken(), run.runtimeInstanceId(), 30);
     }
 
-    private RuntimeDispatchClient.RuntimeTarget dispatchTarget(Run run) {
+    private RuntimeTarget dispatchTarget(Run run) {
         var release = new AgentRelease(
                 run.agentReleaseId(),
                 UUID.randomUUID(),
@@ -203,8 +208,8 @@ class RunSchedulerLeaseTest {
                 1,
                 Instant.now());
         when(agents.release(run.agentReleaseId())).thenReturn(release);
-        when(policy.canUseAgent(any(), eq(run.agentKey()))).thenReturn(new PolicyService.Decision(true, "", ""));
-        var target = new RuntimeDispatchClient.RuntimeTarget("http://localhost:19084", run.runtimeInstanceId(), "test");
+        when(policy.canUseAgent(any(), eq(run.agentKey()))).thenReturn(new Decision(true, "", ""));
+        var target = new RuntimeTarget("http://localhost:19084", run.runtimeInstanceId(), "test");
         when(runtime.targets()).thenReturn(List.of(target));
         return target;
     }

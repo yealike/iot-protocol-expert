@@ -19,7 +19,8 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 import top.yealike.pep.control.api.internal.mapper.InternalControlMapper;
-import top.yealike.pep.control.config.PlatformProperties;
+import top.yealike.pep.control.config.properties.PlatformProperties;
+import top.yealike.pep.control.config.properties.PlatformSecurity;
 import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.runtime.contract.InternalPaths;
 import top.yealike.pep.runtime.contract.InternalRequestBodies;
@@ -49,7 +50,7 @@ public class InternalSignatureFilter extends OncePerRequestFilter {
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        PlatformProperties.Security security = properties.security();
+        PlatformSecurity security = properties.security();
         String secret = security.internalServiceKey();
         if (secret == null || secret.isBlank()) {
             reject(response, HttpServletResponse.SC_SERVICE_UNAVAILABLE, "内部服务密钥未配置");

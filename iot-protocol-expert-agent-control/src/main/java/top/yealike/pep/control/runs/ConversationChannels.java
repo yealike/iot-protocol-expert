@@ -4,10 +4,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CopyOnWriteArraySet;
 import java.util.function.Consumer;
 import org.springframework.stereotype.Service;
-import top.yealike.pep.control.runs.RunRecords.RunEvent;
+import top.yealike.pep.control.runs.domain.RunEvent;
 
 /**
  * 单实例内的会话事件广播。
@@ -18,7 +17,6 @@ import top.yealike.pep.control.runs.RunRecords.RunEvent;
 public class ConversationChannels {
 
     private final Map<UUID, Set<Consumer<RunEvent>>> listeners = new ConcurrentHashMap<>();
-
 
     public void publish(RunEvent event) {
         Set<Consumer<RunEvent>> set = listeners.get(event.conversationId());

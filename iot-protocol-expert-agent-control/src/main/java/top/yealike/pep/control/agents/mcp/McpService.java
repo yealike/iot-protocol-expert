@@ -14,6 +14,9 @@ import top.yealike.pep.control.agents.domain.McpComponent;
 import top.yealike.pep.control.agents.domain.McpRelease;
 import top.yealike.pep.control.agents.domain.McpTestReport;
 import top.yealike.pep.control.agents.domain.McpToolPolicy;
+import top.yealike.pep.control.agents.mcp.domain.CatalogEntry;
+import top.yealike.pep.control.agents.mcp.domain.ProbeResult;
+import top.yealike.pep.control.agents.mcp.domain.PublishResult;
 import top.yealike.pep.control.agents.store.CredentialStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
@@ -177,28 +180,13 @@ public class McpService {
                 .orElseThrow(() -> AiExceptions.unavailable("MCP 工具审核记录保存失败"));
     }
 
-    public List<McpToolDescriptor> readOnlyTools(McpRelease release) {
-        Map<String, McpToolExecutionCategory> policies = store.toolCategories(release.componentId());
-        return release.tools().stream()
-                .filter(tool -> policies.getOrDefault(tool.name(), McpToolExecutionCategory.UNKNOWN)
-                        .readOnly())
-                .toList();
-    }
-
-    public boolean isReadOnlyApproved(UUID mcpId, String toolName) {
-        return store.toolCategories(mcpId)
-                .getOrDefault(toolName, McpToolExecutionCategory.UNKNOWN)
-                .readOnly();
-    }
-
     public Map<String, Object> test(UUID id) {
         McpComponent component = require(id);
         Resolved resolved = resolve(component);
         String configDigest = configDigest(component, resolved.endpoint());
         long started = System.nanoTime();
         try {
-            McpProbe.ProbeResult result =
-                    probe.probe(resolved.endpoint(), resolved.authorization(), timeoutMs(component));
+            ProbeResult result = probe.probe(resolved.endpoint(), resolved.authorization(), timeoutMs(component));
             if (result.tools().isEmpty()) {
                 throw AiExceptions.unprocessable(ErrorCodes.MCP_INIT_FAILED, "MCP 未提供任何工具，禁止发布");
             }
@@ -430,7 +418,7 @@ public class McpService {
             String serverName = String.valueOf(component.nativeRegistryRef().getOrDefault("serverName", ""));
             String namespace = String.valueOf(component.nativeRegistryRef().getOrDefault("namespace", ""));
             String version = String.valueOf(component.nativeRegistryRef().getOrDefault("version", ""));
-            NacosMcpCatalogService.CatalogEntry entry = nativeCatalog.fetch(serverName, namespace, version);
+            CatalogEntry entry = nativeCatalog.fetch(serverName, namespace, version);
             return new Resolved(validatedEndpoint(entry.endpoint()), authorization(component));
         }
         Object endpoint = component.draft().get("endpoint");
@@ -503,7 +491,7 @@ public class McpService {
                 "endpoint", endpoint));
     }
 
-    private List<String> nativeWarnings(McpComponent component, McpProbe.ProbeResult result) {
+    private List<String> nativeWarnings(McpComponent component, ProbeResult result) {
         if (!"NATIVE_REGISTRY".equals(component.origin()) || component.draft().get("endpoint") instanceof String) {
             return List.of();
         }
@@ -585,8 +573,6 @@ public class McpService {
         String[] parts = current.split("\\.");
         return parts[0] + "." + parts[1] + "." + (Integer.parseInt(parts[2]) + 1);
     }
-
-    public record PublishResult(UUID releaseId, UUID publicationId, String version, String catalogDigest) {}
 
     private record Resolved(String endpoint, String authorization) {}
 }

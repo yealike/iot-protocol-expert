@@ -7,6 +7,8 @@ import java.util.Locale;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import top.yealike.pep.control.knowledge.domain.Chunk;
+import top.yealike.pep.control.knowledge.domain.Page;
 
 /**
  * 协议文档分块器。
@@ -29,15 +31,6 @@ public final class TextChunker {
             "表示", "使用", "该字段", "如下");
 
     private TextChunker() {}
-
-    public record Chunk(
-            int chunkNo,
-            String sectionPath,
-            Integer pageNo,
-            String content,
-            String normalized,
-            String keywords,
-            int tokenCount) {}
 
     /**
      * @param pages 已按页抽取的文本；非 PDF 文档传单页即可，页码传 null 表示不可用
@@ -92,8 +85,6 @@ public final class TextChunker {
         }
         return chunks;
     }
-
-    public record Page(Integer pageNo, String text) {}
 
     private static int flush(
             List<Chunk> chunks,

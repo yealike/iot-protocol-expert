@@ -30,8 +30,12 @@ import top.yealike.pep.control.agents.store.AgentStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
-import top.yealike.pep.control.config.PlatformProperties;
+import top.yealike.pep.control.config.properties.PlatformProperties;
+import top.yealike.pep.control.config.properties.PlatformRuntime;
+import top.yealike.pep.control.config.properties.PlatformSecurity;
 import top.yealike.pep.control.integration.runtime.RuntimeDispatchClient;
+import top.yealike.pep.control.integration.runtime.dto.PrepareResult;
+import top.yealike.pep.control.integration.runtime.dto.RuntimeTarget;
 import top.yealike.pep.runtime.contract.InternalPaths;
 import top.yealike.pep.runtime.contract.ReleasePrepareRequest;
 
@@ -109,8 +113,8 @@ class PublicationCoordinatorTransactionTest {
         try {
             var properties = new PlatformProperties(
                     null,
-                    new PlatformProperties.Security(null, null, "control", "runtime", "test-key", "test", 15),
-                    new PlatformProperties.Runtime(
+                    new PlatformSecurity(null, null, "control", "runtime", "test-key", "test", 15),
+                    new PlatformRuntime(
                             3,
                             30,
                             100,
@@ -163,11 +167,11 @@ class PublicationCoordinatorTransactionTest {
         var release = new AgentRelease(
                 UUID.randomUUID(), fixture.resourceId, "demo", "1.1.3", null, "digest", "STAGED", 1L, 1L, now);
         var runtime = mock(RuntimeDispatchClient.class);
-        var target = new RuntimeDispatchClient.RuntimeTarget("http://localhost:19084", "direct", "direct");
+        var target = new RuntimeTarget("http://localhost:19084", "direct", "direct");
         var request = new ReleasePrepareRequest(release.id(), "digest", 1L, publication.id());
         when(runtime.targets()).thenReturn(List.of(target));
         when(runtime.prepare(target, request))
-                .thenReturn(new RuntimeDispatchClient.PrepareResult(true, "READY", "runtime-1", null, null, 200));
+                .thenReturn(new PrepareResult(true, "READY", "runtime-1", null, null, 200));
         when(fixture.publications.claimPending(anyString(), anyInt(), anyInt())).thenReturn(List.of(publication));
         when(fixture.agents.releases(fixture.resourceId)).thenReturn(List.of(release));
         when(fixture.agents.setReleaseState(release.id(), "ACTIVE")).thenReturn(1);

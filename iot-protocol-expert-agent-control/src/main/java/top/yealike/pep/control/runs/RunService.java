@@ -8,15 +8,18 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.pep.control.access.policy.PolicyService;
+import top.yealike.pep.control.access.policy.domain.Decision;
 import top.yealike.pep.control.agents.AgentService;
 import top.yealike.pep.control.agents.domain.AgentRelease;
-import top.yealike.pep.control.config.PlatformProperties;
-import top.yealike.pep.control.conversations.ConversationRecords.Conversation;
+import top.yealike.pep.control.config.properties.PlatformProperties;
+import top.yealike.pep.control.config.properties.PlatformRuntime;
 import top.yealike.pep.control.conversations.ConversationRepository;
+import top.yealike.pep.control.conversations.domain.Conversation;
 import top.yealike.pep.control.integration.runtime.RuntimeDispatchClient;
+import top.yealike.pep.control.integration.runtime.dto.RuntimeTarget;
 import top.yealike.pep.control.observability.AiObservability;
-import top.yealike.pep.control.runs.RunRecords.Run;
-import top.yealike.pep.control.runs.RunRecords.RunView;
+import top.yealike.pep.control.runs.domain.Run;
+import top.yealike.pep.control.runs.domain.RunView;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
@@ -67,7 +70,7 @@ public class RunService {
             throw AiExceptions.badRequest("问题过长，请控制在 " + MAX_QUESTION_LENGTH + " 字以内");
         }
         Conversation conversation = requireConversation(identity, conversationId);
-        PolicyService.Decision decision = policy.canUseAgent(identity, conversation.agentKey());
+        Decision decision = policy.canUseAgent(identity, conversation.agentKey());
         if (!decision.allowed()) {
             throw AiExceptions.forbidden("AGENT_DENIED", decision.reason());
         }
@@ -149,14 +152,14 @@ public class RunService {
         runs.requestCancel(runId);
         Run current = runs.find(runId).orElseThrow();
         String status = current.status();
-        if (RunRecords.COMPLETED.equals(status) || RunRecords.FAILED.equals(status)) return status;
-        if (RunRecords.CANCELLED.equals(status)) {
+        if (RunStatus.COMPLETED.equals(status) || RunStatus.FAILED.equals(status)) return status;
+        if (RunStatus.CANCELLED.equals(status)) {
             events.publish(
                     run.conversationId(), runId, "run.cancelled", Map.of("status", status, "reason", "USER_CANCELLED"));
             return status;
         }
-        if (RunRecords.CANCEL_REQUESTED.equals(status)) {
-            RuntimeDispatchClient.RuntimeTarget target = runtimeTarget(current);
+        if (RunStatus.CANCEL_REQUESTED.equals(status)) {
+            RuntimeTarget target = runtimeTarget(current);
             if (target != null && current.executionToken() > 0) {
                 runtime.cancel(target, runId, current.executionToken());
             }
@@ -167,10 +170,6 @@ public class RunService {
                     Map.of("status", status, "note", "已通知执行实例停止；外部工具调用不保证物理未发生"));
         }
         return status;
-    }
-
-    public RunView view(UserIdentity identity, UUID runId) {
-        return toView(requireRun(identity, runId));
     }
 
     public RunView toView(Run run) {
@@ -200,7 +199,7 @@ public class RunService {
     }
 
     private void enforceQuota(UserIdentity identity, UUID conversationId) {
-        PlatformProperties.Runtime quota = platform.runtime();
+        PlatformRuntime quota = platform.runtime();
         int globalQueued = runs.countQueued();
         if (globalQueued >= quota.queueLimit()) {
             throw new AiExceptions.AiException(429, "RUN_QUEUE_FULL", "全局排队任务已达上限，请稍后重试");
@@ -233,11 +232,7 @@ public class RunService {
         return run;
     }
 
-    public List<Run> history(UUID conversationId, int limit) {
-        return runs.listByConversation(conversationId, Math.min(Math.max(limit, 1), 100));
-    }
-
-    private RuntimeDispatchClient.RuntimeTarget runtimeTarget(Run run) {
+    private RuntimeTarget runtimeTarget(Run run) {
         var targets = runtime.targets();
         String instanceId = run.runtimeInstanceId();
         if (instanceId == null || instanceId.isBlank()) {

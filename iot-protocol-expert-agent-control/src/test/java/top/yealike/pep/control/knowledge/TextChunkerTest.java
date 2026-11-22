@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import top.yealike.pep.control.knowledge.domain.Chunk;
+import top.yealike.pep.control.knowledge.domain.Page;
 
 class TextChunkerTest {
 
@@ -24,7 +26,7 @@ class TextChunkerTest {
 
                 停止原因取值 0x01 表示用户主动停止。
                 """;
-        List<TextChunker.Chunk> chunks = TextChunker.split(List.of(new TextChunker.Page(1, text)), 300, 40);
+        List<Chunk> chunks = TextChunker.split(List.of(new Page(1, text)), 300, 40);
         assertTrue(chunks.size() >= 1);
         assertTrue(chunks.stream().anyMatch(chunk -> chunk.sectionPath().contains("云快充 1.6 协议")));
         assertTrue(chunks.stream().anyMatch(chunk -> chunk.content().contains("0x3B")));
@@ -37,8 +39,7 @@ class TextChunkerTest {
         for (int i = 0; i < 60; i++) {
             builder.append("这是一段用于测试分块的协议说明文字，包含字段定义与取值范围。\n");
         }
-        List<TextChunker.Chunk> chunks =
-                TextChunker.split(List.of(new TextChunker.Page(null, builder.toString())), 400, 50);
+        List<Chunk> chunks = TextChunker.split(List.of(new Page(null, builder.toString())), 400, 50);
         assertTrue(chunks.size() > 1);
         assertTrue(chunks.stream().allMatch(chunk -> chunk.content().length() <= 900));
         assertTrue(chunks.stream().allMatch(chunk -> chunk.chunkNo() > 0));
@@ -55,8 +56,7 @@ class TextChunkerTest {
 
     @Test
     void pageNumberIsUnavailableForPlainText() {
-        List<TextChunker.Chunk> chunks =
-                TextChunker.split(List.of(new TextChunker.Page(null, "纯文本协议说明，没有任何页码信息。")), 300, 0);
+        List<Chunk> chunks = TextChunker.split(List.of(new Page(null, "纯文本协议说明，没有任何页码信息。")), 300, 0);
         assertEquals(1, chunks.size());
         assertNull(chunks.get(0).pageNo());
     }

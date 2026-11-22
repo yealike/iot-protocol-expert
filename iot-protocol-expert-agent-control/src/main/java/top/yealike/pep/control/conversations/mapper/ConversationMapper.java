@@ -4,8 +4,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
-import top.yealike.pep.control.conversations.ConversationRecords;
-import top.yealike.pep.control.conversations.ConversationRecords.Conversation;
+import top.yealike.pep.control.conversations.domain.Conversation;
+import top.yealike.pep.control.conversations.domain.Message;
 
 public interface ConversationMapper {
 
@@ -44,13 +44,12 @@ public interface ConversationMapper {
             @Param("seq") long seq,
             @Param("createdAt") Instant createdAt);
 
-    List<ConversationRecords.Message> listMessages(
-            @Param("conversationId") UUID conversationId, @Param("limit") int limit);
+    List<Message> listMessages(@Param("conversationId") UUID conversationId, @Param("limit") int limit);
 
-    List<ConversationRecords.Message> listMessagesAfter(
+    List<Message> listMessagesAfter(
             @Param("conversationId") UUID conversationId, @Param("afterSeq") long afterSeq, @Param("limit") int limit);
 
-    List<ConversationRecords.Message> listMessagesThrough(
+    List<Message> listMessagesThrough(
             @Param("conversationId") UUID conversationId,
             @Param("messageId") UUID messageId,
             @Param("limit") int limit);

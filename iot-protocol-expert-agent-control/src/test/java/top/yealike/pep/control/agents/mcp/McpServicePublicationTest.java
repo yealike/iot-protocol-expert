@@ -23,6 +23,7 @@ import top.yealike.pep.control.agents.domain.McpComponent;
 import top.yealike.pep.control.agents.domain.McpRelease;
 import top.yealike.pep.control.agents.domain.McpTestReport;
 import top.yealike.pep.control.agents.domain.Publication;
+import top.yealike.pep.control.agents.mcp.domain.PublishResult;
 import top.yealike.pep.control.agents.store.CredentialStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
@@ -190,7 +191,7 @@ class McpServicePublicationTest {
                 mock(CredentialStore.class),
                 publications);
 
-        McpService.PublishResult result = service.publish(ACTOR, mcpId, null, null, 5L, "key");
+        PublishResult result = service.publish(ACTOR, mcpId, null, null, 5L, "key");
 
         assertThat(result.releaseId()).isEqualTo(releaseId);
         assertThat(result.publicationId()).isEqualTo(publicationId);

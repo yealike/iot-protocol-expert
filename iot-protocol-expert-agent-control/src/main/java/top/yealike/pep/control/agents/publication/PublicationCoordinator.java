@@ -23,6 +23,8 @@ import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
 import top.yealike.pep.control.integration.runtime.RuntimeDispatchClient;
+import top.yealike.pep.control.integration.runtime.dto.PrepareResult;
+import top.yealike.pep.control.integration.runtime.dto.RuntimeTarget;
 import top.yealike.pep.runtime.contract.ComponentNames;
 import top.yealike.pep.runtime.contract.ComponentType;
 import top.yealike.pep.runtime.contract.ErrorCodes;
@@ -209,8 +211,8 @@ public class PublicationCoordinator {
             retry(publication, ErrorCodes.NO_HEALTHY_RUNTIME, "没有可用的 Agent Runtime");
             return Step.RETRY;
         }
-        RuntimeDispatchClient.RuntimeTarget target = targets.getFirst();
-        RuntimeDispatchClient.PrepareResult result = runtime.prepare(
+        RuntimeTarget target = targets.getFirst();
+        PrepareResult result = runtime.prepare(
                 target,
                 new ReleasePrepareRequest(
                         release.id(), release.manifestDigest(), release.generation(), publication.id()));

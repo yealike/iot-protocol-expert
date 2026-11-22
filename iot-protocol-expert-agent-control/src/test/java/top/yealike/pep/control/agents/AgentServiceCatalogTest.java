@@ -14,6 +14,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import top.yealike.pep.control.access.policy.PolicyService;
+import top.yealike.pep.control.access.policy.domain.Decision;
 import top.yealike.pep.control.agents.domain.AgentCatalogItem;
 import top.yealike.pep.control.agents.domain.AgentRelease;
 import top.yealike.pep.control.agents.store.AgentStore;
@@ -32,7 +33,7 @@ class AgentServiceCatalogTest {
         AgentRelease v2 = release("demo-agent", "2.0.0", 2L);
         AgentRelease staleV1 = release("demo-agent", "1.0.0", 1L);
         when(agents.defaultReleases()).thenReturn(List.of(v2, staleV1));
-        when(policy.canUseAgent(any(), eq("demo-agent"))).thenReturn(new PolicyService.Decision(true, "OK", "v1"));
+        when(policy.canUseAgent(any(), eq("demo-agent"))).thenReturn(new Decision(true, "OK", "v1"));
         AgentService service = new AgentService(
                 agents,
                 mock(McpStore.class),

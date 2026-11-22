@@ -120,15 +120,4 @@
         on conflict (id) do nothing
     </insert>
 
-    <select id="countDocuments" resultType="java.lang.Integer">
-        select count(*) from ai_document
-    </select>
-
-    <select id="countPublishedDocuments" resultType="java.lang.Integer">
-        select count(*) from ai_document where status = 'PUBLISHED'
-    </select>
-
-    <select id="countChunks" resultType="java.lang.Integer">
-        select count(*) from ai_chunk
-    </select>
 </mapper>

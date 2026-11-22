@@ -732,12 +732,6 @@ export interface AiAgentSkillBindingInput {
   loadMode: 'AUTO' | 'ALWAYS'
 }
 
-export interface AiAgentBindingsUpdate {
-  expectedRevision: number
-  mcpBindings: AiAgentMcpBindingInput[]
-  skillBindings: AiAgentSkillBindingInput[]
-}
-
 export interface AiAgentRelease {
   id: string
   agentId?: string

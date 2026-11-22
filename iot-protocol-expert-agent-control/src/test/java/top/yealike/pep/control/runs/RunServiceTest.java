@@ -12,13 +12,16 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import top.yealike.pep.control.access.policy.PolicyService;
+import top.yealike.pep.control.access.policy.domain.Decision;
 import top.yealike.pep.control.agents.AgentService;
-import top.yealike.pep.control.config.PlatformProperties;
-import top.yealike.pep.control.conversations.ConversationRecords.Conversation;
+import top.yealike.pep.control.config.properties.PlatformProperties;
+import top.yealike.pep.control.config.properties.PlatformRuntime;
 import top.yealike.pep.control.conversations.ConversationRepository;
+import top.yealike.pep.control.conversations.domain.Conversation;
 import top.yealike.pep.control.integration.runtime.RuntimeDispatchClient;
+import top.yealike.pep.control.integration.runtime.dto.RuntimeTarget;
 import top.yealike.pep.control.observability.AiObservability;
-import top.yealike.pep.control.runs.RunRecords.Run;
+import top.yealike.pep.control.runs.domain.Run;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
@@ -35,7 +38,7 @@ class RunServiceTest {
         AiObservability observability = mock(AiObservability.class);
         passThroughObservability(observability);
         PlatformProperties platform = platform(100, 2, 1);
-        when(policy.canUseAgent(identity(), "agent")).thenReturn(new PolicyService.Decision(true, null, "v1"));
+        when(policy.canUseAgent(identity(), "agent")).thenReturn(new Decision(true, null, "v1"));
         UUID conversationId = UUID.randomUUID();
         when(conversations.find(conversationId)).thenReturn(java.util.Optional.of(conversation(conversationId)));
         RunService service = new RunService(
@@ -68,7 +71,7 @@ class RunServiceTest {
         passThroughObservability(observability);
         UUID conversationId = UUID.randomUUID();
         when(conversations.find(conversationId)).thenReturn(java.util.Optional.of(conversation(conversationId)));
-        when(policy.canUseAgent(identity(), "agent")).thenReturn(new PolicyService.Decision(true, null, "v1"));
+        when(policy.canUseAgent(identity(), "agent")).thenReturn(new Decision(true, null, "v1"));
         when(runs.findByIdempotency(conversationId, "key")).thenReturn(java.util.Optional.empty());
         when(runs.countQueued()).thenReturn(0);
         when(runs.countUserQueued("user", null)).thenReturn(2);
@@ -100,9 +103,9 @@ class RunServiceTest {
         AiObservability observability = mock(AiObservability.class);
         passThroughObservability(observability);
         UUID conversationId = UUID.randomUUID();
-        top.yealike.pep.control.runs.RunRecords.Run existing = mock(top.yealike.pep.control.runs.RunRecords.Run.class);
+        Run existing = mock(Run.class);
         when(conversations.find(conversationId)).thenReturn(java.util.Optional.of(conversation(conversationId)));
-        when(policy.canUseAgent(identity(), "agent")).thenReturn(new PolicyService.Decision(true, null, "v1"));
+        when(policy.canUseAgent(identity(), "agent")).thenReturn(new Decision(true, null, "v1"));
         when(runs.findByIdempotency(conversationId, "key")).thenReturn(java.util.Optional.of(existing));
         RunService service = new RunService(
                 conversations,
@@ -133,7 +136,7 @@ class RunServiceTest {
         passThroughObservability(observability);
         UUID conversationId = UUID.randomUUID();
         when(conversations.find(conversationId)).thenReturn(java.util.Optional.of(conversation(conversationId)));
-        when(policy.canUseAgent(identity(), "agent")).thenReturn(new PolicyService.Decision(true, null, "v1"));
+        when(policy.canUseAgent(identity(), "agent")).thenReturn(new Decision(true, null, "v1"));
         when(runs.findByIdempotency(conversationId, "key")).thenReturn(java.util.Optional.empty());
         when(runs.countQueued()).thenReturn(0);
         when(runs.countUserQueued("user", null)).thenReturn(1);
@@ -167,7 +170,7 @@ class RunServiceTest {
         passThroughObservability(observability);
         UUID conversationId = UUID.randomUUID();
         when(conversations.find(conversationId)).thenReturn(java.util.Optional.of(conversation(conversationId)));
-        when(policy.canUseAgent(identity(), "agent")).thenReturn(new PolicyService.Decision(true, null, "v1"));
+        when(policy.canUseAgent(identity(), "agent")).thenReturn(new Decision(true, null, "v1"));
         when(runs.findByIdempotency(conversationId, "key")).thenReturn(java.util.Optional.empty());
         when(runs.countQueued()).thenReturn(0);
         when(runs.countUserQueued("user", null)).thenReturn(0);
@@ -199,9 +202,9 @@ class RunServiceTest {
         AiObservability observability = mock(AiObservability.class);
         passThroughObservability(observability);
         UUID conversationId = UUID.randomUUID();
-        top.yealike.pep.control.runs.RunRecords.Run existing = mock(top.yealike.pep.control.runs.RunRecords.Run.class);
+        Run existing = mock(Run.class);
         when(conversations.find(conversationId)).thenReturn(java.util.Optional.of(conversation(conversationId)));
-        when(policy.canUseAgent(identity(), "agent")).thenReturn(new PolicyService.Decision(true, null, "v1"));
+        when(policy.canUseAgent(identity(), "agent")).thenReturn(new Decision(true, null, "v1"));
         when(runs.findByIdempotency(conversationId, "key"))
                 .thenReturn(java.util.Optional.empty(), java.util.Optional.empty(), java.util.Optional.of(existing));
         RunService service = new RunService(
@@ -233,15 +236,15 @@ class RunServiceTest {
         var conversationId = UUID.randomUUID();
         var identity = identity();
         var run = mock(Run.class);
-        var target = new RuntimeDispatchClient.RuntimeTarget("http://localhost:19084", "direct", "direct");
+        var target = new RuntimeTarget("http://localhost:19084", "direct", "direct");
         when(runs.find(runId)).thenReturn(Optional.of(run));
         when(run.conversationId()).thenReturn(conversationId);
         when(run.agentKey()).thenReturn("agent");
-        when(run.status()).thenReturn(RunRecords.CANCEL_REQUESTED);
+        when(run.status()).thenReturn(RunStatus.CANCEL_REQUESTED);
         when(run.runtimeInstanceId()).thenReturn("runtime-1");
         when(run.executionToken()).thenReturn(7L);
         when(conversations.find(conversationId)).thenReturn(Optional.of(conversation(conversationId)));
-        when(policy.canUseAgent(identity, "agent")).thenReturn(new PolicyService.Decision(true, null, "v1"));
+        when(policy.canUseAgent(identity, "agent")).thenReturn(new Decision(true, null, "v1"));
         when(runtime.targets()).thenReturn(List.of(target));
         var service = new RunService(
                 conversations,
@@ -254,17 +257,14 @@ class RunServiceTest {
                 mock(AiObservability.class),
                 platform(100, 2, 1));
 
-        assertThat(service.cancel(identity, runId)).isEqualTo(RunRecords.CANCEL_REQUESTED);
+        assertThat(service.cancel(identity, runId)).isEqualTo(RunStatus.CANCEL_REQUESTED);
 
         verify(runtime).cancel(target, runId, 7L);
     }
 
     private static PlatformProperties platform(int queueLimit, int perUserQueued, int perUserInFlight) {
         return new PlatformProperties(
-                null,
-                null,
-                new PlatformProperties.Runtime(3, 30, queueLimit, perUserQueued, perUserInFlight, null),
-                null);
+                null, null, new PlatformRuntime(3, 30, queueLimit, perUserQueued, perUserInFlight, null), null);
     }
 
     private static void passThroughObservability(AiObservability observability) {

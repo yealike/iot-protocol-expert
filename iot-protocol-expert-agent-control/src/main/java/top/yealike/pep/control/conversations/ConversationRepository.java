@@ -5,7 +5,9 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
-import top.yealike.pep.control.conversations.ConversationRecords.Conversation;
+import top.yealike.pep.control.conversations.domain.Citation;
+import top.yealike.pep.control.conversations.domain.Conversation;
+import top.yealike.pep.control.conversations.domain.Message;
 import top.yealike.pep.control.conversations.mapper.ConversationMapper;
 import top.yealike.pep.control.support.JsonSupport;
 
@@ -67,7 +69,7 @@ public class ConversationRepository {
             UUID runId,
             String role,
             String content,
-            List<ConversationRecords.Citation> citations,
+            List<Citation> citations,
             String status,
             long seq,
             Instant createdAt) {
@@ -83,16 +85,16 @@ public class ConversationRepository {
                 createdAt);
     }
 
-    public List<ConversationRecords.Message> listMessages(UUID conversationId, int limit) {
+    public List<Message> listMessages(UUID conversationId, int limit) {
         return mapper.listMessages(conversationId, limit);
     }
 
-    public List<ConversationRecords.Message> listMessagesAfter(UUID conversationId, long afterSeq, int limit) {
+    public List<Message> listMessagesAfter(UUID conversationId, long afterSeq, int limit) {
         return mapper.listMessagesAfter(conversationId, afterSeq, limit);
     }
 
     /** 上下文截止于当前提问，避免队列中后续问题提前进入当前 Run。 */
-    public List<ConversationRecords.Message> listMessagesThrough(UUID conversationId, UUID messageId, int limit) {
+    public List<Message> listMessagesThrough(UUID conversationId, UUID messageId, int limit) {
         return mapper.listMessagesThrough(conversationId, messageId, limit);
     }
 

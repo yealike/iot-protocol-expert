@@ -23,13 +23,15 @@ import top.yealike.pep.control.agents.model.GatewayTokenIssuer;
 import top.yealike.pep.control.agents.store.CredentialStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
-import top.yealike.pep.control.config.AiProperties;
-import top.yealike.pep.control.config.PlatformProperties;
+import top.yealike.pep.control.config.properties.AiProperties;
+import top.yealike.pep.control.config.properties.AiRun;
+import top.yealike.pep.control.config.properties.PlatformProperties;
+import top.yealike.pep.control.config.properties.PlatformRuntime;
 import top.yealike.pep.control.conversations.ConversationRepository;
 import top.yealike.pep.control.integration.OpsIdentityClient;
 import top.yealike.pep.control.runs.RunEventService;
-import top.yealike.pep.control.runs.RunRecords.Run;
 import top.yealike.pep.control.runs.RunRepository;
+import top.yealike.pep.control.runs.domain.Run;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.CredentialResolveRequest;
 import top.yealike.pep.runtime.contract.RunCompletionRequest;
@@ -118,8 +120,8 @@ class RuntimeRunCoordinatorExecutionGuardTest {
                 policy,
                 events,
                 ingest,
-                new PlatformProperties(null, null, new PlatformProperties.Runtime(3, 30, 100, 2, 1, null), null),
-                new AiProperties("test", null, 0, null, null, new AiProperties.Run(4, 6, 12, 120_000, 20), null),
+                new PlatformProperties(null, null, new PlatformRuntime(3, 30, 100, 2, 1, null), null),
+                new AiProperties("test", null, 0, null, null, new AiRun(4, 6, 12, 120_000, 20), null),
                 transactionManager);
     }
 
