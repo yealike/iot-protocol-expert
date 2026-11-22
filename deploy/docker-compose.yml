@@ -35,6 +35,10 @@ services:
 
   ipe-control:
     <<: *java
+    networks:
+      ipe: {}
+      mcp-backend:
+        aliases: [ipe-control.mcp.internal]
     build:
       context: .
       dockerfile: docker/Dockerfile.service
@@ -102,7 +106,7 @@ services:
       start_period: 60s
     depends_on:
       ipe-control:
-        condition: service_healthy
+        condition: service_started
       ipe-model-gateway:
         condition: service_healthy
 
@@ -174,3 +178,6 @@ services:
 networks:
   ipe:
     driver: bridge
+  mcp-backend:
+    external: true
+    name: ipe-mcp-backend

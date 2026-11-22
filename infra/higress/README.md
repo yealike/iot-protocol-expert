@@ -11,6 +11,10 @@
 7. 配置网关访问认证与限流；测试 `initialize`、`tools/list` 和带有效上下文的 `tools/call`。`readOnlyHint` 不能替代平台工具执行类别审核。
 8. Agent 新版本只绑定上述四个工具和必要的 Skill 工具，不再绑定 `list_documents`、`read_document`。发布后新建会话验收。
 
-本示例未向任何 Higress 实例部署，也未验证部署环境的插件版本。Schema/映射变化时保留旧路由，发布新的配置与平台 MCP/Agent 版本。
+服务器部署中，Higress 和 Control 加入 Docker 外部网络 `ipe-mcp-backend`。Control 的网络别名是 `ipe-control.mcp.internal`。在 Higress 中为该域名创建 DNS 服务来源，使用 HTTP 和端口 `19083`，并将协议知识 MCP 路由指向该服务来源。Control 容器重建后仍使用相同的域名。
+
+每条 MCP 路由只启用一份 MCP Server 插件配置。若 `tools/list` 正常，但 `tools/call` 只返回文本 `success`，检查全局插件和路由级插件是否重复处理请求。部署后的验收需检查设备解析返回设备与协议文档 ID、知识检索返回文档片段、报文查询和解码返回实际数据。使用「协议排障专家」新建会话，既有会话继续使用创建时的发布版本。
+
+Schema 或映射变化时保留旧路由，发布新的配置与平台 MCP/Agent 版本。
 
 配置依据：[Higress MCP Server 插件官方文档](https://higress.cn/en/docs/ai/mcp-server/)。`../ipe-ops-rest-mcp.json` 提供 Ops v2 工具的 Nacos `toolsMeta` 格式。

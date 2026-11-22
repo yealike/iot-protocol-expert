@@ -84,7 +84,7 @@ if ($LASTEXITCODE -ne 0) { throw "上传前端静态文件失败" }
 if ($HealthTimeoutSeconds -le 0) { exit 0 }
 
 Write-Step "远程构建并启动"
-ssh -o BatchMode=yes $target "set -o pipefail; cd $RemoteDir && docker compose up -d --build --remove-orphans 2>&1 | tail -25 && docker compose restart ipe-web 2>&1 | tail -3"
+ssh -o BatchMode=yes $target "set -o pipefail; cd $RemoteDir && (docker network inspect ipe-mcp-backend >/dev/null 2>&1 || docker network create ipe-mcp-backend >/dev/null) && docker compose up -d --build --remove-orphans 2>&1 | tail -25 && docker compose restart ipe-web 2>&1 | tail -3"
 if ($LASTEXITCODE -ne 0) { throw "远程部署失败（exit $LASTEXITCODE）" }
 
 Write-Step "等待服务健康"
