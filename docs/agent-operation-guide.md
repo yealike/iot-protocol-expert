@@ -46,7 +46,9 @@ Higress 提供 REST-to-MCP 和路由；Control 管理组件、发布版本及权
 
 ### 3. 发布 Skill
 
-在“Skill 编辑”维护 `SKILL.md` 和参考文件，先校验，再发布。`SKILL.md` 的 frontmatter name 应与 Skill key 一致。Agent 绑定的是具体 Skill 发布版本，编辑草稿不会改写已经发布的版本。
+在“Skill 编辑”维护 `SKILL.md`、`references/`、`scripts/` 或 `assets/` 文本文件，先校验，再发布。
+`SKILL.md` 的 frontmatter name 应与 Skill key 一致；脚本资源只读、不执行。Agent 绑定的是具体 Skill 发布版本，
+编辑草稿不会改写已经发布的版本。
 
 ### 4. 构建和发布 Agent
 

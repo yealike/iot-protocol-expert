@@ -3,9 +3,9 @@ package top.yealike.pep.control.agents.mapper;
 import java.util.List;
 import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
-import top.yealike.pep.control.agents.domain.PlatformRecords.SkillComponent;
-import top.yealike.pep.control.agents.domain.PlatformRecords.SkillDraftFile;
-import top.yealike.pep.control.agents.domain.PlatformRecords.SkillRelease;
+import top.yealike.pep.control.agents.domain.SkillComponent;
+import top.yealike.pep.control.agents.domain.SkillDraftFile;
+import top.yealike.pep.control.agents.domain.SkillRelease;
 
 public interface SkillPlatformMapper {
 

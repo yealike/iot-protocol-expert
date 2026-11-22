@@ -16,6 +16,27 @@
 
 OPS 的 Java 包为 `top.yealike.pep.ops`，Agent 控制面保留 `top.yealike.pep.control`，避免跨模块混放同名配置。其余 Java 包和 Maven groupId 保持兼容。模拟器通过共享编解码和观测库工作，不依赖网关应用 JAR。应用均输出普通名称的可执行 JAR，无需 `-exec` 分类器。
 
+### Agent Control 内部包
+
+`iot-protocol-expert-agent-control` 按“HTTP 适配、业务功能、存储适配、外部集成”分层；`src/main/resources/mapper` 与 Java 功能包同名，避免所有 XML 混在 `mapper/ai`。
+
+| 包 / 目录 | 职责 |
+| --- | --- |
+| `api.ai`、`api.ai.admin`、`api.internal`、`api.control` | 用户、管理员和内部 HTTP 契约；不承载业务规则 |
+| `agents` | Agent、MCP、Skill、模型、凭据、发布与注册投影；`agents.domain` 只放跨包使用的领域记录 |
+| `runs` | Run 生命周期、调度、Runtime 回调、事件广播和历史 |
+| `conversations` | 会话与消息持久化；不反向依赖 Run |
+| `knowledge` | 协议文档索引与检索 |
+| `access` | 用户身份、站点范围和 `access.policy` 授权策略 |
+| `integration` | OPS、Runtime、Nacos 和 MCP 网关等外部适配器 |
+| `config`、`audit`、`mybatis`、`support`、`observability` | 配置、审计、MyBatis 类型处理与通用基础设施 |
+
+依赖方向固定为 `api -> 功能服务 -> store/mapper`，跨功能只允许调用明确的应用服务；外部系统调用只能放在
+`integration`。Mapper 只依赖叶子 `domain` 包中的行记录（如 `agents.domain`、`knowledge.domain`、
+`access.policy.domain`），不得反向依赖 Service、Store 或 Repository。`agents` 不依赖 `runs`；会话详情所需的
+当前 Run 由 `runs.ConversationRunViewService` 组装，避免 `conversations` 与 `runs` 双向引用。
+`ConversationChannels` 属于 Run 事件广播，保留在 `runs`。
+
 ```mermaid
 flowchart LR
     Web -->|登录与运营 API| OPS

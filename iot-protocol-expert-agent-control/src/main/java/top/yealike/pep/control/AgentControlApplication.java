@@ -15,10 +15,14 @@ import top.yealike.pep.observability.protocol.LogbackTelemetryConfiguration;
 @ConfigurationPropertiesScan
 @Import({LogbackTelemetryConfiguration.class, LangfuseTelemetryConfiguration.class})
 @MapperScan({
+    "top.yealike.pep.control.access.policy.mapper",
     "top.yealike.pep.control.access.mapper",
     "top.yealike.pep.control.agents.mapper",
+    "top.yealike.pep.control.api.internal.mapper",
+    "top.yealike.pep.control.audit",
     "top.yealike.pep.control.conversations.mapper",
-    "top.yealike.pep.control.knowledge.mapper"
+    "top.yealike.pep.control.knowledge.mapper",
+    "top.yealike.pep.control.runs.mapper"
 })
 public class AgentControlApplication {
 

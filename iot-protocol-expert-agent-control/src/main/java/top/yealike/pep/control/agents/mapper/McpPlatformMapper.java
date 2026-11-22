@@ -3,10 +3,10 @@ package top.yealike.pep.control.agents.mapper;
 import java.util.List;
 import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
-import top.yealike.pep.control.agents.domain.PlatformRecords.McpComponent;
-import top.yealike.pep.control.agents.domain.PlatformRecords.McpRelease;
-import top.yealike.pep.control.agents.domain.PlatformRecords.McpTestReport;
-import top.yealike.pep.control.agents.domain.PlatformRecords.McpToolPolicy;
+import top.yealike.pep.control.agents.domain.McpComponent;
+import top.yealike.pep.control.agents.domain.McpRelease;
+import top.yealike.pep.control.agents.domain.McpTestReport;
+import top.yealike.pep.control.agents.domain.McpToolPolicy;
 
 public interface McpPlatformMapper {
 

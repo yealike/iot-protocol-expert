@@ -2,6 +2,7 @@ package top.yealike.pep.runtime.execution;
 
 import java.util.List;
 import org.springframework.stereotype.Component;
+import top.yealike.pep.runtime.config.RuntimeProperties;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.SkillBundle;
 import top.yealike.pep.runtime.prepare.PreparedRelease;
@@ -14,6 +15,12 @@ import top.yealike.pep.runtime.prepare.PreparedRelease;
 public class PromptAssembler {
 
     private static final int MAX_ALWAYS_SKILLS = 2;
+
+    private final int maxSkillChars;
+
+    public PromptAssembler(RuntimeProperties properties) {
+        this.maxSkillChars = properties.skills().maxReadChars();
+    }
 
     public String assemble(PreparedRelease release) {
         AgentManifest manifest = release.manifest();
@@ -46,7 +53,7 @@ public class PromptAssembler {
                     .ifPresent(file -> prompt.append("\n\n### Skill: ")
                             .append(bundle.name())
                             .append("\n")
-                            .append(file.content()));
+                            .append(truncate(file.content())));
         }
         List<AgentManifest.SkillBinding> auto = manifest.skills().stream()
                 .filter(skill -> !"ALWAYS".equalsIgnoreCase(skill.loadMode()))
@@ -68,5 +75,12 @@ public class PromptAssembler {
             }
         }
         return prompt.toString();
+    }
+
+    private String truncate(String content) {
+        if (content.length() <= maxSkillChars) {
+            return content;
+        }
+        return content.substring(0, maxSkillChars) + "\n\n[Skill 正文已截断，需要完整内容时请调用 load_skill]";
     }
 }

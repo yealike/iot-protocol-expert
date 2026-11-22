@@ -3,11 +3,11 @@ package top.yealike.pep.control.access.policy;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.stereotype.Service;
-import top.yealike.pep.control.agents.mapper.PermissionPolicyMapper;
+import top.yealike.pep.control.access.policy.domain.PolicyRule;
+import top.yealike.pep.control.access.policy.mapper.PermissionPolicyMapper;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
 /**
@@ -31,9 +31,7 @@ public class PolicyService {
         this.environment = properties.environment();
     }
 
-    public record Rule(String role, Set<String> agentKeys, Set<String> toolNames) {}
-
-    public record Snapshot(List<Rule> rules, String version) {}
+    public record Snapshot(List<PolicyRule> rules, String version) {}
 
     public record Decision(boolean allowed, String reason, String policyVersion) {}
 
@@ -46,7 +44,7 @@ public class PolicyService {
     public void reload() {
         lastAttemptMillis = System.currentTimeMillis();
         try {
-            List<Rule> rules = mapper.selectEnabled(environment);
+            List<PolicyRule> rules = mapper.selectEnabled(environment);
             String version = mapper.selectLatestVersion().stream().findFirst().orElse("v1");
             snapshot.set(new Snapshot(List.copyOf(rules), version));
         } catch (RuntimeException exception) {
@@ -69,9 +67,9 @@ public class PolicyService {
         return current().version();
     }
 
-    public List<Rule> rulesFor(UserIdentity identity) {
-        List<Rule> matched = new ArrayList<>();
-        for (Rule rule : current().rules()) {
+    public List<PolicyRule> rulesFor(UserIdentity identity) {
+        List<PolicyRule> matched = new ArrayList<>();
+        for (PolicyRule rule : current().rules()) {
             if (identity.hasRole(rule.role()) || identity.hasRole(currentRole(rule.role()))) {
                 matched.add(rule);
             }
@@ -89,7 +87,7 @@ public class PolicyService {
     }
 
     public Decision canUseAgent(UserIdentity identity, String agentKey) {
-        List<Rule> rules = rulesFor(identity);
+        List<PolicyRule> rules = rulesFor(identity);
         if (rules.isEmpty()) {
             return new Decision(false, "当前账号未配置 AI 使用策略", current().version());
         }
@@ -98,7 +96,7 @@ public class PolicyService {
     }
 
     public Decision canUseTool(UserIdentity identity, String agentKey, String toolName) {
-        List<Rule> rules = rulesFor(identity);
+        List<PolicyRule> rules = rulesFor(identity);
         if (rules.isEmpty()) {
             return new Decision(false, "当前账号未配置 AI 使用策略", current().version());
         }
@@ -106,8 +104,6 @@ public class PolicyService {
                 .anyMatch(rule -> matches(rule.agentKeys(), agentKey) && matches(rule.toolNames(), toolName));
         return new Decision(allowed, allowed ? "OK" : "无权调用该工具", current().version());
     }
-    
-
 
     private static boolean matches(Set<String> candidates, String value) {
         return candidates.contains(ALL) || candidates.contains(value);
@@ -115,7 +111,7 @@ public class PolicyService {
 
     public Map<String, Object> describe() {
         List<Map<String, Object>> rows = new ArrayList<>();
-        for (Rule rule : current().rules()) {
+        for (PolicyRule rule : current().rules()) {
             rows.add(Map.of("role", rule.role(), "agentKeys", rule.agentKeys(), "toolNames", rule.toolNames()));
         }
         return Map.of("version", current().version(), "rules", rows);

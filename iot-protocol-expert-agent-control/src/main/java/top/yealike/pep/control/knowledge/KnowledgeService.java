@@ -16,6 +16,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import top.yealike.pep.control.config.AiProperties;
 import top.yealike.pep.control.integration.OpsClient;
+import top.yealike.pep.control.knowledge.domain.ChunkRow;
+import top.yealike.pep.control.knowledge.domain.DocumentRow;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
@@ -145,7 +147,7 @@ public class KnowledgeService {
             throw new IllegalStateException("已发布文档发生变化；当前索引不支持版本并存，请先下线旧索引再重建");
         }
 
-        UUID documentId = existing.map(KnowledgeRepository.DocumentRow::id).orElseGet(UUID::randomUUID);
+        UUID documentId = existing.map(DocumentRow::id).orElseGet(UUID::randomUUID);
         repository.upsertDocument(
                 documentId,
                 SOURCE,
@@ -216,8 +218,7 @@ public class KnowledgeService {
         if (keywords.isEmpty()) {
             return List.of();
         }
-        List<KnowledgeRepository.ChunkRow> candidates =
-                repository.candidates(protocolCode, protocolVersion, keywords, limit * 12);
+        List<ChunkRow> candidates = repository.candidates(protocolCode, protocolVersion, keywords, limit * 12);
         return rank(candidates, keywords, limit);
     }
 
@@ -229,7 +230,7 @@ public class KnowledgeService {
         if (sourceDocumentId == null || sourceDocumentId.isBlank()) {
             throw AiExceptions.badRequest("protocol_document_id 不能为空");
         }
-        KnowledgeRepository.DocumentRow document = repository
+        DocumentRow document = repository
                 .findDocument(SOURCE, sourceDocumentId)
                 .orElseThrow(() -> new AiExceptions.AiException(404, "KNOWLEDGE_NOT_INDEXED", "该协议文档尚未建立知识索引"));
         if (!"PUBLISHED".equals(document.status())) {
@@ -246,14 +247,13 @@ public class KnowledgeService {
         if (keywords.isEmpty()) {
             return List.of();
         }
-        List<KnowledgeRepository.ChunkRow> candidates =
-                repository.candidatesBySourceDocument(sourceDocumentId, keywords, limit * 12);
+        List<ChunkRow> candidates = repository.candidatesBySourceDocument(sourceDocumentId, keywords, limit * 12);
         return rank(candidates, keywords, limit);
     }
 
-    private List<Hit> rank(List<KnowledgeRepository.ChunkRow> candidates, List<String> keywords, int limit) {
+    private List<Hit> rank(List<ChunkRow> candidates, List<String> keywords, int limit) {
         List<Hit> hits = new ArrayList<>();
-        for (KnowledgeRepository.ChunkRow row : candidates) {
+        for (ChunkRow row : candidates) {
             int score = score(row.normalized(), keywords);
             if (score < properties.knowledge().minScore()) {
                 continue;
@@ -314,7 +314,7 @@ public class KnowledgeService {
         return flat.length() <= 400 ? flat : flat.substring(0, 400) + "…";
     }
 
-    public List<KnowledgeRepository.DocumentRow> documents() {
+    public List<DocumentRow> documents() {
         return repository.listDocuments();
     }
 

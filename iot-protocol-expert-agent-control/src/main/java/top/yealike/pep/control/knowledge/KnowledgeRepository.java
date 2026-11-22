@@ -1,11 +1,12 @@
 package top.yealike.pep.control.knowledge;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
+import top.yealike.pep.control.knowledge.domain.ChunkRow;
+import top.yealike.pep.control.knowledge.domain.DocumentRow;
 import top.yealike.pep.control.knowledge.mapper.KnowledgeMapper;
 
 /** 知识索引表访问层。显式列清单：pgvector 未安装时表上没有 embedding 列，不能使用 select *。 */
@@ -17,33 +18,6 @@ public class KnowledgeRepository {
     public KnowledgeRepository(KnowledgeMapper mapper) {
         this.mapper = mapper;
     }
-
-    public record DocumentRow(
-            UUID id,
-            String source,
-            String sourceDocumentId,
-            String protocolCode,
-            String protocolVersion,
-            String title,
-            String contentHash,
-            String status,
-            int chunkCount,
-            String indexVersion,
-            Instant updatedAt) {}
-
-    public record ChunkRow(
-            UUID id,
-            UUID documentId,
-            int chunkNo,
-            String sectionPath,
-            Integer pageNo,
-            String content,
-            String normalized,
-            String keywords,
-            String title,
-            String protocolCode,
-            String protocolVersion,
-            String sourceDocumentId) {}
 
     public Optional<DocumentRow> findDocument(String source, String sourceDocumentId) {
         return mapper.findDocument(source, sourceDocumentId).stream().findFirst();

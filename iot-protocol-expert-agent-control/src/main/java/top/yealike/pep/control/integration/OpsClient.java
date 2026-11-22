@@ -7,8 +7,8 @@ import java.util.Map;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
-import top.yealike.pep.control.agents.config.PlatformProperties;
 import top.yealike.pep.control.config.AiProperties;
+import top.yealike.pep.control.config.PlatformProperties;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.UserIdentity;
 

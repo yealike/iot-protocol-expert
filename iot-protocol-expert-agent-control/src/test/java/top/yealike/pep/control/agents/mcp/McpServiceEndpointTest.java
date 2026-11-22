@@ -12,8 +12,7 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import top.yealike.pep.control.agents.credential.CredentialService;
-import top.yealike.pep.control.agents.domain.PlatformRecords.McpRelease;
-import top.yealike.pep.control.agents.registry.NacosRegistryService;
+import top.yealike.pep.control.agents.domain.McpRelease;
 import top.yealike.pep.control.agents.store.CredentialStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
@@ -28,15 +27,10 @@ class McpServiceEndpointTest {
         UUID componentId = UUID.randomUUID();
         String serviceName = "ipe-mcp-ops-1-0-0";
         McpStore store = mock(McpStore.class);
-        NacosRegistryService registry = mock(NacosRegistryService.class);
         when(store.findRelease("ops", "1.0.0")).thenReturn(Optional.of(release(componentId, serviceName)));
         when(store.toolCategories(componentId)).thenReturn(Map.of());
-        when(registry.enabled()).thenReturn(true);
-        when(registry.pickHealthy(serviceName))
-                .thenReturn(new NacosRegistryService.InstanceView(
-                        "10.0.0.2", 9443, Map.of("scheme", "https", "path", "/provider/mcp", "query", "tenant=1")));
 
-        McpDescriptor descriptor = service(store, registry).descriptor("ops", "1.0.0");
+        McpDescriptor descriptor = service(store).descriptor("ops", "1.0.0");
 
         assertThat(descriptor.endpoint()).isEqualTo("http://old-provider:8080/mcp");
     }
@@ -46,15 +40,10 @@ class McpServiceEndpointTest {
         UUID componentId = UUID.randomUUID();
         String serviceName = "ipe-mcp-ops-1-0-0";
         McpStore store = mock(McpStore.class);
-        NacosRegistryService registry = mock(NacosRegistryService.class);
         when(store.findRelease("ops", "1.0.0")).thenReturn(Optional.of(release(componentId, serviceName)));
         when(store.toolCategories(componentId)).thenReturn(Map.of());
-        when(registry.enabled()).thenReturn(true);
-        when(registry.pickHealthy(serviceName))
-                .thenReturn(new NacosRegistryService.InstanceView("10.0.0.2", 443, Map.of("scheme", "https")));
 
-        assertThat(service(store, registry).descriptor("ops", "1.0.0").endpoint())
-                .isEqualTo("http://old-provider:8080/mcp");
+        assertThat(service(store).descriptor("ops", "1.0.0").endpoint()).isEqualTo("http://old-provider:8080/mcp");
     }
 
     @Test
@@ -89,14 +78,13 @@ class McpServiceEndpointTest {
         }
     }
 
-    private static McpService service(McpStore store, NacosRegistryService registry) {
+    private static McpService service(McpStore store) {
         return new McpService(
                 store,
                 mock(NacosMcpCatalogService.class),
                 mock(McpProbe.class),
                 mock(CredentialService.class),
                 mock(CredentialStore.class),
-                registry,
                 mock(PublicationStore.class));
     }
 

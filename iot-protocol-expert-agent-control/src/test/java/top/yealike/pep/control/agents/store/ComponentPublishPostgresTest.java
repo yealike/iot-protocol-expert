@@ -47,7 +47,7 @@ class ComponentPublishPostgresTest {
                 configuration.setMapUnderscoreToCamelCase(true);
                 factory.setConfiguration(configuration);
                 factory.setMapperLocations(
-                        new PathMatchingResourcePatternResolver().getResources("classpath*:mapper/ai/*.xml"));
+                        new PathMatchingResourcePatternResolver().getResources("classpath*:mapper/**/*.xml"));
                 var session = new SqlSessionTemplate(factory.getObject());
 
                 McpStore mcps = new McpStore(session.getMapper(McpPlatformMapper.class));

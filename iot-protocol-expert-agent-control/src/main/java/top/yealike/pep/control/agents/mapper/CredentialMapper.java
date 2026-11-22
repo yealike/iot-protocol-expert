@@ -3,8 +3,8 @@ package top.yealike.pep.control.agents.mapper;
 import java.util.List;
 import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
-import top.yealike.pep.control.agents.domain.PlatformRecords.Credential;
-import top.yealike.pep.control.agents.domain.PlatformRecords.CredentialSecret;
+import top.yealike.pep.control.agents.domain.Credential;
+import top.yealike.pep.control.agents.domain.CredentialSecret;
 
 public interface CredentialMapper {
 

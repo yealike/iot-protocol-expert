@@ -4,8 +4,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
-import top.yealike.pep.control.agents.domain.PlatformRecords.Credential;
-import top.yealike.pep.control.agents.domain.PlatformRecords.CredentialSecret;
+import top.yealike.pep.control.agents.domain.Credential;
+import top.yealike.pep.control.agents.domain.CredentialSecret;
 import top.yealike.pep.control.agents.mapper.CredentialMapper;
 
 @Repository

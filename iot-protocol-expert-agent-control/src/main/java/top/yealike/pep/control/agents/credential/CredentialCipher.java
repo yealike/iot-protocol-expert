@@ -12,7 +12,7 @@ import javax.crypto.spec.SecretKeySpec;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
-import top.yealike.pep.control.agents.config.PlatformProperties;
+import top.yealike.pep.control.config.PlatformProperties;
 import top.yealike.pep.control.support.AiExceptions;
 
 /**

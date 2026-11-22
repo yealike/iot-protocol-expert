@@ -264,7 +264,7 @@ GET  /actuator/health/readiness
 | T02 | 两个 MCP 同名工具 alias 不同，审计可追溯 Provider，参数不串服务 | `ToolAliasCodec`、manifest 工具身份、Runtime `PreparedTool` 映射已存在；Run `a567cbf1-77d8-4195-b79f-e288ac114c95` 的 `ai_tool_call` 实测 6 行，含 `component_key=ops`、`component_version=1.0.0`、`original_tool_name`、`tool_alias`，状态均为 `SUCCEEDED/ALLOW` | **部分验证**：审计已具备；仍缺“两个 MCP 同名工具”专项验证 |
 | T03 | Skill 新版本不影响旧会话，旧内容不可覆盖 | `ai_skill_release` 不可变 bundle、会话/发布保存 digest、新版本需重新编译 Agent | **待验证** |
 | T04 | 两个编辑器同 revision 保存仅一个成功 | 模型/凭据/MCP/Skill/Agent 更新均使用 `expectedRevision`，冲突返回 409 | **待验证** |
-| T05 | 未绑定工具/猜测资源路径被拒绝 | `tools:authorize` 校验 manifest alias；`SkillPathGuard` 校验路径；工具在调用前再次授权 | **待验证**：拒绝路径未实测 |
+| T05 | 未绑定工具/猜测资源路径被拒绝 | `tools:authorize` 校验 manifest alias；共享 `SkillPathRules` 校验路径；工具在调用前再次授权 | **待验证**：拒绝路径未实测 |
 | T06 | Nacos 暂停超过 60 秒及冷启动，新 Run 503，无 URL 回退 | Nacos 发现、Runtime reconcile 存在；直连回退已改为显式 `IPE_RUNTIME_DIRECT_FALLBACK_ENABLED`，默认 false；Nacos 无健康实例时不再派发。60 秒缓存/503 语义与故障注入未验证 | **部分满足**：无 URL 回退已实现，故障注入待补 |
 | T07 | required/optional MCP 不可用行为 | `PrepareService` 对 required 抛错、optional 整体移除并记录 warning；存在单元测试文件 | **待验证**：未做 required/optional 故障注入 |
 | T08 | MCP JSON/SSE、分页、isError、429、Schema 漂移 | MCP SDK 连接、工具目录摘要、`McpToolEnvelope` 与 Schema 校验存在；真实 Run 的工具调用成功，但协议矩阵未实测 | **待验证（部分）** |

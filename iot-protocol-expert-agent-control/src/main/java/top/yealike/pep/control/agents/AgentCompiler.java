@@ -10,21 +10,21 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
-import top.yealike.pep.control.agents.domain.PlatformRecords.AgentComponent;
-import top.yealike.pep.control.agents.domain.PlatformRecords.AgentMcpBinding;
-import top.yealike.pep.control.agents.domain.PlatformRecords.AgentSkillBinding;
-import top.yealike.pep.control.agents.domain.PlatformRecords.CompileIssue;
-import top.yealike.pep.control.agents.domain.PlatformRecords.CompileResult;
-import top.yealike.pep.control.agents.domain.PlatformRecords.McpRelease;
-import top.yealike.pep.control.agents.domain.PlatformRecords.ModelProfile;
-import top.yealike.pep.control.agents.domain.PlatformRecords.SkillRelease;
-import top.yealike.pep.control.agents.model.GatewayTokenIssuer;
+import top.yealike.pep.control.agents.domain.AgentComponent;
+import top.yealike.pep.control.agents.domain.AgentMcpBinding;
+import top.yealike.pep.control.agents.domain.AgentSkillBinding;
+import top.yealike.pep.control.agents.domain.CompileIssue;
+import top.yealike.pep.control.agents.domain.CompileResult;
+import top.yealike.pep.control.agents.domain.McpRelease;
+import top.yealike.pep.control.agents.domain.ModelProfile;
+import top.yealike.pep.control.agents.domain.SkillRelease;
 import top.yealike.pep.control.agents.store.AgentStore;
 import top.yealike.pep.control.agents.store.CredentialStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.ModelStore;
 import top.yealike.pep.control.agents.store.SkillStore;
 import top.yealike.pep.control.config.ModelGatewayProperties;
+import top.yealike.pep.model.contract.ModelGatewayCredentials;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.ManifestDigests;
 import top.yealike.pep.runtime.contract.McpToolDescriptor;
@@ -161,13 +161,7 @@ public class AgentCompiler {
             errors.add(new CompileIssue("MAX_TOKENS_OUT_OF_RANGE", "maxTokens 必须在 1 到 32768 之间", "model.options"));
         }
         return new AgentManifest.ModelSpec(
-                model.key(),
-                "OPENAI_COMPAT",
-                gatewayBaseUrl(),
-                model.key(),
-                GatewayTokenIssuer.CREDENTIAL_REF,
-                1,
-                options);
+                model.key(), "OPENAI_COMPAT", gatewayBaseUrl(), model.key(), ModelGatewayCredentials.REF, 1, options);
     }
 
     private String gatewayBaseUrl() {

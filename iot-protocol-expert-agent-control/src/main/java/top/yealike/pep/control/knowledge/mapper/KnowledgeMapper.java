@@ -4,25 +4,25 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
-import top.yealike.pep.control.knowledge.KnowledgeRepository;
+import top.yealike.pep.control.knowledge.domain.ChunkRow;
+import top.yealike.pep.control.knowledge.domain.DocumentRow;
 
 public interface KnowledgeMapper {
 
-    List<KnowledgeRepository.ChunkRow> candidates(
+    List<ChunkRow> candidates(
             @Param("protocolCode") String protocolCode,
             @Param("protocolVersion") String protocolVersion,
             @Param("keywords") List<String> keywords,
             @Param("limit") int limit);
 
-    List<KnowledgeRepository.ChunkRow> candidatesBySourceDocument(
+    List<ChunkRow> candidatesBySourceDocument(
             @Param("sourceDocumentId") String sourceDocumentId,
             @Param("keywords") List<String> keywords,
             @Param("limit") int limit);
 
-    List<KnowledgeRepository.DocumentRow> findDocument(
-            @Param("source") String source, @Param("sourceDocumentId") String sourceDocumentId);
+    List<DocumentRow> findDocument(@Param("source") String source, @Param("sourceDocumentId") String sourceDocumentId);
 
-    List<KnowledgeRepository.DocumentRow> listDocuments();
+    List<DocumentRow> listDocuments();
 
     int upsertDocument(
             @Param("id") UUID id,

@@ -575,8 +575,8 @@ export default function SkillsPage() {
             rules={[
               { required: true },
               {
-                pattern: /^[a-z0-9][a-z0-9-]{1,39}$/,
-                message: '只允许 2-40 位小写字母、数字和短横线'
+                pattern: /^(?=.{2,40}$)[a-z0-9]+(?:-[a-z0-9]+)*$/,
+                message: '只允许 2-40 位小写字母/数字，以单短横线分段'
               }
             ]}
           >
@@ -607,7 +607,7 @@ export default function SkillsPage() {
           <Form.Item
             name="path"
             label="相对路径"
-            extra="只允许 SKILL.md 或 references/**/*.md|txt；不得包含 ..、反斜杠、绝对路径或大小写冲突。"
+            extra="允许 SKILL.md、LICENSE.md|txt，以及 references/、scripts/、assets/ 下的文本文件；不得包含 ..、反斜杠、绝对路径或大小写冲突。二进制资源暂不支持。"
             rules={[
               { required: true },
               {
@@ -682,6 +682,13 @@ function ValidationResult({ result }: { result: AiSkillValidation }) {
       <Descriptions size="small" column={1} bordered>
         <Descriptions.Item label="名称">{result.metadata?.name || '-'}</Descriptions.Item>
         <Descriptions.Item label="说明">{result.metadata?.description || '-'}</Descriptions.Item>
+        <Descriptions.Item label="License">{result.metadata?.license || '-'}</Descriptions.Item>
+        <Descriptions.Item label="Compatibility">
+          {result.metadata?.compatibility || '-'}
+        </Descriptions.Item>
+        <Descriptions.Item label="allowed-tools">
+          {result.metadata?.allowedTools || '-'}
+        </Descriptions.Item>
       </Descriptions>
       {result.errors.length > 0 ? (
         <Alert
@@ -776,11 +783,37 @@ function validateSkillPath(path: string, existing: string[]): string | null {
   if (segments.some((segment) => !segment || segment === '.' || segment === '..')) {
     return '路径不能包含空段、. 或 ..'
   }
-  if (path !== 'SKILL.md' && !path.startsWith('references/')) {
-    return '只允许 SKILL.md 与 references/**/*.md|txt'
-  }
-  if (path !== 'SKILL.md' && !/\.(md|txt)$/.test(path)) {
-    return '参考资料只允许 .md 或 .txt'
+  if (!['SKILL.md', 'LICENSE.md', 'LICENSE.txt'].includes(path)) {
+    const directory = segments[0]
+    const file = segments[segments.length - 1]
+    const extension = file.includes('.') ? (file.split('.').pop()?.toLowerCase() ?? '') : ''
+    const allowed: Record<string, string[]> = {
+      references: ['md', 'txt'],
+      scripts: [
+        'md',
+        'txt',
+        'py',
+        'sh',
+        'bash',
+        'js',
+        'mjs',
+        'cjs',
+        'ts',
+        'ps1',
+        'json',
+        'yaml',
+        'yml',
+        'toml',
+        'sql'
+      ],
+      assets: ['md', 'txt', 'json', 'yaml', 'yml', 'csv', 'tsv', 'html', 'htm', 'css', 'svg', 'xml']
+    }
+    if (!allowed[directory]) {
+      return '只允许 SKILL.md、LICENSE.md|txt 与 references/scripts/assets 下的文本文件'
+    }
+    if (!allowed[directory].includes(extension)) {
+      return `${directory}/ 目录包含不支持的文本文件扩展名`
+    }
   }
   const folded = new Set<string>()
   for (const segment of segments) {

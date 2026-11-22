@@ -12,16 +12,17 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import top.yealike.pep.control.agents.dispatch.RuntimeDispatchClient;
-import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
-import top.yealike.pep.control.agents.domain.PlatformRecords.McpRelease;
-import top.yealike.pep.control.agents.domain.PlatformRecords.Publication;
-import top.yealike.pep.control.agents.domain.PlatformRecords.SkillRelease;
+import top.yealike.pep.control.agents.domain.AgentRelease;
+import top.yealike.pep.control.agents.domain.McpRelease;
+import top.yealike.pep.control.agents.domain.OutboxEvent;
+import top.yealike.pep.control.agents.domain.Publication;
+import top.yealike.pep.control.agents.domain.SkillRelease;
 import top.yealike.pep.control.agents.registry.RegistryProjectionService;
 import top.yealike.pep.control.agents.store.AgentStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
+import top.yealike.pep.control.integration.runtime.RuntimeDispatchClient;
 import top.yealike.pep.runtime.contract.ComponentNames;
 import top.yealike.pep.runtime.contract.ComponentType;
 import top.yealike.pep.runtime.contract.ErrorCodes;
@@ -93,8 +94,8 @@ public class PublicationCoordinator {
     }
 
     private void processOutbox() {
-        List<PublicationStore.OutboxEvent> events = publications.claimOutbox(worker, LEASE_SECONDS, 10);
-        for (PublicationStore.OutboxEvent event : events) {
+        List<OutboxEvent> events = publications.claimOutbox(worker, LEASE_SECONDS, 10);
+        for (OutboxEvent event : events) {
             if (!publications.renewOutbox(event.id(), worker, LEASE_SECONDS)) {
                 continue;
             }

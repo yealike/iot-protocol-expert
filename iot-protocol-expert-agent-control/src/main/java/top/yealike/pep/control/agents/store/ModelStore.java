@@ -4,7 +4,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
-import top.yealike.pep.control.agents.domain.PlatformRecords.ModelProfile;
+import top.yealike.pep.control.agents.domain.ModelProfile;
 import top.yealike.pep.control.agents.mapper.ModelProfileMapper;
 
 @Repository

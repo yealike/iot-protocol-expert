@@ -19,11 +19,10 @@ import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import top.yealike.pep.control.agents.credential.CredentialService;
-import top.yealike.pep.control.agents.domain.PlatformRecords.McpComponent;
-import top.yealike.pep.control.agents.domain.PlatformRecords.McpRelease;
-import top.yealike.pep.control.agents.domain.PlatformRecords.McpTestReport;
-import top.yealike.pep.control.agents.domain.PlatformRecords.Publication;
-import top.yealike.pep.control.agents.registry.NacosRegistryService;
+import top.yealike.pep.control.agents.domain.McpComponent;
+import top.yealike.pep.control.agents.domain.McpRelease;
+import top.yealike.pep.control.agents.domain.McpTestReport;
+import top.yealike.pep.control.agents.domain.Publication;
 import top.yealike.pep.control.agents.store.CredentialStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
@@ -100,7 +99,6 @@ class McpServicePublicationTest {
                 mock(McpProbe.class),
                 mock(CredentialService.class),
                 mock(CredentialStore.class),
-                mock(NacosRegistryService.class),
                 publications);
 
         service.publish(ACTOR, mcpId, "1.0.0", reportId, 5L, "key");
@@ -190,7 +188,6 @@ class McpServicePublicationTest {
                 mock(McpProbe.class),
                 mock(CredentialService.class),
                 mock(CredentialStore.class),
-                mock(NacosRegistryService.class),
                 publications);
 
         McpService.PublishResult result = service.publish(ACTOR, mcpId, null, null, 5L, "key");

@@ -10,11 +10,10 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.pep.control.agents.credential.CredentialService;
-import top.yealike.pep.control.agents.domain.PlatformRecords.McpComponent;
-import top.yealike.pep.control.agents.domain.PlatformRecords.McpRelease;
-import top.yealike.pep.control.agents.domain.PlatformRecords.McpTestReport;
-import top.yealike.pep.control.agents.domain.PlatformRecords.McpToolPolicy;
-import top.yealike.pep.control.agents.registry.NacosRegistryService;
+import top.yealike.pep.control.agents.domain.McpComponent;
+import top.yealike.pep.control.agents.domain.McpRelease;
+import top.yealike.pep.control.agents.domain.McpTestReport;
+import top.yealike.pep.control.agents.domain.McpToolPolicy;
 import top.yealike.pep.control.agents.store.CredentialStore;
 import top.yealike.pep.control.agents.store.McpStore;
 import top.yealike.pep.control.agents.store.PublicationStore;
@@ -41,7 +40,6 @@ public class McpService {
     private final McpProbe probe;
     private final CredentialService credentials;
     private final CredentialStore credentialStore;
-    private final NacosRegistryService registry;
     private final PublicationStore publications;
 
     public McpService(
@@ -50,14 +48,12 @@ public class McpService {
             McpProbe probe,
             CredentialService credentials,
             CredentialStore credentialStore,
-            NacosRegistryService registry,
             PublicationStore publications) {
         this.store = store;
         this.nativeCatalog = nativeCatalog;
         this.probe = probe;
         this.credentials = credentials;
         this.credentialStore = credentialStore;
-        this.registry = registry;
         this.publications = publications;
     }
 

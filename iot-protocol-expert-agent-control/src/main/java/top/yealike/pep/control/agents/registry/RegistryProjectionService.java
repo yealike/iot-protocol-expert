@@ -3,7 +3,7 @@ package top.yealike.pep.control.agents.registry;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
-import top.yealike.pep.control.agents.domain.PlatformRecords.RegistryProjection;
+import top.yealike.pep.control.agents.domain.RegistryProjection;
 import top.yealike.pep.control.agents.store.RegistryStore;
 
 /** 注册投影：记录每个发布版本期望与实际可见状态，发布协调与诊断共用。 */

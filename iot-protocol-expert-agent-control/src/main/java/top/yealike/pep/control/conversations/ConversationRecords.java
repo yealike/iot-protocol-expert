@@ -4,7 +4,6 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import top.yealike.pep.control.runs.RunRecords.Run;
 
 /** 会话、消息与引用。字段与 ai_conversation / ai_message 表对应。 */
 public final class ConversationRecords {
@@ -50,5 +49,5 @@ public final class ConversationRecords {
             Instant createdAt,
             Map<String, Object> usage) {}
 
-    public record ConversationView(Conversation conversation, List<Message> messages, Run currentRun, Run latestRun) {}
+    public record ConversationDetail(Conversation conversation, List<Message> messages) {}
 }

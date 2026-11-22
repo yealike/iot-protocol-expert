@@ -18,9 +18,10 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import top.yealike.pep.control.access.CurrentUser;
 import top.yealike.pep.control.agents.AgentService;
-import top.yealike.pep.control.agents.domain.PlatformRecords.AgentCatalogItem;
+import top.yealike.pep.control.agents.domain.AgentCatalogItem;
 import top.yealike.pep.control.conversations.ConversationRecords.Conversation;
 import top.yealike.pep.control.conversations.ConversationService;
+import top.yealike.pep.control.runs.ConversationRunViewService;
 import top.yealike.pep.control.runs.RunRecords.Run;
 import top.yealike.pep.control.runs.RunService;
 import top.yealike.pep.runtime.contract.UserIdentity;
@@ -32,11 +33,17 @@ import top.yealike.pep.runtime.contract.UserIdentity;
 public class ConversationController {
 
     private final ConversationService conversations;
+    private final ConversationRunViewService conversationRuns;
     private final RunService runs;
     private final AgentService agents;
 
-    public ConversationController(ConversationService conversations, RunService runs, AgentService agents) {
+    public ConversationController(
+            ConversationService conversations,
+            ConversationRunViewService conversationRuns,
+            RunService runs,
+            AgentService agents) {
         this.conversations = conversations;
+        this.conversationRuns = conversationRuns;
         this.runs = runs;
         this.agents = agents;
     }
@@ -100,7 +107,7 @@ public class ConversationController {
     @Operation(summary = "查询对话详情", description = "返回会话消息和当前运行任务")
     public Object detail(@Parameter(description = "会话 ID") @PathVariable UUID id) {
         UserIdentity identity = CurrentUser.require();
-        return conversations.detail(identity, id);
+        return conversationRuns.detail(identity, id);
     }
 
     @PostMapping("/conversations/{id}/runs")

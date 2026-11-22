@@ -3,10 +3,10 @@ package top.yealike.pep.control.agents.mapper;
 import java.util.List;
 import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
-import top.yealike.pep.control.agents.domain.PlatformRecords.AgentComponent;
-import top.yealike.pep.control.agents.domain.PlatformRecords.AgentMcpBinding;
-import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
-import top.yealike.pep.control.agents.domain.PlatformRecords.AgentSkillBinding;
+import top.yealike.pep.control.agents.domain.AgentComponent;
+import top.yealike.pep.control.agents.domain.AgentMcpBinding;
+import top.yealike.pep.control.agents.domain.AgentRelease;
+import top.yealike.pep.control.agents.domain.AgentSkillBinding;
 
 public interface AgentPlatformMapper {
 

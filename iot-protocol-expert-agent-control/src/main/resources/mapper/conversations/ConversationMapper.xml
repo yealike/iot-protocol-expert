@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.control.conversations.mapper.ConversationMapper">
+
+    <resultMap id="ConversationMap" type="top.yealike.pep.control.conversations.ConversationRecords$Conversation">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="user_id" javaType="java.lang.String"/>
+            <arg column="org_id" javaType="java.lang.String"/>
+            <arg column="title" javaType="java.lang.String"/>
+            <arg column="agent_key" javaType="java.lang.String"/>
+            <arg column="agent_version" javaType="java.lang.String"/>
+            <arg column="agent_release_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="manifest_digest" javaType="java.lang.String"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="event_cursor" javaType="_long"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+            <arg column="updated_at" javaType="java.time.Instant"/>
+            <arg column="last_message_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="MessageMap" type="top.yealike.pep.control.conversations.ConversationRecords$Message">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="conversation_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="run_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="role" javaType="java.lang.String"/>
+            <arg column="content" javaType="java.lang.String"/>
+            <arg column="citations" javaType="java.util.List" typeHandler="top.yealike.pep.control.conversations.mapper.CitationListTypeHandler"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="seq" javaType="_long"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+            <arg column="usage_json" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+        </constructor>
+    </resultMap>
+
+    <insert id="insert">
+        insert into ai_conversation
+            (id, user_id, org_id, title, agent_key, agent_version, agent_release_id, manifest_digest, status,
+             created_at, updated_at)
+        values (#{id}, #{userId}, #{orgId}, #{title}, #{agentKey}, #{agentVersion}, #{agentReleaseId},
+            #{manifestDigest}, #{status}, #{createdAt}, #{updatedAt})
+    </insert>
+
+    <select id="find" resultMap="ConversationMap">
+        select id, user_id, org_id, title, agent_key, agent_version, agent_release_id, manifest_digest, status, event_cursor, created_at, updated_at, last_message_at from ai_conversation where id = #{id}
+    </select>
+
+    <select id="listByUser" resultMap="ConversationMap">
+        select id, user_id, org_id, title, agent_key, agent_version, agent_release_id, manifest_digest, status, event_cursor, created_at, updated_at, last_message_at from ai_conversation where user_id = #{userId} order by updated_at desc limit #{limit} offset #{offset}
+    </select>
+
+    <select id="countByUser" resultType="java.lang.Long">
+        select count(*) from ai_conversation where user_id = #{userId}
+    </select>
+
+    <update id="touch">
+        update ai_conversation set updated_at = #{now} where id = #{id}
+    </update>
+
+    <select id="nextMessageSeq" resultType="java.lang.Long" affectData="true" flushCache="true" useCache="false">
+        update ai_conversation set message_seq = message_seq + 1, last_message_at = now(), updated_at = now() where id =
+            #{conversationId} returning message_seq
+    </select>
+
+    <insert id="insertMessage">
+        insert into ai_message (id, conversation_id, run_id, role, content, citations, status, seq, created_at)
+        values (#{id}, #{conversationId}, #{runId}, #{role}, #{content}, cast(#{citationsJson} as jsonb), #{status}
+            , #{seq}, #{createdAt})
+    </insert>
+
+    <select id="listMessages" resultMap="MessageMap">
+        select t.id, t.conversation_id, t.run_id, t.role, t.content, t.citations, t.status, t.seq, t.created_at,
+               r.usage_json
+          from (
+            select id, conversation_id, run_id, role, content, citations, status, seq, created_at from ai_message where conversation_id = #{conversationId} order by seq desc limit #{limit}
+          ) t
+          left join ai_run r on t.role = 'assistant' and r.id = t.run_id and r.conversation_id = t.conversation_id
+         order by t.seq asc
+    </select>
+
+    <select id="listMessagesAfter" resultMap="MessageMap">
+        select id, conversation_id, run_id, role, content, citations, status, seq, created_at, null as usage_json from ai_message where conversation_id = #{conversationId} and seq > #{afterSeq} order by seq asc limit
+            #{limit}
+    </select>
+
+    <select id="listMessagesThrough" resultMap="MessageMap">
+        select id, conversation_id, run_id, role, content, citations, status, seq, created_at, null as usage_json from (
+            select id, conversation_id, run_id, role, content, citations, status, seq, created_at from ai_message
+        where conversation_id = #{conversationId} and seq &lt;= (select seq from ai_message where id = #{messageId} and
+            conversation_id = #{conversationId})
+            order by seq desc limit #{limit}
+        ) t order by seq asc
+    </select>
+
+    <select id="countMessages" resultType="java.lang.Long">
+        select count(*) from ai_message where conversation_id = #{conversationId}
+    </select>
+
+    <update id="updateMessageContent">
+        update ai_message set content = #{content}, status = #{status} where id = #{messageId}
+    </update>
+</mapper>

@@ -4,8 +4,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
-import top.yealike.pep.control.agents.domain.PlatformRecords.Publication;
-import top.yealike.pep.control.agents.store.PublicationStore.OutboxEvent;
+import top.yealike.pep.control.agents.domain.OutboxEvent;
+import top.yealike.pep.control.agents.domain.Publication;
 
 public interface PublicationMapper {
 

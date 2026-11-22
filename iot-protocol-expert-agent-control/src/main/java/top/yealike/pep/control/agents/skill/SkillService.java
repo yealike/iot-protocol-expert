@@ -9,9 +9,9 @@ import java.util.Map;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.pep.control.agents.domain.PlatformRecords.SkillComponent;
-import top.yealike.pep.control.agents.domain.PlatformRecords.SkillDraftFile;
-import top.yealike.pep.control.agents.domain.PlatformRecords.SkillRelease;
+import top.yealike.pep.control.agents.domain.SkillComponent;
+import top.yealike.pep.control.agents.domain.SkillDraftFile;
+import top.yealike.pep.control.agents.domain.SkillRelease;
 import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
 import top.yealike.pep.control.support.AiExceptions;
@@ -288,8 +288,8 @@ public class SkillService {
     }
 
     static void requireKey(String key) {
-        if (key == null || !key.matches("[a-z0-9][a-z0-9-]{1,39}")) {
-            throw AiExceptions.badRequest("Skill key 只允许 2-40 位小写字母、数字和横线");
+        if (key == null || !key.matches("[a-z0-9]+(?:-[a-z0-9]+)*") || key.length() < 2 || key.length() > 40) {
+            throw AiExceptions.badRequest("Skill key 必须为 2-40 位小写字母/数字，以单连字符分段");
         }
     }
 

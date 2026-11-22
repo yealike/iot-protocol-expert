@@ -16,7 +16,7 @@ import org.junit.jupiter.api.condition.EnabledIfEnvironmentVariable;
 import org.mybatis.spring.SqlSessionFactoryBean;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
-import top.yealike.pep.control.agents.mapper.RunMapper;
+import top.yealike.pep.control.runs.mapper.RunMapper;
 
 /**
  * 隔离 PostgreSQL 验收 Control 权威终结过期 Run。
@@ -160,7 +160,7 @@ class RunExpiryPostgresTest {
         configuration.setMapUnderscoreToCamelCase(true);
         factory.setConfiguration(configuration);
         factory.setMapperLocations(
-                new PathMatchingResourcePatternResolver().getResources("classpath*:mapper/ai/RunMapper.xml"));
+                new PathMatchingResourcePatternResolver().getResources("classpath*:mapper/**/*.xml"));
         SqlSessionFactory sqlSessionFactory = factory.getObject();
         return new RunRepository(new SqlSessionTemplate(sqlSessionFactory).getMapper(RunMapper.class));
     }

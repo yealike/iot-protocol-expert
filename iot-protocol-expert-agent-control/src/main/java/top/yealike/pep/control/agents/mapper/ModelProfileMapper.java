@@ -3,7 +3,7 @@ package top.yealike.pep.control.agents.mapper;
 import java.util.List;
 import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
-import top.yealike.pep.control.agents.domain.PlatformRecords.ModelProfile;
+import top.yealike.pep.control.agents.domain.ModelProfile;
 
 public interface ModelProfileMapper {
 

@@ -4,53 +4,30 @@ import java.util.HashSet;
 import java.util.Locale;
 import java.util.Set;
 import top.yealike.pep.control.support.AiExceptions;
+import top.yealike.pep.runtime.contract.SkillPathRules;
 
-/** Skill 相对路径与大小限制。只允许 UTF-8 Markdown/纯文本参考资料。 */
+/** Skill 包大小限制与 Control 侧错误转换；路径规则由 Control/Runtime 共享。 */
 public final class SkillPaths {
 
     public static final int MAX_FILES = 50;
     public static final int MAX_FILE_BYTES = 256 * 1024;
     public static final int MAX_TOTAL_BYTES = 2 * 1024 * 1024;
-    public static final int MAX_PATH_LENGTH = 512;
-    public static final int MAX_DEPTH = 8;
 
     private SkillPaths() {}
 
     public static String requireValid(String path) {
-        if (path == null || path.isBlank()) {
-            throw AiExceptions.badRequest("Skill 文件路径不能为空");
-        }
-        if (path.length() > MAX_PATH_LENGTH) {
-            throw AiExceptions.badRequest("Skill 文件路径超过 512 字符");
-        }
-        if (path.startsWith("/") || path.contains("\\") || path.contains(":") || path.contains("//")) {
-            throw AiExceptions.badRequest("Skill 路径必须使用安全的相对路径");
-        }
-        for (char character : path.toCharArray()) {
-            if (character < 0x20 || character == 0x7f) {
-                throw AiExceptions.badRequest("Skill 路径包含控制字符");
+        try {
+            String valid = SkillPathRules.requireValid(path);
+            Set<String> folded = new HashSet<>();
+            for (String segment : valid.split("/", -1)) {
+                if (!folded.add(segment.toLowerCase(Locale.ROOT))) {
+                    throw AiExceptions.badRequest("Skill 路径存在大小写冲突");
+                }
             }
+            return valid;
+        } catch (IllegalArgumentException exception) {
+            throw AiExceptions.badRequest(exception.getMessage());
         }
-        String[] segments = path.split("/", -1);
-        if (segments.length > MAX_DEPTH) {
-            throw AiExceptions.badRequest("Skill 路径深度超过 8 层");
-        }
-        Set<String> folded = new HashSet<>();
-        for (String segment : segments) {
-            if (segment.isEmpty() || ".".equals(segment) || "..".equals(segment)) {
-                throw AiExceptions.badRequest("Skill 路径包含空段或穿越段");
-            }
-            if (!folded.add(segment.toLowerCase(Locale.ROOT))) {
-                throw AiExceptions.badRequest("Skill 路径存在大小写冲突");
-            }
-        }
-        if (!"SKILL.md".equals(path) && !path.startsWith("references/")) {
-            throw AiExceptions.badRequest("只允许 SKILL.md 与 references/**/*.md|txt");
-        }
-        if (!"SKILL.md".equals(path) && !(path.endsWith(".md") || path.endsWith(".txt"))) {
-            throw AiExceptions.badRequest("参考资料只允许 .md 或 .txt");
-        }
-        return path;
     }
 
     public static String normalizeContent(String content) {
@@ -58,10 +35,33 @@ public final class SkillPaths {
             throw AiExceptions.badRequest("Skill 文件内容不能为空");
         }
         String normalized = content.replace("\r\n", "\n").replace('\r', '\n');
+        String textProblem = textProblem(normalized);
+        if (textProblem != null) {
+            throw AiExceptions.badRequest(textProblem);
+        }
         int bytes = normalized.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
         if (bytes > MAX_FILE_BYTES) {
             throw AiExceptions.badRequest("单个 Skill 文件不能超过 256 KiB");
         }
         return normalized;
+    }
+
+    /** PostgreSQL text/jsonb 不接受 NUL，也不接受不成对的 UTF-16 代理项。 */
+    public static String textProblem(String content) {
+        for (int index = 0; index < content.length(); index++) {
+            char character = content.charAt(index);
+            if (character == '\0') {
+                return "Skill 文件内容不能包含 NUL 字符";
+            }
+            if (Character.isHighSurrogate(character)) {
+                if (index + 1 >= content.length() || !Character.isLowSurrogate(content.charAt(index + 1))) {
+                    return "Skill 文件内容包含不成对的 Unicode 代理项";
+                }
+                index++;
+            } else if (Character.isLowSurrogate(character)) {
+                return "Skill 文件内容包含不成对的 Unicode 代理项";
+            }
+        }
+        return null;
     }
 }

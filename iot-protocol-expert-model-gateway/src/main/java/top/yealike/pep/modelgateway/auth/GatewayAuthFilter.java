@@ -10,6 +10,7 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import top.yealike.pep.model.contract.ModelGatewayCredentials;
 import top.yealike.pep.model.contract.RunTokenCodec;
 import top.yealike.pep.model.contract.RunTokenPayload;
 import top.yealike.pep.modelgateway.config.GatewayProperties;
@@ -66,7 +67,7 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
                     header.substring("Bearer ".length()).strip(),
                     properties.getRunTokenSecret(),
                     System.currentTimeMillis() / 1000);
-            if (!"pep-model-gateway".equals(payload.aud())) {
+            if (!ModelGatewayCredentials.REF.equals(payload.aud())) {
                 reject(response, "运行凭据受众不匹配");
                 return;
             }

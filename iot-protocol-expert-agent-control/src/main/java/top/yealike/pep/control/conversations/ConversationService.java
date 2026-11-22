@@ -8,11 +8,10 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import top.yealike.pep.control.access.policy.PolicyService;
 import top.yealike.pep.control.agents.AgentService;
-import top.yealike.pep.control.agents.domain.PlatformRecords.AgentRelease;
+import top.yealike.pep.control.agents.domain.AgentRelease;
 import top.yealike.pep.control.conversations.ConversationRecords.Conversation;
-import top.yealike.pep.control.conversations.ConversationRecords.ConversationView;
+import top.yealike.pep.control.conversations.ConversationRecords.ConversationDetail;
 import top.yealike.pep.control.conversations.ConversationRecords.Message;
-import top.yealike.pep.control.runs.RunRepository;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
@@ -24,14 +23,11 @@ public class ConversationService {
             DateTimeFormatter.ofPattern("MM-dd HH:mm").withZone(ZoneId.of("Asia/Shanghai"));
 
     private final ConversationRepository conversations;
-    private final RunRepository runs;
     private final PolicyService policy;
     private final AgentService agents;
 
-    public ConversationService(
-            ConversationRepository conversations, RunRepository runs, PolicyService policy, AgentService agents) {
+    public ConversationService(ConversationRepository conversations, PolicyService policy, AgentService agents) {
         this.conversations = conversations;
-        this.runs = runs;
         this.policy = policy;
         this.agents = agents;
     }
@@ -84,16 +80,10 @@ public class ConversationService {
         return conversations.countByUser(identity.actor());
     }
 
-    public ConversationView detail(UserIdentity identity, UUID conversationId) {
+    public ConversationDetail detail(UserIdentity identity, UUID conversationId) {
         Conversation conversation = require(identity, conversationId);
         List<Message> messages = conversations.listMessages(conversationId, 200);
-        var currentRun = runs.current(conversationId).orElse(null);
-        var latestRun = currentRun == null
-                ? runs.listByConversation(conversationId, 1).stream()
-                        .findFirst()
-                        .orElse(null)
-                : currentRun;
-        return new ConversationView(conversation, messages, currentRun, latestRun);
+        return new ConversationDetail(conversation, messages);
     }
 
     public Conversation require(UserIdentity identity, UUID conversationId) {

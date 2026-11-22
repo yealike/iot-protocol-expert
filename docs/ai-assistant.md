@@ -86,12 +86,22 @@ Agent 在线数据位于 `pep_agent`，由 OPS 的 Flyway 管理；迁移目录�
 
 ### 4.3 Skill
 
-1. Skill 是 UTF-8 文本包，入口必须为 `SKILL.md`，参考资料一般放在 `references/`。
-2. 禁止绝对路径、`.`/`..`、反斜杠、盘符、控制字符、`scripts/` 和可执行文件。
-3. 默认限制：50 个文件、单文件 256 KiB、包 2 MiB；大小写折叠后路径也不能冲突。
-4. 草稿可以不完整；保存不完整草稿后不能发布。
-5. Runtime 提供 `load_skill` / `read_skill_resource` 两个受控工具，仅允许当前 manifest 绑定的 skill/version/path。
-6. `AUTO` 只向模型暴露名称和描述；`ALWAYS` 在每轮注入正文，最多 2 个，注意上下文成本。
+1. Skill 是 UTF-8 文本包，入口必须为 `SKILL.md`；frontmatter 对齐
+   [Agent Skills](https://agentskills.io/specification) 的 `name`、`description`、`license`、
+   `compatibility`、`metadata` 和实验性 `allowed-tools` 字段。
+2. `name` 必须与 Skill key 一致，为 2–40 位小写字母/数字，并以单连字符分段（Agent Skills 规范允许 1–64，
+   平台当前受 `component_key` 列宽限制为 40）；扩展字段放入 `metadata`。
+3. 允许 `SKILL.md`、`LICENSE.md|txt`，以及 `references/`、`scripts/`、`assets/` 下的安全文本文件。禁止绝对路径、
+   `.`/`..`、反斜杠、盘符和控制字符。二进制资源不能进入 JSONB bundle，暂不支持。
+4. `read_skill_resource` 只读取 `references/`、`scripts/`、`assets/` 下的文件，`SKILL.md` 统一由 `load_skill`
+   加载；`scripts/` 会触发只读提示，平台不会执行脚本。实际工具权限始终由 Agent 绑定和 `allowed-tools`
+   之外的授权策略决定。
+5. 默认限制：50 个文件、单文件 256 KiB、包 2 MiB；大小写折叠后路径不能冲突；拒绝 NUL 和不成对的
+   Unicode 代理项；`SKILL.md` 超过 500 行或 12000 字符会产生渐进式加载警告。
+6. 草稿可以不完整；保存不完整草稿后不能发布。
+7. Runtime 提供 `load_skill` / `read_skill_resource` 两个受控工具，仅允许当前 manifest 绑定的 skill/version/path。
+8. `AUTO` 只向模型暴露名称和描述；`ALWAYS` 在每轮注入正文，最多 2 个，并按 `max-read-chars`
+   （默认 12000）截断，避免超长 Skill 撑爆上下文。
 
 ### 4.4 Agent 编译与发布
 

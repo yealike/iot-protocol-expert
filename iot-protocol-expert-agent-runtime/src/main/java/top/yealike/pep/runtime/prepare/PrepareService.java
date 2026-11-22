@@ -31,12 +31,12 @@ import top.yealike.pep.runtime.contract.SkillBundle;
 import top.yealike.pep.runtime.contract.SkillDescriptor;
 import top.yealike.pep.runtime.contract.SkillFile;
 import top.yealike.pep.runtime.contract.SkillFileInfo;
+import top.yealike.pep.runtime.contract.SkillPathRules;
 import top.yealike.pep.runtime.contract.ToolAliasCodec;
 import top.yealike.pep.runtime.control.ControlClient;
 import top.yealike.pep.runtime.control.ControlException;
 import top.yealike.pep.runtime.mcp.McpConnectionPool;
 import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
-import top.yealike.pep.runtime.skill.SkillPathGuard;
 
 /**
  * 发布准备：在返回 READY 之前证明 MCP 与 Skill 依赖可发现，并冻结本次运行计划。
@@ -267,7 +267,7 @@ public class PrepareService {
         for (SkillFileInfo info : descriptor.files()) {
             String path;
             try {
-                path = SkillPathGuard.requireSafe(info.path());
+                path = SkillPathRules.requireValid(info.path());
             } catch (IllegalArgumentException exception) {
                 throw new PrepareException(422, ErrorCodes.SKILL_PATH_DENIED, exception.getMessage());
             }

@@ -3,7 +3,7 @@ package top.yealike.pep.control.agents.model;
 import java.util.UUID;
 import org.springframework.stereotype.Component;
 import top.yealike.pep.control.config.ModelGatewayProperties;
-import top.yealike.pep.control.runs.RunRecords.Run;
+import top.yealike.pep.model.contract.ModelGatewayCredentials;
 import top.yealike.pep.model.contract.RunTokenCodec;
 import top.yealike.pep.model.contract.RunTokenPayload;
 
@@ -11,25 +11,23 @@ import top.yealike.pep.model.contract.RunTokenPayload;
 @Component
 public class GatewayTokenIssuer {
 
-    public static final String CREDENTIAL_REF = "pep-model-gateway";
-
     private final ModelGatewayProperties properties;
 
     public GatewayTokenIssuer(ModelGatewayProperties properties) {
         this.properties = properties;
     }
 
-    public String issueForRun(Run run, String modelKey) {
+    public String issueForRun(String actor, UUID conversationId, UUID runId, String modelKey) {
         long exp = System.currentTimeMillis() / 1000 + Math.max(60, properties.getRunTokenTtlSeconds());
         RunTokenPayload payload = new RunTokenPayload(
-                "pep-model-gateway",
-                run.actor(),
+                ModelGatewayCredentials.REF,
+                actor,
                 "USER",
-                run.actor(),
+                actor,
                 properties.getDefaultTenantId(),
                 properties.getDefaultProjectId(),
-                run.conversationId() == null ? null : run.conversationId().toString(),
-                run.id().toString(),
+                conversationId == null ? null : conversationId.toString(),
+                runId.toString(),
                 modelKey,
                 exp,
                 UUID.randomUUID().toString());
@@ -39,7 +37,7 @@ public class GatewayTokenIssuer {
     public String issueForEvaluator(String modelKey) {
         long exp = System.currentTimeMillis() / 1000 + Math.max(60, properties.getRunTokenTtlSeconds());
         RunTokenPayload payload = new RunTokenPayload(
-                "pep-model-gateway",
+                ModelGatewayCredentials.REF,
                 properties.getEvaluatorSubject(),
                 "SERVICE_ACCOUNT",
                 "system:evaluator",

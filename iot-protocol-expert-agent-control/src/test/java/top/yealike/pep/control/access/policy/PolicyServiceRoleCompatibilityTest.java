@@ -6,7 +6,8 @@ import static org.mockito.Mockito.*;
 import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
-import top.yealike.pep.control.agents.mapper.PermissionPolicyMapper;
+import top.yealike.pep.control.access.policy.domain.PolicyRule;
+import top.yealike.pep.control.access.policy.mapper.PermissionPolicyMapper;
 import top.yealike.pep.control.config.AiProperties;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
@@ -16,8 +17,8 @@ class PolicyServiceRoleCompatibilityTest {
         var mapper = mock(PermissionPolicyMapper.class);
         when(mapper.selectEnabled("test"))
                 .thenReturn(List.of(
-                        new PolicyService.Rule("ADMIN", Set.of("admin-agent"), Set.of("admin-tool")),
-                        new PolicyService.Rule("OPS", Set.of("ops-agent"), Set.of("read-tool"))));
+                        new PolicyRule("ADMIN", Set.of("admin-agent"), Set.of("admin-tool")),
+                        new PolicyRule("OPS", Set.of("ops-agent"), Set.of("read-tool"))));
         when(mapper.selectLatestVersion()).thenReturn(List.of("v1"));
         var policy = new PolicyService(mapper, new AiProperties("test", null, 1000, null, null, null, null));
         var admin = identity("PLATFORM_ADMIN");

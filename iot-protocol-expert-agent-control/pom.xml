@@ -161,10 +161,6 @@
     </dependencies>
 
     <build>
-        <testResources>
-            <testResource><directory>src/test/resources</directory></testResource>
-            <testResource><directory>../iot-protocol-expert-ops/src/main/resources</directory><includes><include>db/**</include></includes></testResource>
-        </testResources>
         <plugins>
             <plugin>
                 <groupId>org.springframework.boot</groupId>

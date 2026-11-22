@@ -15,12 +15,13 @@ import reactor.core.publisher.Mono;
 import top.yealike.pep.runtime.config.RuntimeProperties;
 import top.yealike.pep.runtime.contract.SkillBundle;
 import top.yealike.pep.runtime.contract.SkillFile;
+import top.yealike.pep.runtime.contract.SkillPathRules;
 import top.yealike.pep.runtime.execution.RunEventSink;
 import top.yealike.pep.runtime.execution.RunGuard;
 import top.yealike.pep.runtime.execution.ToolAuditMetadata;
 import top.yealike.pep.runtime.prepare.PreparedRelease;
 
-/** 文本 Skill 的两个只读工具；不物化文件、不执行脚本、不访问任意路径。 */
+/** 文本 Skill 的两个只读工具；可读取标准目录，但不物化文件、不执行脚本、不访问任意路径。 */
 @Component
 public class SkillToolFactory {
 
@@ -139,7 +140,7 @@ public class SkillToolFactory {
             this.guard = guard;
             Map<String, Object> properties = new LinkedHashMap<>();
             properties.put("skillKey", Map.of("type", "string"));
-            properties.put("path", Map.of("type", "string", "description", "references/ 下的相对路径"));
+            properties.put("path", Map.of("type", "string", "description", "references/、scripts/ 或 assets/ 下的相对路径"));
             properties.put("offset", Map.of("type", "integer", "minimum", 0));
             this.parameters = Map.of(
                     "type",
@@ -159,7 +160,7 @@ public class SkillToolFactory {
 
         @Override
         public String getDescription() {
-            return "读取当前 Agent 已绑定 Skill 的参考文件。只允许 references/ 下的 .md/.txt，单次返回超长内容会分页。";
+            return "读取当前 Agent 已绑定 Skill 的文本资源。允许 references/、scripts/、assets/ 下的安全文本文件；脚本只读取不执行，超长内容会分页。";
         }
 
         @Override
@@ -188,7 +189,7 @@ public class SkillToolFactory {
             String path;
             try {
                 key = string(input, "skillKey");
-                path = SkillPathGuard.requireSafe(string(input, "path"));
+                path = SkillPathRules.requireResourcePath(string(input, "path"));
             } catch (IllegalArgumentException exception) {
                 return error(exception.getMessage());
             }

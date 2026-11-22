@@ -639,6 +639,9 @@ export interface AiSkillValidation {
     name: string
     description: string
     metadata?: Record<string, string>
+    license?: string | null
+    compatibility?: string | null
+    allowedTools?: string | null
   } | null
   draftRevision: number
   fileCount: number

@@ -2,11 +2,11 @@ package top.yealike.pep.control.agents.store;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
-import top.yealike.pep.control.agents.domain.PlatformRecords.Publication;
+import top.yealike.pep.control.agents.domain.OutboxEvent;
+import top.yealike.pep.control.agents.domain.Publication;
 import top.yealike.pep.control.agents.mapper.PublicationMapper;
 
 @Repository
@@ -128,13 +128,4 @@ public class PublicationStore {
     public boolean retryOutbox(UUID id, String worker, Instant nextAttemptAt) {
         return mapper.retryOutbox(id, worker, nextAttemptAt) > 0;
     }
-
-    public record OutboxEvent(
-            UUID id,
-            String aggregateType,
-            UUID aggregateId,
-            long generation,
-            String eventType,
-            Map<String, Object> payload,
-            int attempts) {}
 }

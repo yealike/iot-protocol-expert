@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.control.knowledge.mapper.KnowledgeMapper">
+
+    <resultMap id="ChunkRowMap" type="top.yealike.pep.control.knowledge.domain.ChunkRow">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="document_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="chunk_no" javaType="_int"/>
+            <arg column="section_path" javaType="java.lang.String"/>
+            <arg column="page_no" javaType="java.lang.Integer"/>
+            <arg column="content" javaType="java.lang.String"/>
+            <arg column="normalized" javaType="java.lang.String"/>
+            <arg column="keywords" javaType="java.lang.String"/>
+            <arg column="title" javaType="java.lang.String"/>
+            <arg column="protocol_code" javaType="java.lang.String"/>
+            <arg column="protocol_version" javaType="java.lang.String"/>
+            <arg column="source_document_id" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="DocumentRowMap" type="top.yealike.pep.control.knowledge.domain.DocumentRow">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="source" javaType="java.lang.String"/>
+            <arg column="source_document_id" javaType="java.lang.String"/>
+            <arg column="protocol_code" javaType="java.lang.String"/>
+            <arg column="protocol_version" javaType="java.lang.String"/>
+            <arg column="title" javaType="java.lang.String"/>
+            <arg column="content_hash" javaType="java.lang.String"/>
+            <arg column="status" javaType="java.lang.String"/>
+            <arg column="chunk_count" javaType="_int"/>
+            <arg column="index_version" javaType="java.lang.String"/>
+            <arg column="updated_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <select id="candidates" resultMap="ChunkRowMap">
+        select c.id, c.document_id, c.chunk_no, c.section_path, c.page_no, c.content, c.normalized,
+               c.keywords, d.title, d.protocol_code, d.protocol_version, d.source_document_id
+        from ai_chunk c join ai_document d on d.id = c.document_id
+        where d.status = 'PUBLISHED'
+        <if test="protocolCode != null and !protocolCode.isBlank()">and d.protocol_code = #{protocolCode}</if>
+        <if test="protocolVersion != null and !protocolVersion.isBlank()">and d.protocol_version = #{protocolVersion}</if>
+        and <foreach collection="keywords" item="keyword" open="(" separator=" or " close=")">
+            c.normalized like concat('%', #{keyword}, '%')
+        </foreach>
+        limit #{limit}
+    </select>
+
+    <select id="candidatesBySourceDocument" resultMap="ChunkRowMap">
+        select c.id, c.document_id, c.chunk_no, c.section_path, c.page_no, c.content, c.normalized,
+               c.keywords, d.title, d.protocol_code, d.protocol_version, d.source_document_id
+        from ai_chunk c join ai_document d on d.id = c.document_id
+        where d.status = 'PUBLISHED'
+          and d.source_document_id = #{sourceDocumentId}
+          and <foreach collection="keywords" item="keyword" open="(" separator=" or " close=")">
+              c.normalized like concat('%', #{keyword}, '%')
+          </foreach>
+        limit #{limit}
+    </select>
+
+    <select id="findDocument" resultMap="DocumentRowMap">
+        select id, source, source_document_id, protocol_code, protocol_version, title, content_hash, status,
+            chunk_count, index_version, updated_at from ai_document where source = #{source} and source_document_id =
+            #{sourceDocumentId}
+    </select>
+
+    <select id="listDocuments" resultMap="DocumentRowMap">
+        select id, source, source_document_id, protocol_code, protocol_version, title, content_hash, status,
+            chunk_count, index_version, updated_at from ai_document order by updated_at desc
+    </select>
+
+    <insert id="upsertDocument">
+        insert into ai_document (id, source, source_document_id, protocol_code, protocol_version, title,
+                                 content_hash, status, chunk_count, index_version, failure_reason)
+        values (#{id}, #{source}, #{sourceDocumentId}, #{protocolCode}, #{protocolVersion}, #{title},
+            #{contentHash}, #{status}, #{chunkCount}, #{indexVersion}, #{failureReason})
+        on conflict (source, source_document_id) do update
+        set protocol_code = excluded.protocol_code,
+            protocol_version = excluded.protocol_version,
+            title = excluded.title,
+            content_hash = excluded.content_hash,
+            status = excluded.status,
+            chunk_count = excluded.chunk_count,
+            index_version = excluded.index_version,
+            failure_reason = excluded.failure_reason,
+            updated_at = now()
+    </insert>
+
+    <delete id="deleteChunks">
+        delete from ai_chunk where document_id = #{documentId}
+    </delete>
+
+    <select id="preview" resultType="map">
+        select chunk_no as "chunkNo", section_path as "sectionPath", page_no as "pageNo", content from ai_chunk where
+            document_id = #{documentId} order by chunk_no limit 50
+    </select>
+
+    <insert id="insertChunk">
+        insert into ai_chunk (id, document_id, chunk_no, section_path, page_no, content, normalized,
+                              keywords, token_count, index_version)
+        values (#{id}, #{documentId}, #{chunkNo}, #{sectionPath}, #{pageNo}, #{content}, #{normalized},
+            #{keywords}, #{tokenCount}, #{indexVersion})
+    </insert>
+
+    <update id="publishDocument">
+        update ai_document set status = 'PUBLISHED', published_at = now(), updated_at = now() where id = #{documentId}
+            and status in ('READY_FOR_REVIEW', 'PUBLISHED')
+    </update>
+
+    <update id="archiveDocument">
+        update ai_document set status = 'ARCHIVED', updated_at = now() where id = #{documentId}
+    </update>
+
+    <insert id="recordIndexVersion">
+        insert into ai_index_version (id, description, embedding_model, dimensions, chunk_size, chunk_overlap,
+                                      status, published_at)
+        values (#{id}, #{description}, #{embeddingModel}, #{dimensions}, #{chunkSize}, #{overlap}, 'PUBLISHED', now())
+        on conflict (id) do nothing
+    </insert>
+
+    <select id="countDocuments" resultType="java.lang.Integer">
+        select count(*) from ai_document
+    </select>
+
+    <select id="countPublishedDocuments" resultType="java.lang.Integer">
+        select count(*) from ai_document where status = 'PUBLISHED'
+    </select>
+
+    <select id="countChunks" resultType="java.lang.Integer">
+        select count(*) from ai_chunk
+    </select>
+</mapper>
