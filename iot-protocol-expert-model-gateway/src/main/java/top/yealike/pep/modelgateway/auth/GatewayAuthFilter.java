@@ -13,7 +13,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import top.yealike.pep.model.contract.ModelGatewayCredentials;
 import top.yealike.pep.model.contract.RunTokenCodec;
 import top.yealike.pep.model.contract.RunTokenPayload;
-import top.yealike.pep.modelgateway.config.GatewayProperties;
+import top.yealike.pep.modelgateway.config.properties.GatewayProperties;
 
 /** 网关只接受两类调用：Runtime 的短期运行凭据，以及控制服务的内部服务令牌。 */
 @Component
@@ -22,6 +22,7 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
 
     public static final String RUN_TOKEN_ATTRIBUTE = "pep.runToken";
     public static final String SERVICE_CALL_ATTRIBUTE = "pep.serviceCall";
+    public static final String SERVICE_TOKEN_HEADER = "X-PEP-Service-Token";
 
     private final GatewayProperties properties;
 
@@ -65,7 +66,7 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
         try {
             RunTokenPayload payload = RunTokenCodec.verify(
                     header.substring("Bearer ".length()).strip(),
-                    properties.getRunTokenSecret(),
+                    properties.runTokenSecret(),
                     System.currentTimeMillis() / 1000);
             if (!ModelGatewayCredentials.REF.equals(payload.aud())) {
                 reject(response, "运行凭据受众不匹配");
@@ -80,8 +81,8 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
 
     private void authenticateService(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws IOException, ServletException {
-        String expected = properties.getServiceToken();
-        String provided = request.getHeader("X-PEP-Service-Token");
+        String expected = properties.serviceToken();
+        String provided = request.getHeader(SERVICE_TOKEN_HEADER);
         if (expected == null || expected.isBlank() || !constantTimeEquals(expected, provided)) {
             reject(response, "服务身份校验失败");
             return;

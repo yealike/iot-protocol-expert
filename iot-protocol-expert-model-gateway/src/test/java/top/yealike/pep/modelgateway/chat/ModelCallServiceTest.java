@@ -16,9 +16,12 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
 import top.yealike.pep.model.contract.ModelErrorCodes;
 import top.yealike.pep.model.contract.RunTokenPayload;
-import top.yealike.pep.modelgateway.catalog.CatalogRecords;
 import top.yealike.pep.modelgateway.catalog.CatalogService;
+import top.yealike.pep.modelgateway.catalog.domain.ModelProfile;
+import top.yealike.pep.modelgateway.catalog.domain.Provider;
+import top.yealike.pep.modelgateway.catalog.domain.ResolvedModel;
 import top.yealike.pep.modelgateway.quota.QuotaService;
+import top.yealike.pep.modelgateway.quota.domain.ReservationHandle;
 import top.yealike.pep.modelgateway.support.ApiException;
 
 class ModelCallServiceTest {
@@ -41,7 +44,7 @@ class ModelCallServiceTest {
                 "test-model",
                 Long.MAX_VALUE,
                 "token-1");
-        var profile = new CatalogRecords.ModelProfile(
+        var profile = new ModelProfile(
                 UUID.randomUUID(),
                 "test-model",
                 "测试模型",
@@ -53,13 +56,12 @@ class ModelCallServiceTest {
                 1,
                 "ESTIMATE",
                 "ACTIVE");
-        var provider = new CatalogRecords.Provider(
+        var provider = new Provider(
                 UUID.randomUUID(), "test-provider", "测试供应商", "http://127.0.0.1", new byte[0], new byte[0], "ACTIVE");
-        when(catalog.resolve("test-model")).thenReturn(new CatalogService.ResolvedModel(profile, provider, "secret"));
+        when(catalog.resolve("test-model")).thenReturn(new ResolvedModel(profile, provider, "secret"));
         when(estimator.reserveUnits(anyMap(), anyInt(), anyInt(), anyInt())).thenReturn(10L);
         when(quota.reserve(any()))
-                .thenReturn(
-                        new QuotaService.ReservationHandle(UUID.randomUUID(), UUID.randomUUID(), 10L, List.of(), true));
+                .thenReturn(new ReservationHandle(UUID.randomUUID(), UUID.randomUUID(), 10L, List.of(), true));
         var service = new ModelCallService(
                 catalog, quota, estimator, normalizer, JsonMapper.builder().build());
 
@@ -92,7 +94,7 @@ class ModelCallServiceTest {
                 "test-model",
                 Long.MAX_VALUE,
                 "token-1");
-        var profile = new CatalogRecords.ModelProfile(
+        var profile = new ModelProfile(
                 UUID.randomUUID(),
                 "test-model",
                 "测试模型",
@@ -104,13 +106,12 @@ class ModelCallServiceTest {
                 1,
                 "ESTIMATE",
                 "ACTIVE");
-        var provider = new CatalogRecords.Provider(
+        var provider = new Provider(
                 UUID.randomUUID(), "test-provider", "测试供应商", "http://127.0.0.1", new byte[0], new byte[0], "ACTIVE");
-        when(catalog.resolve("test-model")).thenReturn(new CatalogService.ResolvedModel(profile, provider, "secret"));
+        when(catalog.resolve("test-model")).thenReturn(new ResolvedModel(profile, provider, "secret"));
         when(estimator.reserveUnits(anyMap(), anyInt(), anyInt(), anyInt())).thenReturn(10L);
         when(quota.reserve(any()))
-                .thenReturn(new QuotaService.ReservationHandle(
-                        UUID.randomUUID(), UUID.randomUUID(), 10L, List.of(), false));
+                .thenReturn(new ReservationHandle(UUID.randomUUID(), UUID.randomUUID(), 10L, List.of(), false));
         when(quota.markDispatched(any())).thenReturn(false);
         var service = new ModelCallService(
                 catalog, quota, estimator, normalizer, JsonMapper.builder().build());

@@ -22,8 +22,9 @@ import top.yealike.pep.runtime.control.ControlClient;
 import top.yealike.pep.runtime.control.ControlException;
 import top.yealike.pep.runtime.execution.RunGuard;
 import top.yealike.pep.runtime.execution.ToolAuditMetadata;
+import top.yealike.pep.runtime.mcp.domain.McpToolEnvelope;
 import top.yealike.pep.runtime.observability.RuntimeObservability;
-import top.yealike.pep.runtime.prepare.PreparedTool;
+import top.yealike.pep.runtime.prepare.domain.PreparedTool;
 
 /** 动态 MCP 工具：模型只看到 alias 与冻结 Schema，实际调用前每次向 Control 申请授权。 */
 public final class McpAgentTool implements AgentTool {

@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import top.yealike.pep.runtime.TestFixtures;
-import top.yealike.pep.runtime.config.RuntimeProperties;
+import top.yealike.pep.runtime.config.properties.RuntimeProperties;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.ManifestDigests;
 import top.yealike.pep.runtime.contract.RunClaimResponse;
@@ -30,8 +30,8 @@ import top.yealike.pep.runtime.contract.RunTerminalStatus;
 import top.yealike.pep.runtime.contract.RuntimeRunStatus;
 import top.yealike.pep.runtime.control.ControlClient;
 import top.yealike.pep.runtime.observability.RuntimeObservability;
-import top.yealike.pep.runtime.prepare.PreparedRelease;
 import top.yealike.pep.runtime.prepare.PreparedReleaseRegistry;
+import top.yealike.pep.runtime.prepare.domain.PreparedRelease;
 import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 
 class AgentExecutionServiceCancellationTest {

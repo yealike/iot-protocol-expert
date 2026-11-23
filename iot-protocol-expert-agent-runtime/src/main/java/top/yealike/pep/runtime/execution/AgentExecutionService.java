@@ -46,7 +46,7 @@ import org.springframework.stereotype.Service;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
 import top.yealike.pep.runtime.api.RunRejectedException;
-import top.yealike.pep.runtime.config.RuntimeProperties;
+import top.yealike.pep.runtime.config.properties.RuntimeProperties;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.CredentialResolveRequest;
 import top.yealike.pep.runtime.contract.CredentialResolveResponse;
@@ -61,10 +61,13 @@ import top.yealike.pep.runtime.contract.RunTerminalStatus;
 import top.yealike.pep.runtime.contract.RuntimeRunStatus;
 import top.yealike.pep.runtime.control.ControlClient;
 import top.yealike.pep.runtime.control.ControlException;
+import top.yealike.pep.runtime.execution.domain.ExecutionOutcome;
+import top.yealike.pep.runtime.execution.domain.ModelQuotaFailure;
+import top.yealike.pep.runtime.execution.domain.ToolCallTiming;
 import top.yealike.pep.runtime.observability.RuntimeObservability;
-import top.yealike.pep.runtime.prepare.PreparedRelease;
 import top.yealike.pep.runtime.prepare.PreparedReleaseRegistry;
-import top.yealike.pep.runtime.prepare.PreparedTool;
+import top.yealike.pep.runtime.prepare.domain.PreparedRelease;
+import top.yealike.pep.runtime.prepare.domain.PreparedTool;
 import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 
 /**
@@ -315,7 +318,7 @@ public class AgentExecutionService {
         StringBuilder answer = new StringBuilder(2048);
         AtomicBoolean timedOut = new AtomicBoolean();
         AtomicReference<Throwable> failure = new AtomicReference<>();
-        Map<String, ToolTiming> toolTimings = new ConcurrentHashMap<>();
+        Map<String, ToolCallTiming> toolTimings = new ConcurrentHashMap<>();
         Map<String, ToolInvocationEvidence> toolEvidence = new ConcurrentHashMap<>();
         long startedNanos = System.nanoTime();
         try {
@@ -389,7 +392,7 @@ public class AgentExecutionService {
             if (heartbeat != null) {
                 heartbeat.cancel(false);
             }
-            Outcome outcome = outcome(execution, failure.get(), timedOut.get(), answer.toString());
+            ExecutionOutcome outcome = outcome(execution, failure.get(), timedOut.get(), answer.toString());
             failOpenToolCalls(execution, toolTimings, toolEvidence, outcome);
             finish(execution, outcome, answer.toString(), startedNanos);
         }
@@ -399,7 +402,7 @@ public class AgentExecutionService {
             RunExecution execution,
             AgentEvent event,
             StringBuilder answer,
-            Map<String, ToolTiming> timings,
+            Map<String, ToolCallTiming> timings,
             Map<String, ToolInvocationEvidence> evidenceByCall) {
         if (event instanceof TextBlockDeltaEvent deltaEvent) {
             String delta = deltaEvent.getDelta();
@@ -447,7 +450,7 @@ public class AgentExecutionService {
                 put(payload, "componentVersion", tool.mcpVersion());
                 put(payload, "originalName", tool.originalName());
             }
-            timings.put(startEvent.getToolCallId(), new ToolTiming(alias, System.nanoTime()));
+            timings.put(startEvent.getToolCallId(), new ToolCallTiming(alias, System.nanoTime()));
             evidenceByCall.putIfAbsent(
                     evidenceKey(startEvent.getToolCallId()), new ToolInvocationEvidence(MAX_TOOL_EVIDENCE_CHARS));
             execution.publisher().emit("tool.started", payload);
@@ -462,7 +465,7 @@ public class AgentExecutionService {
             if (evidence == null || !evidence.hasArguments()) {
                 return;
             }
-            ToolTiming timing = timings.get(callEvent.getToolCallId());
+            ToolCallTiming timing = timings.get(callEvent.getToolCallId());
             Map<String, Object> payload = new LinkedHashMap<>();
             put(payload, "toolAlias", timing == null ? callEvent.getToolCallName() : timing.alias());
             put(payload, "toolCallId", callEvent.getToolCallId());
@@ -479,7 +482,7 @@ public class AgentExecutionService {
             return;
         }
         if (event instanceof ToolResultEndEvent resultEvent) {
-            ToolTiming timing = timings.remove(resultEvent.getToolCallId());
+            ToolCallTiming timing = timings.remove(resultEvent.getToolCallId());
             String alias = timing == null ? resultEvent.getToolCallName() : timing.alias();
             ToolResultState state = resultEvent.getState();
             ToolInvocationEvidence evidence = evidenceByCall.remove(evidenceKey(resultEvent.getToolCallId()));
@@ -529,9 +532,9 @@ public class AgentExecutionService {
 
     private void failOpenToolCalls(
             RunExecution execution,
-            Map<String, ToolTiming> timings,
+            Map<String, ToolCallTiming> timings,
             Map<String, ToolInvocationEvidence> evidenceByCall,
-            Outcome outcome) {
+            ExecutionOutcome outcome) {
         if (timings.isEmpty()) {
             return;
         }
@@ -541,7 +544,7 @@ public class AgentExecutionService {
             default -> outcome.errorCode() == null ? "RUN_INTERRUPTED" : outcome.errorCode();
         };
         for (String toolCallId : List.copyOf(timings.keySet())) {
-            ToolTiming timing = timings.remove(toolCallId);
+            ToolCallTiming timing = timings.remove(toolCallId);
             if (timing == null) {
                 continue;
             }
@@ -675,7 +678,7 @@ public class AgentExecutionService {
         }
     }
 
-    private Outcome outcome(RunExecution execution, Throwable failure, boolean timedOut, String answer) {
+    private ExecutionOutcome outcome(RunExecution execution, Throwable failure, boolean timedOut, String answer) {
         io.opentelemetry.api.trace.Span.current()
                 .setAttribute("ai.run.id", execution.runId().toString());
         io.opentelemetry.api.trace.Span.current().setAttribute("ai.agent.release", String.valueOf(execution.release()));
@@ -684,52 +687,57 @@ public class AgentExecutionService {
             return cancellationOutcome(guard.cancelCode(), guard.cancelReason());
         }
         if (timedOut || isTimeout(failure)) {
-            return new Outcome(RunTerminalStatus.TIMED_OUT, "RUN_TIMEOUT", "Run 超过执行截止时间");
+            return new ExecutionOutcome(RunTerminalStatus.TIMED_OUT, "RUN_TIMEOUT", "Run 超过执行截止时间");
         }
         if (failure instanceof RunGuard.RunAbortedException aborted) {
             if ("TIMED_OUT".equals(aborted.code())) {
-                return new Outcome(RunTerminalStatus.TIMED_OUT, "RUN_TIMEOUT", aborted.getMessage());
+                return new ExecutionOutcome(RunTerminalStatus.TIMED_OUT, "RUN_TIMEOUT", aborted.getMessage());
             }
-            return new Outcome(RunTerminalStatus.FAILED, aborted.code(), aborted.getMessage());
+            return new ExecutionOutcome(RunTerminalStatus.FAILED, aborted.code(), aborted.getMessage());
         }
         if (failure instanceof ControlException controlException) {
-            return new Outcome(RunTerminalStatus.FAILED, controlException.code(), controlException.getMessage());
+            return new ExecutionOutcome(
+                    RunTerminalStatus.FAILED, controlException.code(), controlException.getMessage());
         }
         if (failure != null) {
             var quotaFailure = ModelQuotaFailure.from(failure);
             if (quotaFailure.isPresent()) {
-                return new Outcome(
+                return new ExecutionOutcome(
                         RunTerminalStatus.FAILED,
                         quotaFailure.get().code(),
                         quotaFailure.get().message());
             }
-            return new Outcome(RunTerminalStatus.FAILED, "RUN_FAILED", "Agent 执行失败");
+            return new ExecutionOutcome(RunTerminalStatus.FAILED, "RUN_FAILED", "Agent 执行失败");
         }
         if (answer == null || answer.isBlank()) {
-            return new Outcome(RunTerminalStatus.FAILED, "EMPTY_RESULT", "Agent 未返回可展示的结论");
+            return new ExecutionOutcome(RunTerminalStatus.FAILED, "EMPTY_RESULT", "Agent 未返回可展示的结论");
         }
-        return new Outcome(RunTerminalStatus.SUCCEEDED, null, null);
+        return new ExecutionOutcome(RunTerminalStatus.SUCCEEDED, null, null);
     }
 
-    private static Outcome cancellationOutcome(String code, String message) {
+    private static ExecutionOutcome cancellationOutcome(String code, String message) {
         if ("CANCELLED".equals(code) || code == null) {
-            return new Outcome(RunTerminalStatus.CANCELLED, null, null);
+            return new ExecutionOutcome(RunTerminalStatus.CANCELLED, null, null);
         }
         if ("TIMED_OUT".equals(code) || "RUN_TIMEOUT".equals(code)) {
-            return new Outcome(RunTerminalStatus.TIMED_OUT, "RUN_TIMEOUT", message);
+            return new ExecutionOutcome(RunTerminalStatus.TIMED_OUT, "RUN_TIMEOUT", message);
         }
         if (ErrorCodes.EXECUTION_LOST.equals(code)) {
-            return new Outcome(RunTerminalStatus.FAILED, code, message);
+            return new ExecutionOutcome(RunTerminalStatus.FAILED, code, message);
         }
-        return new Outcome(RunTerminalStatus.FAILED, code, message);
+        return new ExecutionOutcome(RunTerminalStatus.FAILED, code, message);
     }
 
-    private void finish(RunExecution execution, Outcome outcome, String answer, long startedNanos) {
+    private void finish(RunExecution execution, ExecutionOutcome outcome, String answer, long startedNanos) {
         finish(execution, outcome, answer, startedNanos, false);
     }
 
     private void finish(
-            RunExecution execution, Outcome outcome, String answer, long startedNanos, boolean terminalAlreadyClaimed) {
+            RunExecution execution,
+            ExecutionOutcome outcome,
+            String answer,
+            long startedNanos,
+            boolean terminalAlreadyClaimed) {
         if (!terminalAlreadyClaimed && !execution.markTerminal()) {
             return;
         }
@@ -1000,8 +1008,4 @@ public class AgentExecutionService {
     private static boolean blank(String value) {
         return value == null || value.isBlank();
     }
-
-    private record ToolTiming(String alias, long startedNanos) {}
-
-    private record Outcome(RunTerminalStatus status, String errorCode, String errorMessage) {}
 }

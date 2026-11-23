@@ -14,7 +14,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.ObjectMapper;
-import top.yealike.pep.runtime.config.RuntimeProperties;
+import top.yealike.pep.runtime.config.properties.RuntimeProperties;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.CredentialResolveRequest;
 import top.yealike.pep.runtime.contract.CredentialResolveResponse;
@@ -31,6 +31,7 @@ import top.yealike.pep.runtime.contract.SkillDescriptor;
 import top.yealike.pep.runtime.contract.SkillFile;
 import top.yealike.pep.runtime.contract.ToolAuthorizeRequest;
 import top.yealike.pep.runtime.contract.ToolAuthorizeResponse;
+import top.yealike.pep.runtime.control.dto.DesiredReleasePage;
 import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 
 /**

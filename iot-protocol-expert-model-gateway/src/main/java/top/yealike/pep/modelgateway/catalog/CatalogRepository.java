@@ -4,6 +4,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
+import top.yealike.pep.modelgateway.catalog.domain.ModelProfile;
+import top.yealike.pep.modelgateway.catalog.domain.Provider;
 import top.yealike.pep.modelgateway.catalog.mapper.CatalogMapper;
 
 /** 模型目录的 MyBatis 访问层；SQL 统一维护在 mapper/catalog/CatalogMapper.xml。 */
@@ -21,15 +23,15 @@ public class CatalogRepository {
         mapper.insertProvider(id, code, name, baseUrl, cipher, nonce, keyId);
     }
 
-    public List<CatalogRecords.Provider> listProviders() {
+    public List<Provider> listProviders() {
         return mapper.listProviders();
     }
 
-    public Optional<CatalogRecords.Provider> findProvider(String code) {
+    public Optional<Provider> findProvider(String code) {
         return Optional.ofNullable(mapper.findProvider(code));
     }
 
-    public Optional<CatalogRecords.Provider> findProviderById(UUID id) {
+    public Optional<Provider> findProviderById(UUID id) {
         return Optional.ofNullable(mapper.findProviderById(id));
     }
 
@@ -57,11 +59,11 @@ public class CatalogRepository {
                 countingMode);
     }
 
-    public List<CatalogRecords.ModelProfile> listProfiles() {
+    public List<ModelProfile> listProfiles() {
         return mapper.listProfiles();
     }
 
-    public Optional<CatalogRecords.ModelProfile> findProfile(String key) {
+    public Optional<ModelProfile> findProfile(String key) {
         return Optional.ofNullable(mapper.findProfile(key));
     }
 }

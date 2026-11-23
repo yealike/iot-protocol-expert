@@ -14,7 +14,7 @@ import top.yealike.pep.runtime.contract.RunClaimResponse;
 import top.yealike.pep.runtime.contract.RunDispatchReceipt;
 import top.yealike.pep.runtime.contract.RunDispatchRequest;
 import top.yealike.pep.runtime.contract.RuntimeRunStatus;
-import top.yealike.pep.runtime.prepare.PreparedRelease;
+import top.yealike.pep.runtime.prepare.domain.PreparedRelease;
 
 /** 单 Run 的运行时句柄；只保存内存状态，持久事实仍归 Control。 */
 public final class RunExecution {

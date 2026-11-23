@@ -4,8 +4,10 @@ import java.net.URI;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
-import top.yealike.pep.modelgateway.catalog.CatalogRecords.ModelProfile;
-import top.yealike.pep.modelgateway.catalog.CatalogRecords.Provider;
+import top.yealike.pep.modelgateway.catalog.domain.ModelProfile;
+import top.yealike.pep.modelgateway.catalog.domain.Provider;
+import top.yealike.pep.modelgateway.catalog.domain.ResolvedModel;
+import top.yealike.pep.modelgateway.catalog.domain.Sealed;
 import top.yealike.pep.modelgateway.support.ApiException;
 
 @Service
@@ -27,7 +29,7 @@ public class CatalogService {
                 || uri.getUserInfo() != null) {
             throw ApiException.badRequest("MODEL_REQUEST_INVALID", "供应商地址必须是受控 HTTP(S) 地址");
         }
-        SecretCipher.Sealed sealed = cipher.seal(apiKey);
+        Sealed sealed = cipher.seal(apiKey);
         repository.insertProvider(
                 UUID.randomUUID(), code, name, baseUrl, sealed.ciphertext(), sealed.nonce(), sealed.keyId());
         return repository.findProvider(code).orElseThrow();
@@ -86,6 +88,4 @@ public class CatalogService {
             throw ApiException.badRequest("MODEL_REQUEST_INVALID", "逻辑模型 key 须为 2 至 40 位小写字母、数字或短横线");
         }
     }
-
-    public record ResolvedModel(ModelProfile profile, Provider provider, String secret) {}
 }

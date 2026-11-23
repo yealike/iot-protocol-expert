@@ -4,7 +4,14 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
-import top.yealike.pep.modelgateway.quota.QuotaRecords;
+import top.yealike.pep.modelgateway.quota.domain.Account;
+import top.yealike.pep.modelgateway.quota.domain.Bucket;
+import top.yealike.pep.modelgateway.quota.domain.Call;
+import top.yealike.pep.modelgateway.quota.domain.ChangeRequest;
+import top.yealike.pep.modelgateway.quota.domain.Charge;
+import top.yealike.pep.modelgateway.quota.domain.Policy;
+import top.yealike.pep.modelgateway.quota.domain.Reservation;
+import top.yealike.pep.modelgateway.quota.domain.UsageRow;
 
 public interface QuotaMapper {
 
@@ -12,19 +19,19 @@ public interface QuotaMapper {
 
     int lockAdvisory(@Param("value") String value);
 
-    List<QuotaRecords.Account> lockAccounts(@Param("scopeKind") String scopeKind, @Param("subjectId") String subjectId);
+    List<Account> lockAccounts(@Param("scopeKind") String scopeKind, @Param("subjectId") String subjectId);
 
-    List<QuotaRecords.Account> accounts(@Param("scopeKind") String scopeKind, @Param("subjectId") String subjectId);
+    List<Account> accounts(@Param("scopeKind") String scopeKind, @Param("subjectId") String subjectId);
 
-    QuotaRecords.Account findAccount(@Param("id") UUID id);
+    Account findAccount(@Param("id") UUID id);
 
-    QuotaRecords.Account lockAccount(@Param("id") UUID id);
+    Account lockAccount(@Param("id") UUID id);
 
-    QuotaRecords.Policy findPolicy(@Param("policyKey") String policyKey, @Param("revision") long revision);
+    Policy findPolicy(@Param("policyKey") String policyKey, @Param("revision") long revision);
 
-    QuotaRecords.Bucket findBucket(@Param("id") UUID id);
+    Bucket findBucket(@Param("id") UUID id);
 
-    QuotaRecords.Bucket lockBucket(@Param("id") UUID id);
+    Bucket lockBucket(@Param("id") UUID id);
 
     Long nextGeneration(@Param("accountId") UUID accountId);
 
@@ -59,17 +66,17 @@ public interface QuotaMapper {
 
     int settleReleasedBucket(@Param("bucketId") UUID bucketId, @Param("settledUnits") long settledUnits);
 
-    QuotaRecords.Reservation findReservationByCall(@Param("modelCallId") UUID modelCallId);
+    Reservation findReservationByCall(@Param("modelCallId") UUID modelCallId);
 
-    QuotaRecords.Reservation lockReservation(@Param("id") UUID id);
+    Reservation lockReservation(@Param("id") UUID id);
 
-    List<QuotaRecords.Charge> lockCharges(@Param("reservationId") UUID reservationId);
+    List<Charge> lockCharges(@Param("reservationId") UUID reservationId);
 
-    QuotaRecords.Call findCall(@Param("logicalCallId") UUID logicalCallId, @Param("attemptNo") int attemptNo);
+    Call findCall(@Param("logicalCallId") UUID logicalCallId, @Param("attemptNo") int attemptNo);
 
-    QuotaRecords.Call findCallById(@Param("id") UUID id);
+    Call findCallById(@Param("id") UUID id);
 
-    int insertCall(QuotaRecords.Call call);
+    int insertCall(Call call);
 
     int insertReservation(
             @Param("id") UUID id,
@@ -122,20 +129,19 @@ public interface QuotaMapper {
 
     int updateAccountState(@Param("accountId") UUID accountId, @Param("state") String state);
 
-    List<QuotaRecords.Reservation> expiredHeldReservations(@Param("limit") int limit);
+    List<Reservation> expiredHeldReservations(@Param("limit") int limit);
 
-    List<QuotaRecords.Reservation> expiredDispatchedReservations(
-            @Param("cutoff") OffsetDateTime cutoff, @Param("limit") int limit);
+    List<Reservation> expiredDispatchedReservations(@Param("cutoff") OffsetDateTime cutoff, @Param("limit") int limit);
 
     Long pendingReconciliation(@Param("scopeKind") String scopeKind, @Param("subjectId") String subjectId);
 
-    List<QuotaRecords.Charge> chargesForCall(@Param("modelCallId") UUID modelCallId);
+    List<Charge> chargesForCall(@Param("modelCallId") UUID modelCallId);
 
     Integer nextAdjustmentNo(@Param("modelCallId") UUID modelCallId);
 
     int adjustBucketUsed(@Param("bucketId") UUID bucketId, @Param("delta") long delta);
 
-    List<QuotaRecords.UsageRow> usageRows(
+    List<UsageRow> usageRows(
             @Param("scopeKind") String scopeKind,
             @Param("subjectId") String subjectId,
             @Param("limit") int limit,
@@ -174,8 +180,7 @@ public interface QuotaMapper {
             @Param("actorId") String actorId,
             @Param("idempotencyKey") String idempotencyKey);
 
-    QuotaRecords.ChangeRequest findChangeRequest(
-            @Param("actorId") String actorId, @Param("idempotencyKey") String idempotencyKey);
+    ChangeRequest findChangeRequest(@Param("actorId") String actorId, @Param("idempotencyKey") String idempotencyKey);
 
     int insertAdjustment(
             @Param("id") UUID id,

@@ -2,7 +2,7 @@ package top.yealike.pep.runtime.execution;
 
 import java.util.concurrent.Semaphore;
 import org.springframework.stereotype.Component;
-import top.yealike.pep.runtime.config.RuntimeProperties;
+import top.yealike.pep.runtime.config.properties.RuntimeProperties;
 
 /** Run 并发 + 等待队列的统一准入；满额立即拒绝，不无限排队。 */
 @Component

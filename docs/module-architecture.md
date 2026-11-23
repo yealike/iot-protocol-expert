@@ -42,6 +42,41 @@ OPS 的 Java 包为 `top.yealike.pep.ops`，Agent 控制面保留 `top.yealike.p
 Spring 配置绑定放 `config.properties`；Controller、Service、Store、Mapper 等主体代码不再内嵌公共 record。
 仅在强耦合且不跨包使用时，才允许保留 private 内部 record。
 
+### Agent Runtime 内部包
+
+`iot-protocol-expert-agent-runtime` 按“HTTP 入口、Control 适配、Run 执行、能力装配、基础设施”分层；
+跨应用契约继续放在 `shared/iot-protocol-expert-*`，不复制到运行时功能包。
+
+| 包 / 目录 | 职责 |
+| --- | --- |
+| `api`、`api.dto` | Runtime 内部 HTTP 契约（run/cancel）与请求体；不承载执行规则 |
+| `control`、`control.dto` | Control 客户端、签名异常与期望发布分页结果 |
+| `execution`、`execution.domain` | Run 准入、执行编排、事件发布与审计证据；`domain` 放终态结果、工具计时和额度失败原因 |
+| `prepare`、`prepare.domain` | 发布清单校验、冻结工具与注册表；`domain` 放可跨包共享的准备结果 |
+| `mcp`、`mcp.domain` | MCP 连接池、工具适配与返回 envelope |
+| `skill`、`registry`、`readiness`、`observability` | Skill 读取、Nacos 注册、就绪检查与 OTel 接入 |
+| `config`、`config.properties` | Web、安全和线程池配置；`config.properties` 只放 Spring 配置绑定记录 |
+
+依赖方向固定为 `api -> execution/prepare -> control/mcp/skill -> config`；`execution` 不感知 Control 的 HTTP
+细节，外部调用收敛在 `control`。`RunEventPublisher.QueuedEvent`、`PreparedReleaseRegistry.SchemaFailure`
+只在所属类内部使用，保留为 private 内部 record。
+
+### Model Gateway 内部包
+
+`iot-protocol-expert-model-gateway` 按“HTTP 适配、模型调用、目录、额度、基础设施”分层；OpenAI 兼容入口
+与平台管理入口都留在 `api`，业务规则由功能服务承担。
+
+| 包 / 目录 | 职责 |
+| --- | --- |
+| `api.admin`、`api.chat`、`api.quota` | 管理、OpenAI 兼容调用与额度 HTTP 契约；只做参数转换和响应封装 |
+| `catalog`、`catalog.domain`、`catalog.dto`、`catalog.mapper` | 供应商与逻辑模型目录；`domain` 放行记录和路由结果，`dto` 放管理请求体 |
+| `chat`、`chat.domain` | 模型调用准备、供应商请求与用量归一；`domain` 放已准备调用和上游响应 |
+| `quota`、`quota.domain`、`quota.dto`、`quota.mapper` | 配额账户、预占、结算与用量审计；`domain` 放账本行和视图，`dto` 放管理请求体 |
+| `auth`、`config.properties`、`mybatis`、`support` | 运行凭据校验、Spring 配置绑定、类型处理器与 API 异常 |
+
+目录与额度服务不直接暴露 mapper 行结构；HTTP 请求体集中在 `dto`，Spring 配置绑定集中在
+`config.properties`。`QuotaService.BucketAndAccount` 只服务单次额度计算，保留为 private 内部 record。
+
 ```mermaid
 flowchart LR
     Web -->|登录与运营 API| OPS

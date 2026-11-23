@@ -9,7 +9,8 @@ import org.springframework.beans.factory.DisposableBean;
 import org.springframework.beans.factory.InitializingBean;
 import org.springframework.stereotype.Component;
 import top.yealike.pep.observability.ContentFilteringTracer;
-import top.yealike.pep.runtime.config.RuntimeProperties;
+import top.yealike.pep.runtime.config.properties.OtelProperties;
+import top.yealike.pep.runtime.config.properties.RuntimeProperties;
 
 /** 在真正执行 Agent/模型的 Runtime 进程注册 AgentScope 官方 GenAI 埋点。 */
 @Component
@@ -19,7 +20,7 @@ public class AgentRuntimeTelemetry implements InitializingBean, DisposableBean {
     private static final String INSTRUMENTATION_NAME = "agentscope-java";
 
     private final OpenTelemetry openTelemetry;
-    private final RuntimeProperties.Otel config;
+    private final OtelProperties config;
 
     public AgentRuntimeTelemetry(OpenTelemetry openTelemetry, RuntimeProperties properties) {
         this.openTelemetry = openTelemetry;

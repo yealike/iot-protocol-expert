@@ -11,8 +11,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
-import top.yealike.pep.modelgateway.catalog.CatalogRecords;
-import top.yealike.pep.modelgateway.catalog.CatalogService;
+import top.yealike.pep.modelgateway.catalog.domain.ModelProfile;
+import top.yealike.pep.modelgateway.catalog.domain.Provider;
+import top.yealike.pep.modelgateway.catalog.domain.ResolvedModel;
 
 class ProviderClientTest {
 
@@ -47,9 +48,9 @@ class ProviderClientTest {
         server.verify();
     }
 
-    private static CatalogService.ResolvedModel model() {
+    private static ResolvedModel model() {
         UUID providerId = UUID.randomUUID();
-        CatalogRecords.Provider provider = new CatalogRecords.Provider(
+        Provider provider = new Provider(
                 providerId,
                 "test-provider",
                 "Test Provider",
@@ -57,7 +58,7 @@ class ProviderClientTest {
                 new byte[0],
                 new byte[0],
                 "ACTIVE");
-        CatalogRecords.ModelProfile profile = new CatalogRecords.ModelProfile(
+        ModelProfile profile = new ModelProfile(
                 UUID.randomUUID(),
                 "test-model",
                 "Test Model",
@@ -69,6 +70,6 @@ class ProviderClientTest {
                 1,
                 "CONSERVATIVE_ESTIMATE",
                 "ACTIVE");
-        return new CatalogService.ResolvedModel(profile, provider, "test-secret");
+        return new ResolvedModel(profile, provider, "test-secret");
     }
 }

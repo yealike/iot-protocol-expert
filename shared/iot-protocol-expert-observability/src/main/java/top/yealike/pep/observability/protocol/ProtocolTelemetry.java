@@ -58,7 +58,7 @@ public final class ProtocolTelemetry {
                 .tag("ipe.frame.encrypted", frame.encrypted());
         if (parent == null) builder.setNoParent();
         else builder.setParent(parent);
-        return new Operation(builder.start(), side, operation, type, frame.sequence());
+        return new Operation(this, builder.start(), side, operation, type, frame.sequence());
     }
 
     /** Business handlers sometimes catch an error and return a protocol rejection. */
@@ -67,7 +67,8 @@ public final class ProtocolTelemetry {
         if (current != null) current.fail(error);
     }
 
-    public final class Operation implements AutoCloseable {
+    public static final class Operation implements AutoCloseable {
+        private final ProtocolTelemetry owner;
         private final Span span;
         private final Tracer.SpanInScope scope;
         private final Operation previous;
@@ -78,15 +79,17 @@ public final class ProtocolTelemetry {
         private boolean asynchronous;
         private volatile String outcome = "success";
 
-        private Operation(Span span, String side, String operation, String type, int sequence) {
+        private Operation(
+                ProtocolTelemetry owner, Span span, String side, String operation, String type, int sequence) {
+            this.owner = owner;
             this.span = span;
             this.side = side;
             this.operation = operation;
             this.type = type;
             this.sequence = sequence;
-            previous = active.get();
-            scope = tracer.withSpan(span);
-            active.set(this);
+            previous = owner.active.get();
+            scope = owner.tracer.withSpan(span);
+            owner.active.set(this);
         }
 
         public void fail(Throwable error) {
@@ -117,15 +120,15 @@ public final class ProtocolTelemetry {
             if (!ended.compareAndSet(false, true)) return;
             long elapsed = System.nanoTime() - started;
             Tags tags = Tags.of("side", side, "operation", operation, "frame_type", type, "outcome", outcome);
-            try (var ignored = tracer.withSpan(span)) {
-                meters.counter("ipe.protocol.operations", tags).increment();
+            try (var ignored = owner.tracer.withSpan(span)) {
+                owner.meters.counter("ipe.protocol.operations", tags).increment();
                 Timer.builder("ipe.protocol.operation.duration")
                         .tags(tags)
                         .description("TCP processing / socket write / complete command round trip")
                         .publishPercentileHistogram()
                         .minimumExpectedValue(Duration.ofMillis(1))
                         .maximumExpectedValue(Duration.ofSeconds(30))
-                        .register(meters)
+                        .register(owner.meters)
                         .record(elapsed, TimeUnit.NANOSECONDS);
                 var event = outcome.equals("success") ? log.atInfo() : log.atWarn();
                 event.addKeyValue("event.name", "protocol.operation")
@@ -143,8 +146,8 @@ public final class ProtocolTelemetry {
 
         @Override
         public void close() {
-            if (previous == null) active.remove();
-            else active.set(previous);
+            if (previous == null) owner.active.remove();
+            else owner.active.set(previous);
             scope.close();
             if (!asynchronous) finish();
         }

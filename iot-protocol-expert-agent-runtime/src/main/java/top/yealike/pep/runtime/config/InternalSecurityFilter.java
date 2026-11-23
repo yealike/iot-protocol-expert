@@ -23,6 +23,7 @@ import org.springframework.core.annotation.Order;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
+import top.yealike.pep.runtime.config.properties.RuntimeProperties;
 import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.runtime.contract.InternalRequestBodies;
 import top.yealike.pep.runtime.contract.InternalSignature;

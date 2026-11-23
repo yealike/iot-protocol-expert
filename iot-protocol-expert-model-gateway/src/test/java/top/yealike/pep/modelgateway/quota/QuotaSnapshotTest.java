@@ -11,7 +11,10 @@ import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.transaction.support.TransactionTemplate;
-import top.yealike.pep.modelgateway.config.GatewayProperties;
+import top.yealike.pep.modelgateway.config.properties.GatewayProperties;
+import top.yealike.pep.modelgateway.quota.domain.Account;
+import top.yealike.pep.modelgateway.quota.domain.Bucket;
+import top.yealike.pep.modelgateway.quota.domain.Policy;
 
 class QuotaSnapshotTest {
 
@@ -20,7 +23,7 @@ class QuotaSnapshotTest {
 
     private final QuotaRepository repository = mock(QuotaRepository.class);
     private final QuotaService service =
-            new QuotaService(repository, mock(TransactionTemplate.class), new GatewayProperties());
+            new QuotaService(repository, mock(TransactionTemplate.class), GatewayProperties.defaults());
 
     @Test
     void availabilityUsesTheTightestPolicyAndProjectsTheNextWindow() {
@@ -49,7 +52,7 @@ class QuotaSnapshotTest {
         assertThat(service.snapshot("USER", SUBJECT)).containsEntry("availableUnits", 0L);
     }
 
-    private QuotaRecords.Account account(
+    private Account account(
             String key,
             String mode,
             String state,
@@ -60,11 +63,10 @@ class QuotaSnapshotTest {
             OffsetDateTime expiresAt) {
         UUID accountId = UUID.randomUUID();
         UUID bucketId = UUID.randomUUID();
-        var policy = new QuotaRecords.Policy(UUID.randomUUID(), key, 1, mode, limit, null, NOW.minusDays(1), expiresAt);
-        var bucket = new QuotaRecords.Bucket(
-                bucketId, accountId, 1, 1, NOW.minusHours(1), endAt, "ACTIVE", limit, used, held);
+        var policy = new Policy(UUID.randomUUID(), key, 1, mode, limit, null, NOW.minusDays(1), expiresAt);
+        var bucket = new Bucket(bucketId, accountId, 1, 1, NOW.minusHours(1), endAt, "ACTIVE", limit, used, held);
         when(repository.findPolicy(key, 1)).thenReturn(Optional.of(policy));
         when(repository.findBucket(bucketId)).thenReturn(Optional.of(bucket));
-        return new QuotaRecords.Account(accountId, "USER", SUBJECT, key, 1, bucketId, state, 0, 0);
+        return new Account(accountId, "USER", SUBJECT, key, 1, bucketId, state, 0, 0);
     }
 }

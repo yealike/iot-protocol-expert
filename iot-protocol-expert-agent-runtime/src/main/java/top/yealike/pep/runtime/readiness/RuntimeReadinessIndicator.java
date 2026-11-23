@@ -5,7 +5,7 @@ import java.time.Instant;
 import org.springframework.boot.health.contributor.Health;
 import org.springframework.boot.health.contributor.HealthIndicator;
 import org.springframework.stereotype.Component;
-import top.yealike.pep.runtime.config.RuntimeProperties;
+import top.yealike.pep.runtime.config.properties.RuntimeProperties;
 import top.yealike.pep.runtime.control.ControlClient;
 import top.yealike.pep.runtime.prepare.PreparedReleaseRegistry;
 import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;

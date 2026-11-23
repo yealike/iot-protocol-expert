@@ -29,8 +29,11 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
 import top.yealike.pep.model.contract.ModelErrorCodes;
 import top.yealike.pep.model.contract.ModelUsage;
-import top.yealike.pep.modelgateway.config.GatewayProperties;
+import top.yealike.pep.modelgateway.config.properties.GatewayCounting;
+import top.yealike.pep.modelgateway.config.properties.GatewayProperties;
 import top.yealike.pep.modelgateway.mybatis.UuidTypeHandler;
+import top.yealike.pep.modelgateway.quota.domain.ReservationRequest;
+import top.yealike.pep.modelgateway.quota.dto.GrantRequest;
 import top.yealike.pep.modelgateway.quota.mapper.QuotaMapper;
 import top.yealike.pep.modelgateway.support.ApiException;
 
@@ -61,8 +64,8 @@ class QuotaServicePostgresTest {
                          pep_metering.quota_account, pep_metering.quota_policy_version,
                          pep_metering.usage_adjustment, pep_metering.quota_change_request
                 """);
-        var properties = new GatewayProperties();
-        properties.setDispatchDeadlineSeconds(30);
+        var properties =
+                new GatewayProperties("", "", "", "", "", 10_000, 300_000, 30, 900, GatewayCounting.defaults());
         quota = new QuotaService(
                 new QuotaRepository(quotaMapper(dataSource)),
                 new TransactionTemplate(new DataSourceTransactionManager(dataSource)),
@@ -264,8 +267,8 @@ class QuotaServicePostgresTest {
 
     @Test
     void repeatedGrantWithSameIdempotencyKeyDoesNotCreateNewRevision() {
-        var request = new QuotaService.GrantRequest(
-                "USER", subject, "TOTAL", 100, null, "key-" + subject, "test", "admin", "grant-1");
+        var request =
+                new GrantRequest("USER", subject, "TOTAL", 100, null, "key-" + subject, "test", "admin", "grant-1");
         var first = quota.grant(request);
         var second = quota.grant(request);
         assertThat(second).containsEntry("replayed", true);
@@ -279,11 +282,11 @@ class QuotaServicePostgresTest {
 
     @Test
     void sameIdempotencyKeyRejectsDifferentGrantPayload() {
-        var request = new QuotaService.GrantRequest(
-                "USER", subject, "TOTAL", 100, null, "idem-" + subject, "test", "admin", "same-key");
+        var request =
+                new GrantRequest("USER", subject, "TOTAL", 100, null, "idem-" + subject, "test", "admin", "same-key");
         quota.grant(request);
 
-        assertThatThrownBy(() -> quota.grant(new QuotaService.GrantRequest(
+        assertThatThrownBy(() -> quota.grant(new GrantRequest(
                         "USER", subject, "TOTAL", 200, null, "idem-" + subject, "different", "admin", "same-key")))
                 .isInstanceOfSatisfying(ApiException.class, exception -> {
                     assertThat(exception.status()).isEqualTo(409);
@@ -534,7 +537,7 @@ class QuotaServicePostgresTest {
         List<Callable<Map<String, Object>>> tasks = List.of(
                 () -> {
                     start.await(10, TimeUnit.SECONDS);
-                    return quota.grant(new QuotaService.GrantRequest(
+                    return quota.grant(new GrantRequest(
                             "USER",
                             subject,
                             "TOTAL",
@@ -547,7 +550,7 @@ class QuotaServicePostgresTest {
                 },
                 () -> {
                     start.await(10, TimeUnit.SECONDS);
-                    return quota.grant(new QuotaService.GrantRequest(
+                    return quota.grant(new GrantRequest(
                             "USER",
                             subject,
                             "TOTAL",
@@ -581,8 +584,8 @@ class QuotaServicePostgresTest {
 
     @Test
     void concurrentGrantWithSameIdempotencyKeyReplaysOnce() throws Exception {
-        var request = new QuotaService.GrantRequest(
-                "USER", subject, "TOTAL", 100, null, "idem-" + subject, "test", "admin", "same-key");
+        var request =
+                new GrantRequest("USER", subject, "TOTAL", 100, null, "idem-" + subject, "test", "admin", "same-key");
         CountDownLatch start = new CountDownLatch(1);
         List<Callable<Map<String, Object>>> tasks = List.of(
                 () -> {
@@ -612,12 +615,12 @@ class QuotaServicePostgresTest {
     }
 
     private void grant(String mode, long limit, Long duration, String policyKey) {
-        quota.grant(new QuotaService.GrantRequest(
+        quota.grant(new GrantRequest(
                 "USER", subject, mode, limit, duration, policyKey, "test", "admin", "grant-" + UUID.randomUUID()));
     }
 
-    private QuotaService.ReservationRequest request(long units) {
-        return new QuotaService.ReservationRequest(
+    private ReservationRequest request(long units) {
+        return new ReservationRequest(
                 UUID.randomUUID(),
                 0,
                 "hash-" + UUID.randomUUID(),

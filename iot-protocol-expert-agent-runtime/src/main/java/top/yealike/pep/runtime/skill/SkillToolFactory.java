@@ -12,14 +12,14 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
 import reactor.core.publisher.Mono;
-import top.yealike.pep.runtime.config.RuntimeProperties;
+import top.yealike.pep.runtime.config.properties.RuntimeProperties;
 import top.yealike.pep.runtime.contract.SkillBundle;
 import top.yealike.pep.runtime.contract.SkillFile;
 import top.yealike.pep.runtime.contract.SkillPathRules;
 import top.yealike.pep.runtime.execution.RunEventSink;
 import top.yealike.pep.runtime.execution.RunGuard;
 import top.yealike.pep.runtime.execution.ToolAuditMetadata;
-import top.yealike.pep.runtime.prepare.PreparedRelease;
+import top.yealike.pep.runtime.prepare.domain.PreparedRelease;
 
 /** 文本 Skill 的两个只读工具；可读取标准目录，但不物化文件、不执行脚本、不访问任意路径。 */
 @Component
@@ -36,24 +36,28 @@ public class SkillToolFactory {
             return List.of();
         }
         Set<String> loaded = ConcurrentHashMap.newKeySet();
+        int maxReadChars = properties.skills().maxReadChars();
         return List.of(
-                new LoadSkillTool(release, sink, loaded, guard),
-                new ReadSkillResourceTool(release, sink, loaded, guard));
+                new LoadSkillTool(release, sink, loaded, guard, maxReadChars),
+                new ReadSkillResourceTool(release, sink, loaded, guard, maxReadChars));
     }
 
-    private final class LoadSkillTool implements AgentTool {
+    private static final class LoadSkillTool implements AgentTool {
 
         private final PreparedRelease release;
         private final RunEventSink sink;
         private final Set<String> loaded;
         private final RunGuard guard;
+        private final int maxReadChars;
         private final Map<String, Object> parameters;
 
-        private LoadSkillTool(PreparedRelease release, RunEventSink sink, Set<String> loaded, RunGuard guard) {
+        private LoadSkillTool(
+                PreparedRelease release, RunEventSink sink, Set<String> loaded, RunGuard guard, int maxReadChars) {
             this.release = release;
             this.sink = sink;
             this.loaded = loaded;
             this.guard = guard;
+            this.maxReadChars = maxReadChars;
             Map<String, Object> properties = new LinkedHashMap<>();
             properties.put("skillKey", Map.of("type", "string", "description", "已绑定 Skill 的 key"));
             this.parameters = Map.of(
@@ -120,24 +124,26 @@ public class SkillToolFactory {
                 return ToolResultBlock.text("Skill 已在本 Run 中加载，无需重复加载：" + key);
             }
             sink.emit("skill.loaded", Map.of("skillKey", key, "version", bundle.version()));
-            return ToolResultBlock.text(
-                    truncate(entry.content(), properties.skills().maxReadChars()));
+            return ToolResultBlock.text(truncate(entry.content(), maxReadChars));
         }
     }
 
-    private final class ReadSkillResourceTool implements AgentTool {
+    private static final class ReadSkillResourceTool implements AgentTool {
 
         private final PreparedRelease release;
         private final RunEventSink sink;
         private final Set<String> loaded;
         private final RunGuard guard;
+        private final int maxReadChars;
         private final Map<String, Object> parameters;
 
-        private ReadSkillResourceTool(PreparedRelease release, RunEventSink sink, Set<String> loaded, RunGuard guard) {
+        private ReadSkillResourceTool(
+                PreparedRelease release, RunEventSink sink, Set<String> loaded, RunGuard guard, int maxReadChars) {
             this.release = release;
             this.sink = sink;
             this.loaded = loaded;
             this.guard = guard;
+            this.maxReadChars = maxReadChars;
             Map<String, Object> properties = new LinkedHashMap<>();
             properties.put("skillKey", Map.of("type", "string"));
             properties.put("path", Map.of("type", "string", "description", "references/、scripts/ 或 assets/ 下的相对路径"));
@@ -207,7 +213,7 @@ public class SkillToolFactory {
             int offset = integer(input, "offset", 0);
             String content = file.content();
             int start = Math.min(Math.max(0, offset), content.length());
-            int max = properties.skills().maxReadChars();
+            int max = maxReadChars;
             int end = Math.min(content.length(), start + max);
             String dedupKey = "resource:" + key + ":" + path.toLowerCase(java.util.Locale.ROOT) + ":" + start;
             if (!loaded.add(dedupKey)) {

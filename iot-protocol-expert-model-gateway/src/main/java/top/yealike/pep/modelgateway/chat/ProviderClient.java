@@ -7,7 +7,8 @@ import java.nio.charset.StandardCharsets;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
-import top.yealike.pep.modelgateway.catalog.CatalogService;
+import top.yealike.pep.modelgateway.catalog.domain.ResolvedModel;
+import top.yealike.pep.modelgateway.chat.domain.ProviderResponse;
 
 @Component
 public class ProviderClient {
@@ -18,9 +19,7 @@ public class ProviderClient {
         this.http = upstreamRestClient;
     }
 
-    public record ProviderResponse(int status, String contentType, String body) {}
-
-    public ProviderResponse complete(CatalogService.ResolvedModel model, String requestJson) {
+    public ProviderResponse complete(ResolvedModel model, String requestJson) {
         return http.post()
                 .uri(endpoint(model))
                 .header("Authorization", "Bearer " + model.secret())
@@ -34,7 +33,7 @@ public class ProviderClient {
                         new String(response.getBody().readAllBytes(), StandardCharsets.UTF_8)));
     }
 
-    public void stream(CatalogService.ResolvedModel model, String requestJson, LineSink sink) {
+    public void stream(ResolvedModel model, String requestJson, LineSink sink) {
         http.post()
                 .uri(endpoint(model))
                 .header("Authorization", "Bearer " + model.secret())
@@ -66,7 +65,7 @@ public class ProviderClient {
                 });
     }
 
-    private static String endpoint(CatalogService.ResolvedModel model) {
+    private static String endpoint(ResolvedModel model) {
         String base = model.provider().baseUrl();
         String value = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
         if (value.endsWith("/chat/completions")) {

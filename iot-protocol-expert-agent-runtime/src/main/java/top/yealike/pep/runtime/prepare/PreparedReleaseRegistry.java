@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Component;
+import top.yealike.pep.runtime.prepare.domain.PreparedRelease;
 
 /** 已准备版本的内存注册表；Runtime 重启后由 Control 的 desired-releases 对账重新 prepare。 */
 @Component

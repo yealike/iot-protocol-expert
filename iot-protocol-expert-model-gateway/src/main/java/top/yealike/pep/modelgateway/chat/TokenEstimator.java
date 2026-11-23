@@ -6,7 +6,7 @@ import java.util.List;
 import java.util.Map;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.ObjectMapper;
-import top.yealike.pep.modelgateway.config.GatewayProperties;
+import top.yealike.pep.modelgateway.config.properties.GatewayProperties;
 
 /**
  * 请求输入上界估算。
@@ -33,15 +33,15 @@ public class TokenEstimator {
             chars += json.writeValueAsString(tools).length();
         }
         int messages = body.get("messages") instanceof List<?> list ? list.size() : 1;
-        BigDecimal perToken = new BigDecimal(properties.getCounting().getCharsPerToken());
+        BigDecimal perToken = new BigDecimal(properties.counting().charsPerToken());
         if (perToken.compareTo(BigDecimal.ZERO) <= 0) {
             perToken = new BigDecimal("0.5");
         }
         long tokens =
                 new BigDecimal(chars).divide(perToken, 0, RoundingMode.CEILING).longValue();
         return tokens
-                + (long) messages * Math.max(0, properties.getCounting().getMessageOverhead())
-                + Math.max(0, properties.getCounting().getRequestOverhead());
+                + (long) messages * Math.max(0, properties.counting().messageOverhead())
+                + Math.max(0, properties.counting().requestOverhead());
     }
 
     public long reserveUnits(

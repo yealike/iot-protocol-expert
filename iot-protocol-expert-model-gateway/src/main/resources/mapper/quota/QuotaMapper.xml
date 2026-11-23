@@ -4,7 +4,7 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="top.yealike.pep.modelgateway.quota.mapper.QuotaMapper">
 
-    <resultMap id="AccountMap" type="top.yealike.pep.modelgateway.quota.QuotaRecords$Account">
+    <resultMap id="AccountMap" type="top.yealike.pep.modelgateway.quota.domain.Account">
         <constructor>
             <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
             <arg column="scope_kind" javaType="java.lang.String"/>
@@ -18,7 +18,7 @@
         </constructor>
     </resultMap>
 
-    <resultMap id="PolicyMap" type="top.yealike.pep.modelgateway.quota.QuotaRecords$Policy">
+    <resultMap id="PolicyMap" type="top.yealike.pep.modelgateway.quota.domain.Policy">
         <constructor>
             <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
             <arg column="policy_key" javaType="java.lang.String"/>
@@ -31,7 +31,7 @@
         </constructor>
     </resultMap>
 
-    <resultMap id="BucketMap" type="top.yealike.pep.modelgateway.quota.QuotaRecords$Bucket">
+    <resultMap id="BucketMap" type="top.yealike.pep.modelgateway.quota.domain.Bucket">
         <constructor>
             <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
             <arg column="account_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
@@ -46,7 +46,7 @@
         </constructor>
     </resultMap>
 
-    <resultMap id="ReservationMap" type="top.yealike.pep.modelgateway.quota.QuotaRecords$Reservation">
+    <resultMap id="ReservationMap" type="top.yealike.pep.modelgateway.quota.domain.Reservation">
         <constructor>
             <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
             <arg column="model_call_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
@@ -55,7 +55,7 @@
         </constructor>
     </resultMap>
 
-    <resultMap id="ChargeMap" type="top.yealike.pep.modelgateway.quota.QuotaRecords$Charge">
+    <resultMap id="ChargeMap" type="top.yealike.pep.modelgateway.quota.domain.Charge">
         <constructor>
             <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
             <arg column="reservation_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
@@ -67,7 +67,7 @@
         </constructor>
     </resultMap>
 
-    <resultMap id="CallMap" type="top.yealike.pep.modelgateway.quota.QuotaRecords$Call">
+    <resultMap id="CallMap" type="top.yealike.pep.modelgateway.quota.domain.Call">
         <constructor>
             <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
             <arg column="logical_call_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
@@ -87,7 +87,7 @@
         </constructor>
     </resultMap>
 
-    <resultMap id="ChangeRequestMap" type="top.yealike.pep.modelgateway.quota.QuotaRecords$ChangeRequest">
+    <resultMap id="ChangeRequestMap" type="top.yealike.pep.modelgateway.quota.domain.ChangeRequest">
         <constructor>
             <arg column="account_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.modelgateway.mybatis.UuidTypeHandler"/>
             <arg column="new_revision" javaType="java.lang.Long"/>
@@ -97,7 +97,7 @@
         </constructor>
     </resultMap>
 
-    <resultMap id="UsageRowMap" type="top.yealike.pep.modelgateway.quota.QuotaRecords$UsageRow">
+    <resultMap id="UsageRowMap" type="top.yealike.pep.modelgateway.quota.domain.UsageRow">
         <constructor>
             <arg column="call_id" javaType="java.lang.String"/>
             <arg column="logical_call_id" javaType="java.lang.String"/>

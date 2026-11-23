@@ -3,7 +3,8 @@ package top.yealike.pep.modelgateway.catalog.mapper;
 import java.util.List;
 import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
-import top.yealike.pep.modelgateway.catalog.CatalogRecords;
+import top.yealike.pep.modelgateway.catalog.domain.ModelProfile;
+import top.yealike.pep.modelgateway.catalog.domain.Provider;
 
 public interface CatalogMapper {
 
@@ -16,11 +17,11 @@ public interface CatalogMapper {
             @Param("nonce") byte[] nonce,
             @Param("keyId") String keyId);
 
-    List<CatalogRecords.Provider> listProviders();
+    List<Provider> listProviders();
 
-    CatalogRecords.Provider findProvider(@Param("code") String code);
+    Provider findProvider(@Param("code") String code);
 
-    CatalogRecords.Provider findProviderById(@Param("id") UUID id);
+    Provider findProviderById(@Param("id") UUID id);
 
     int insertProfile(
             @Param("id") UUID id,
@@ -34,7 +35,7 @@ public interface CatalogMapper {
             @Param("weightDen") int weightDen,
             @Param("countingMode") String countingMode);
 
-    List<CatalogRecords.ModelProfile> listProfiles();
+    List<ModelProfile> listProfiles();
 
-    CatalogRecords.ModelProfile findProfile(@Param("key") String key);
+    ModelProfile findProfile(@Param("key") String key);
 }

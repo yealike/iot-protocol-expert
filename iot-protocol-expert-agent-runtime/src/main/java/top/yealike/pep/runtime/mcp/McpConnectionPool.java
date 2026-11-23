@@ -32,7 +32,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 import top.yealike.pep.observability.SensitiveDataSanitizer;
-import top.yealike.pep.runtime.config.RuntimeProperties;
+import top.yealike.pep.runtime.config.properties.RuntimeProperties;
 import top.yealike.pep.runtime.contract.ComponentDigests;
 import top.yealike.pep.runtime.contract.ComponentEndpoint;
 import top.yealike.pep.runtime.contract.EndpointPolicy;
@@ -40,6 +40,7 @@ import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.runtime.contract.McpDescriptor;
 import top.yealike.pep.runtime.contract.McpToolDescriptor;
 import top.yealike.pep.runtime.contract.McpToolSchemas;
+import top.yealike.pep.runtime.mcp.domain.McpToolEnvelope;
 import top.yealike.pep.runtime.prepare.PrepareException;
 
 /**

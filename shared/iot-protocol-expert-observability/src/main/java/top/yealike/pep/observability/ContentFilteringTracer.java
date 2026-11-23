@@ -43,7 +43,7 @@ public final class ContentFilteringTracer implements Tracer {
 
     @Override
     public SpanBuilder spanBuilder(String spanName) {
-        return new FilteringSpanBuilder(delegate.spanBuilder(spanName));
+        return new FilteringSpanBuilder(this, delegate.spanBuilder(spanName));
     }
 
     private boolean isContentKey(String key) {
@@ -83,11 +83,13 @@ public final class ContentFilteringTracer implements Tracer {
         return value;
     }
 
-    private final class FilteringSpanBuilder implements SpanBuilder {
+    private static final class FilteringSpanBuilder implements SpanBuilder {
 
+        private final ContentFilteringTracer owner;
         private final SpanBuilder delegate;
 
-        private FilteringSpanBuilder(SpanBuilder delegate) {
+        private FilteringSpanBuilder(ContentFilteringTracer owner, SpanBuilder delegate) {
+            this.owner = owner;
             this.delegate = delegate;
         }
 
@@ -111,15 +113,15 @@ public final class ContentFilteringTracer implements Tracer {
 
         @Override
         public SpanBuilder addLink(SpanContext spanContext, Attributes attributes) {
-            delegate.addLink(spanContext, filterAttributes(attributes));
+            delegate.addLink(spanContext, owner.filterAttributes(attributes));
             return this;
         }
 
         @Override
         public SpanBuilder setAttribute(String key, String value) {
-            if (isContentKey(key)) {
-                if (contentEnabled && value != null) {
-                    delegate.setAttribute(key, sanitize(value));
+            if (owner.isContentKey(key)) {
+                if (owner.contentEnabled && value != null) {
+                    delegate.setAttribute(key, owner.sanitize(value));
                 }
                 return this;
             }
@@ -147,7 +149,7 @@ public final class ContentFilteringTracer implements Tracer {
 
         @Override
         public <T> SpanBuilder setAttribute(AttributeKey<T> key, T value) {
-            T filtered = filterValue(key, value);
+            T filtered = owner.filterValue(key, value);
             if (filtered != null) {
                 delegate.setAttribute(key, filtered);
             }
@@ -168,21 +170,23 @@ public final class ContentFilteringTracer implements Tracer {
 
         @Override
         public Span startSpan() {
-            return new FilteringSpan(delegate.startSpan());
+            return new FilteringSpan(owner, delegate.startSpan());
         }
     }
 
-    private final class FilteringSpan implements Span {
+    private static final class FilteringSpan implements Span {
 
+        private final ContentFilteringTracer owner;
         private final Span delegate;
 
-        private FilteringSpan(Span delegate) {
+        private FilteringSpan(ContentFilteringTracer owner, Span delegate) {
+            this.owner = owner;
             this.delegate = delegate;
         }
 
         @Override
         public <T> Span setAttribute(AttributeKey<T> key, T value) {
-            T filtered = filterValue(key, value);
+            T filtered = owner.filterValue(key, value);
             if (filtered != null) {
                 delegate.setAttribute(key, filtered);
             }
@@ -191,9 +195,9 @@ public final class ContentFilteringTracer implements Tracer {
 
         @Override
         public Span setAttribute(String key, String value) {
-            if (isContentKey(key)) {
-                if (contentEnabled && value != null) {
-                    delegate.setAttribute(key, sanitize(value));
+            if (owner.isContentKey(key)) {
+                if (owner.contentEnabled && value != null) {
+                    delegate.setAttribute(key, owner.sanitize(value));
                 }
                 return this;
             }
@@ -221,13 +225,13 @@ public final class ContentFilteringTracer implements Tracer {
 
         @Override
         public Span addEvent(String name, Attributes attributes) {
-            delegate.addEvent(name, filterAttributes(attributes));
+            delegate.addEvent(name, owner.filterAttributes(attributes));
             return this;
         }
 
         @Override
         public Span addEvent(String name, Attributes attributes, long timestamp, TimeUnit unit) {
-            delegate.addEvent(name, filterAttributes(attributes), timestamp, unit);
+            delegate.addEvent(name, owner.filterAttributes(attributes), timestamp, unit);
             return this;
         }
 
@@ -239,7 +243,7 @@ public final class ContentFilteringTracer implements Tracer {
 
         @Override
         public Span addLink(SpanContext spanContext, Attributes attributes) {
-            delegate.addLink(spanContext, filterAttributes(attributes));
+            delegate.addLink(spanContext, owner.filterAttributes(attributes));
             return this;
         }
 
@@ -251,7 +255,7 @@ public final class ContentFilteringTracer implements Tracer {
 
         @Override
         public Span recordException(Throwable exception, Attributes additionalAttributes) {
-            delegate.recordException(exception, filterAttributes(additionalAttributes));
+            delegate.recordException(exception, owner.filterAttributes(additionalAttributes));
             return this;
         }
 

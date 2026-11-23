@@ -9,6 +9,14 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
 import top.yealike.pep.model.contract.ModelUsage;
+import top.yealike.pep.modelgateway.quota.domain.Account;
+import top.yealike.pep.modelgateway.quota.domain.Bucket;
+import top.yealike.pep.modelgateway.quota.domain.Call;
+import top.yealike.pep.modelgateway.quota.domain.ChangeRequest;
+import top.yealike.pep.modelgateway.quota.domain.Charge;
+import top.yealike.pep.modelgateway.quota.domain.Policy;
+import top.yealike.pep.modelgateway.quota.domain.Reservation;
+import top.yealike.pep.modelgateway.quota.domain.UsageRow;
 import top.yealike.pep.modelgateway.quota.mapper.QuotaMapper;
 
 /** 配额账本的 MyBatis 访问层；SQL 统一维护在 mapper/quota/QuotaMapper.xml。 */
@@ -29,31 +37,31 @@ public class QuotaRepository {
         mapper.lockAdvisory(value);
     }
 
-    public List<QuotaRecords.Account> lockAccounts(String scopeKind, String subjectId) {
+    public List<Account> lockAccounts(String scopeKind, String subjectId) {
         return mapper.lockAccounts(scopeKind, subjectId);
     }
 
-    public List<QuotaRecords.Account> accounts(String scopeKind, String subjectId) {
+    public List<Account> accounts(String scopeKind, String subjectId) {
         return mapper.accounts(scopeKind, subjectId);
     }
 
-    public Optional<QuotaRecords.Account> findAccount(UUID id) {
+    public Optional<Account> findAccount(UUID id) {
         return Optional.ofNullable(mapper.findAccount(id));
     }
 
-    public Optional<QuotaRecords.Account> lockAccount(UUID id) {
+    public Optional<Account> lockAccount(UUID id) {
         return Optional.ofNullable(mapper.lockAccount(id));
     }
 
-    public Optional<QuotaRecords.Policy> findPolicy(String policyKey, long revision) {
+    public Optional<Policy> findPolicy(String policyKey, long revision) {
         return Optional.ofNullable(mapper.findPolicy(policyKey, revision));
     }
 
-    public Optional<QuotaRecords.Bucket> findBucket(UUID id) {
+    public Optional<Bucket> findBucket(UUID id) {
         return Optional.ofNullable(mapper.findBucket(id));
     }
 
-    public Optional<QuotaRecords.Bucket> lockBucket(UUID id) {
+    public Optional<Bucket> lockBucket(UUID id) {
         return Optional.ofNullable(mapper.lockBucket(id));
     }
 
@@ -102,27 +110,27 @@ public class QuotaRepository {
         mapper.settleReleasedBucket(bucketId, settledUnits);
     }
 
-    public Optional<QuotaRecords.Reservation> findReservationByCall(UUID modelCallId) {
+    public Optional<Reservation> findReservationByCall(UUID modelCallId) {
         return Optional.ofNullable(mapper.findReservationByCall(modelCallId));
     }
 
-    public Optional<QuotaRecords.Reservation> lockReservation(UUID id) {
+    public Optional<Reservation> lockReservation(UUID id) {
         return Optional.ofNullable(mapper.lockReservation(id));
     }
 
-    public List<QuotaRecords.Charge> lockCharges(UUID reservationId) {
+    public List<Charge> lockCharges(UUID reservationId) {
         return mapper.lockCharges(reservationId);
     }
 
-    public Optional<QuotaRecords.Call> findCall(UUID logicalCallId, int attemptNo) {
+    public Optional<Call> findCall(UUID logicalCallId, int attemptNo) {
         return Optional.ofNullable(mapper.findCall(logicalCallId, attemptNo));
     }
 
-    public Optional<QuotaRecords.Call> findCallById(UUID id) {
+    public Optional<Call> findCallById(UUID id) {
         return Optional.ofNullable(mapper.findCallById(id));
     }
 
-    public void insertCall(QuotaRecords.Call call) {
+    public void insertCall(Call call) {
         mapper.insertCall(call);
     }
 
@@ -189,11 +197,11 @@ public class QuotaRepository {
         mapper.updateAccountState(accountId, state);
     }
 
-    public List<QuotaRecords.Reservation> expiredHeldReservations(int limit) {
+    public List<Reservation> expiredHeldReservations(int limit) {
         return mapper.expiredHeldReservations(limit);
     }
 
-    public List<QuotaRecords.Reservation> expiredDispatchedReservations(OffsetDateTime cutoff, int limit) {
+    public List<Reservation> expiredDispatchedReservations(OffsetDateTime cutoff, int limit) {
         return mapper.expiredDispatchedReservations(cutoff, limit);
     }
 
@@ -202,7 +210,7 @@ public class QuotaRepository {
         return value == null ? 0 : value;
     }
 
-    public List<QuotaRecords.Charge> chargesForCall(UUID modelCallId) {
+    public List<Charge> chargesForCall(UUID modelCallId) {
         return mapper.chargesForCall(modelCallId);
     }
 
@@ -217,10 +225,10 @@ public class QuotaRepository {
 
     public List<Map<String, Object>> usageRows(
             String scopeKind, String subjectId, int limit, String modelKey, String projectId) {
-        List<QuotaRecords.UsageRow> rows =
+        List<UsageRow> rows =
                 mapper.usageRows(scopeKind, subjectId, Math.max(1, Math.min(limit, 500)), modelKey, projectId);
         List<Map<String, Object>> result = new ArrayList<>(rows.size());
-        for (QuotaRecords.UsageRow row : rows) {
+        for (UsageRow row : rows) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("callId", row.callId());
             item.put("logicalCallId", row.logicalCallId());
@@ -285,7 +293,7 @@ public class QuotaRepository {
                 idempotencyKey);
     }
 
-    public Optional<QuotaRecords.ChangeRequest> findChangeRequest(String actorId, String idempotencyKey) {
+    public Optional<ChangeRequest> findChangeRequest(String actorId, String idempotencyKey) {
         return Optional.ofNullable(mapper.findChangeRequest(actorId, idempotencyKey));
     }
 

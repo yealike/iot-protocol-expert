@@ -11,7 +11,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 import org.junit.jupiter.api.Test;
 import top.yealike.pep.runtime.control.ControlClient;
-import top.yealike.pep.runtime.control.DesiredReleasePage;
+import top.yealike.pep.runtime.control.dto.DesiredReleasePage;
 
 class ReleaseReconcilerPeriodicTest {
 

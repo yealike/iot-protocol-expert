@@ -15,8 +15,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import top.yealike.pep.runtime.control.ControlClient;
-import top.yealike.pep.runtime.control.DesiredRelease;
-import top.yealike.pep.runtime.control.DesiredReleasePage;
+import top.yealike.pep.runtime.control.dto.DesiredRelease;
+import top.yealike.pep.runtime.control.dto.DesiredReleasePage;
 
 class ReleaseReconcilerPaginationTest {
 

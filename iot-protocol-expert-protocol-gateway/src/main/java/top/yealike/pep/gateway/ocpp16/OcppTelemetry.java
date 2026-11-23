@@ -52,11 +52,12 @@ public class OcppTelemetry {
         } else {
             span.tag("ipe.parent", "remote");
         }
-        return new Operation(span, side, operation, action, messageType, uniqueId);
+        return new Operation(this, span, side, operation, action, messageType, uniqueId);
     }
 
-    public final class Operation implements AutoCloseable {
+    public static final class Operation implements AutoCloseable {
 
+        private final OcppTelemetry owner;
         private final Span span;
         private final Tracer.SpanInScope scope;
         private final String side;
@@ -70,14 +71,21 @@ public class OcppTelemetry {
         private volatile String outcome = "success";
 
         private Operation(
-                Span span, String side, String operation, String action, String messageType, String uniqueId) {
+                OcppTelemetry owner,
+                Span span,
+                String side,
+                String operation,
+                String action,
+                String messageType,
+                String uniqueId) {
+            this.owner = owner;
             this.span = span;
             this.side = side;
             this.operation = operation;
             this.action = action;
             this.messageType = messageType;
             this.uniqueId = uniqueId == null ? "" : uniqueId;
-            this.scope = tracer.withSpan(span);
+            this.scope = owner.tracer.withSpan(span);
         }
 
         public void fail(Throwable error) {
@@ -111,15 +119,15 @@ public class OcppTelemetry {
                     messageType == null ? "unknown" : messageType,
                     "outcome",
                     outcome);
-            try (var ignored = tracer.withSpan(span)) {
-                meters.counter("ipe.protocol.messages", tags).increment();
+            try (var ignored = owner.tracer.withSpan(span)) {
+                owner.meters.counter("ipe.protocol.messages", tags).increment();
                 Timer.builder("ipe.protocol.message.duration")
                         .tags(tags)
                         .description("OCPP message processing / socket write / command round trip")
                         .publishPercentileHistogram()
                         .minimumExpectedValue(Duration.ofMillis(1))
                         .maximumExpectedValue(Duration.ofSeconds(30))
-                        .register(meters)
+                        .register(owner.meters)
                         .record(elapsed, TimeUnit.NANOSECONDS);
                 var event = outcome.equals("success") ? log.atInfo() : log.atWarn();
                 event.addKeyValue("event.name", "protocol.message")

@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 import top.yealike.pep.runtime.TestFixtures;
 import top.yealike.pep.runtime.contract.McpToolDescriptor;
 import top.yealike.pep.runtime.contract.ToolAliasCodec;
-import top.yealike.pep.runtime.prepare.PreparedTool;
+import top.yealike.pep.runtime.prepare.domain.PreparedTool;
 
 class ToolAliasAndSchemaTest {
 

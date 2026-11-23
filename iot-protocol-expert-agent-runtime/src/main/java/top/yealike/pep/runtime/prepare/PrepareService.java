@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
-import top.yealike.pep.runtime.config.RuntimeProperties;
+import top.yealike.pep.runtime.config.properties.RuntimeProperties;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.ComponentDigests;
 import top.yealike.pep.runtime.contract.CredentialResolveRequest;
@@ -36,6 +36,8 @@ import top.yealike.pep.runtime.contract.ToolAliasCodec;
 import top.yealike.pep.runtime.control.ControlClient;
 import top.yealike.pep.runtime.control.ControlException;
 import top.yealike.pep.runtime.mcp.McpConnectionPool;
+import top.yealike.pep.runtime.prepare.domain.PreparedRelease;
+import top.yealike.pep.runtime.prepare.domain.PreparedTool;
 import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 
 /**

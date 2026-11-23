@@ -10,7 +10,8 @@ import javax.crypto.Cipher;
 import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import org.springframework.stereotype.Component;
-import top.yealike.pep.modelgateway.config.GatewayProperties;
+import top.yealike.pep.modelgateway.catalog.domain.Sealed;
+import top.yealike.pep.modelgateway.config.properties.GatewayProperties;
 import top.yealike.pep.modelgateway.support.ApiException;
 
 /** 供应商密钥只以 AES-256-GCM 密文保存，主密钥来自环境变量或挂载文件。 */
@@ -64,9 +65,9 @@ public class SecretCipher {
         }
         synchronized (this) {
             if (key == null) {
-                String material = properties.getCredentialMasterKey();
+                String material = properties.credentialMasterKey();
                 if (material == null || material.isBlank()) {
-                    String file = properties.getCredentialMasterKeyFile();
+                    String file = properties.credentialMasterKeyFile();
                     if (file != null && !file.isBlank()) {
                         try {
                             material = Files.readString(Path.of(file), StandardCharsets.UTF_8)
@@ -99,6 +100,4 @@ public class SecretCipher {
             throw new IllegalStateException("SHA-256 unavailable", exception);
         }
     }
-
-    public record Sealed(byte[] ciphertext, byte[] nonce, String keyId) {}
 }

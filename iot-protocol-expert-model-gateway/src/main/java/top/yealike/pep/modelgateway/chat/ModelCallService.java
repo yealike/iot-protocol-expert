@@ -12,7 +12,11 @@ import top.yealike.pep.model.contract.ModelErrorCodes;
 import top.yealike.pep.model.contract.ModelUsage;
 import top.yealike.pep.model.contract.RunTokenPayload;
 import top.yealike.pep.modelgateway.catalog.CatalogService;
+import top.yealike.pep.modelgateway.catalog.domain.ResolvedModel;
+import top.yealike.pep.modelgateway.chat.domain.PreparedCall;
 import top.yealike.pep.modelgateway.quota.QuotaService;
+import top.yealike.pep.modelgateway.quota.domain.ReservationHandle;
+import top.yealike.pep.modelgateway.quota.domain.ReservationRequest;
 import top.yealike.pep.modelgateway.support.ApiException;
 
 @Service
@@ -37,13 +41,6 @@ public class ModelCallService {
         this.json = json;
     }
 
-    public record PreparedCall(
-            CatalogService.ResolvedModel model,
-            QuotaService.ReservationHandle reservation,
-            String upstreamBody,
-            boolean stream,
-            int maxOutputTokens) {}
-
     public PreparedCall prepare(
             RunTokenPayload token, Map<String, Object> body, String logicalCallIdHeader, String attemptHeader) {
         String modelKey = body.get("model") == null ? token.modelProfile() : String.valueOf(body.get("model"));
@@ -55,7 +52,7 @@ public class ModelCallService {
                 && !token.modelProfile().equals(modelKey)) {
             throw ApiException.badRequest(ModelErrorCodes.MODEL_NOT_ALLOWED, "运行凭据不允许该模型");
         }
-        CatalogService.ResolvedModel model = catalog.resolve(modelKey);
+        ResolvedModel model = catalog.resolve(modelKey);
         int requested = intValue(body.get("max_completion_tokens"), intValue(body.get("max_tokens"), 0));
         int maxOutput = requested <= 0
                 ? model.profile().maxOutputTokens()
@@ -81,7 +78,7 @@ public class ModelCallService {
             upstream.put("stream_options", Map.of("include_usage", true));
         }
 
-        QuotaService.ReservationHandle reservation = quota.reserve(new QuotaService.ReservationRequest(
+        ReservationHandle reservation = quota.reserve(new ReservationRequest(
                 logicalCallId,
                 attemptNo,
                 requestHash,

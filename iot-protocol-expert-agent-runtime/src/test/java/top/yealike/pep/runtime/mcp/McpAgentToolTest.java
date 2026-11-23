@@ -24,7 +24,7 @@ import top.yealike.pep.runtime.control.ControlClient;
 import top.yealike.pep.runtime.execution.RunGuard;
 import top.yealike.pep.runtime.execution.ToolAuditMetadata;
 import top.yealike.pep.runtime.observability.RuntimeObservability;
-import top.yealike.pep.runtime.prepare.PreparedTool;
+import top.yealike.pep.runtime.prepare.domain.PreparedTool;
 
 class McpAgentToolTest {
 

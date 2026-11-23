@@ -14,7 +14,7 @@ import org.junit.jupiter.api.Test;
 import org.mybatis.spring.SqlSessionFactoryBean;
 import org.springframework.core.io.support.PathMatchingResourcePatternResolver;
 import top.yealike.pep.modelgateway.catalog.mapper.CatalogMapper;
-import top.yealike.pep.modelgateway.quota.QuotaRecords;
+import top.yealike.pep.modelgateway.quota.domain.Call;
 import top.yealike.pep.modelgateway.quota.mapper.QuotaMapper;
 
 /** 校验模型网关的 MyBatis 映射文件可解析、Mapper 方法完整绑定且动态参数可生成。 */
@@ -54,7 +54,7 @@ class MyBatisMapperXmlTest {
         assertThat(unfiltered.getSql()).doesNotContain("c.model_profile_key =", "c.project_id =");
 
         UUID id = UUID.randomUUID();
-        QuotaRecords.Call call = new QuotaRecords.Call(
+        Call call = new Call(
                 id,
                 UUID.randomUUID(),
                 0,

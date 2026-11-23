@@ -10,6 +10,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import top.yealike.pep.runtime.config.properties.RuntimeProperties;
 
 /** 有界线程池：Run 执行、MCP 阻塞调用与心跳调度均显式命名并限制容量。 */
 @Configuration

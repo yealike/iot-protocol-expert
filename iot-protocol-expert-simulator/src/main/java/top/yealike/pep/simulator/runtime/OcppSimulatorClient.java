@@ -75,7 +75,7 @@ public class OcppSimulatorClient {
             WebSocket ws = http.newWebSocketBuilder()
                     .subprotocols(OcppConstants.SUB_PROTOCOL)
                     .connectTimeout(Duration.ofSeconds(5))
-                    .buildAsync(uri, new Listener())
+                    .buildAsync(uri, new Listener(this))
                     .get(6, TimeUnit.SECONDS);
             this.socket = ws;
             this.connected = true;
@@ -512,9 +512,14 @@ public class OcppSimulatorClient {
         return root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
     }
 
-    private final class Listener implements WebSocket.Listener {
+    private static final class Listener implements WebSocket.Listener {
 
+        private final OcppSimulatorClient owner;
         private final StringBuilder buffer = new StringBuilder();
+
+        private Listener(OcppSimulatorClient owner) {
+            this.owner = owner;
+        }
 
         @Override
         public void onOpen(WebSocket webSocket) {
@@ -528,7 +533,7 @@ public class OcppSimulatorClient {
                 String message = buffer.toString();
                 buffer.setLength(0);
                 try {
-                    handle(message);
+                    owner.handle(message);
                 } catch (RuntimeException e) {
                     log.warn("处理 OCPP 下行消息失败: {}", e.getMessage(), e);
                 }
@@ -546,20 +551,20 @@ public class OcppSimulatorClient {
 
         @Override
         public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
-            if (socket == webSocket || socket == null) {
-                connected = false;
-                socket = null;
-                runtime.onOcppDisconnected("通道关闭 " + statusCode + " " + reason);
+            if (owner.socket == webSocket || owner.socket == null) {
+                owner.connected = false;
+                owner.socket = null;
+                owner.runtime.onOcppDisconnected("通道关闭 " + statusCode + " " + reason);
             }
             return null;
         }
 
         @Override
         public void onError(WebSocket webSocket, Throwable error) {
-            if (socket == webSocket || socket == null) {
-                connected = false;
-                socket = null;
-                runtime.onOcppDisconnected("通道异常: " + rootMessage(error));
+            if (owner.socket == webSocket || owner.socket == null) {
+                owner.connected = false;
+                owner.socket = null;
+                owner.runtime.onOcppDisconnected("通道异常: " + rootMessage(error));
             }
         }
     }

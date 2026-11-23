@@ -14,8 +14,8 @@ import org.springframework.stereotype.Component;
 import top.yealike.pep.runtime.contract.ReleasePrepareRequest;
 import top.yealike.pep.runtime.control.ControlClient;
 import top.yealike.pep.runtime.control.ControlException;
-import top.yealike.pep.runtime.control.DesiredRelease;
-import top.yealike.pep.runtime.control.DesiredReleasePage;
+import top.yealike.pep.runtime.control.dto.DesiredRelease;
+import top.yealike.pep.runtime.control.dto.DesiredReleasePage;
 
 /**
  * Runtime 重启后的期望版本对账。

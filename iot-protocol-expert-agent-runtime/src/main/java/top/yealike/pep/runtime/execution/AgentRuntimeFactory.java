@@ -15,8 +15,8 @@ import top.yealike.pep.runtime.mcp.McpAgentTool;
 import top.yealike.pep.runtime.mcp.McpConnectionPool;
 import top.yealike.pep.runtime.mcp.McpEndpointResolver;
 import top.yealike.pep.runtime.observability.RuntimeObservability;
-import top.yealike.pep.runtime.prepare.PreparedRelease;
-import top.yealike.pep.runtime.prepare.PreparedTool;
+import top.yealike.pep.runtime.prepare.domain.PreparedRelease;
+import top.yealike.pep.runtime.prepare.domain.PreparedTool;
 import top.yealike.pep.runtime.skill.SkillToolFactory;
 
 /** 每个 Run 独立构建 Agent 与 Toolkit，避免用户间共享可变记忆或工具状态。 */

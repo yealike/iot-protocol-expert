@@ -7,18 +7,19 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
-import top.yealike.pep.runtime.config.RuntimeProperties;
+import top.yealike.pep.runtime.config.properties.RuntimeProperties;
+import top.yealike.pep.runtime.config.properties.SkillProperties;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.SkillBundle;
 import top.yealike.pep.runtime.contract.SkillFile;
-import top.yealike.pep.runtime.prepare.PreparedRelease;
+import top.yealike.pep.runtime.prepare.domain.PreparedRelease;
 
 class PromptAssemblerTest {
 
     @Test
     void alwaysSkillContentIsTruncatedToConfiguredLimit() {
         RuntimeProperties properties = new RuntimeProperties(
-                0, null, null, null, null, null, null, null, null, null, null, new RuntimeProperties.Skills(20), null);
+                0, null, null, null, null, null, null, null, null, null, null, new SkillProperties(20), null);
         AgentManifest manifest = new AgentManifest(
                 "v1",
                 "protocol-expert",

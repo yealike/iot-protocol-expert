@@ -23,7 +23,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import reactor.core.publisher.Flux;
 import top.yealike.pep.runtime.TestFixtures;
-import top.yealike.pep.runtime.config.RuntimeProperties;
+import top.yealike.pep.runtime.config.properties.OtelProperties;
 
 class AgentRuntimeTelemetryTest {
 
@@ -45,7 +45,7 @@ class AgentRuntimeTelemetryTest {
         AgentRuntimeTelemetry telemetry = new AgentRuntimeTelemetry(
                 openTelemetry,
                 TestFixtures.properties(
-                        "http://127.0.0.1:19083", "test-secret", new RuntimeProperties.Otel(true, false, 8192)));
+                        "http://127.0.0.1:19083", "test-secret", new OtelProperties(true, false, 8192)));
         telemetry.afterPropertiesSet();
 
         ReActAgent agent = ReActAgent.builder()
@@ -90,8 +90,7 @@ class AgentRuntimeTelemetryTest {
     void runtimeExportsContentOnlyWhenExplicitlyEnabled() {
         AgentRuntimeTelemetry telemetry = new AgentRuntimeTelemetry(
                 openTelemetry,
-                TestFixtures.properties(
-                        "http://127.0.0.1:19083", "test-secret", new RuntimeProperties.Otel(true, true, 4096)));
+                TestFixtures.properties("http://127.0.0.1:19083", "test-secret", new OtelProperties(true, true, 4096)));
         telemetry.afterPropertiesSet();
 
         new FakeChatModel()

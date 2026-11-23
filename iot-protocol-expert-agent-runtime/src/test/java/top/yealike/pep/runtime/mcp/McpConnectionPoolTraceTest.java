@@ -23,7 +23,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import top.yealike.pep.runtime.TestFixtures;
-import top.yealike.pep.runtime.config.RuntimeProperties;
+import top.yealike.pep.runtime.config.properties.OtelProperties;
 
 class McpConnectionPoolTraceTest {
 
@@ -48,8 +48,7 @@ class McpConnectionPoolTraceTest {
 
         ExecutorService executor = Executors.newSingleThreadExecutor();
         McpConnectionPool pool = new McpConnectionPool(
-                TestFixtures.properties(
-                        "http://127.0.0.1:19083", "test-secret", new RuntimeProperties.Otel(true, true, 8192)),
+                TestFixtures.properties("http://127.0.0.1:19083", "test-secret", new OtelProperties(true, true, 8192)),
                 new SimpleMeterRegistry(),
                 executor);
         McpConnection connection = new McpConnection("ops|1.0.0", TestFixtures.mcpDescriptor(), client);
