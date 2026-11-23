@@ -4,12 +4,13 @@
 
 .DESCRIPTION
     - 把 -LocalAddresses 指定的本机 / Tailscale 地址替换为服务器内网地址，避免绕行 Tailscale。
+    - IPE_TDENGINE_URL 例外：当前服务器 TDengine 只监听 Tailscale 地址，替换后容器会连接失败。
     - 覆盖容器内服务地址（Docker 服务名）和 Langfuse / Trace 内容采集开关。
     - Langfuse 密钥从 deploy\.env.langfuse 读取，不写入仓库跟踪文件。
 
 .EXAMPLE
-    .\deploy\build-env.ps1
-    .\deploy\build-env.ps1 -ServerAddress SERVER_IP -LangfuseServerUrl http://SERVER_IP:3005 -LocalAddresses "LOCAL_IP","PEER_IP"
+    .\deploy\build-env.ps1 -ServerAddress <服务器内网地址> -LocalAddresses "<Tailscale 地址>"
+    .\deploy\build-env.ps1 -ServerAddress <服务器内网地址> -LangfuseServerUrl http://<服务器内网地址>:3005 -LocalAddresses "<Tailscale 地址>","<对端 Tailscale 地址>"
 #>
 param(
     [string]$ServerAddress = "SERVER_IP",
@@ -23,6 +24,12 @@ $deployDir = $PSScriptRoot
 $repoRoot = Split-Path -Parent $deployDir
 if (-not $Source) { $Source = Join-Path $repoRoot ".env.local" }
 if (-not (Test-Path $Source)) { throw "缺少源配置：$Source" }
+if (-not $ServerAddress -or $ServerAddress -eq "SERVER_IP") {
+    throw "请显式传入 -ServerAddress <服务器内网地址>"
+}
+if (-not $LocalAddresses -or $LocalAddresses.Count -eq 0) {
+    throw "请显式传入 -LocalAddresses <源配置中的本机/Tailscale 地址>"
+}
 
 $values = [ordered]@{}
 foreach ($line in Get-Content -LiteralPath $Source) {
@@ -36,6 +43,7 @@ foreach ($line in Get-Content -LiteralPath $Source) {
 }
 
 foreach ($key in @($values.Keys)) {
+    if ($key -eq "IPE_TDENGINE_URL") { continue }
     $value = [string]$values[$key]
     foreach ($localAddress in $LocalAddresses) {
         $value = $value.Replace($localAddress, $ServerAddress)
@@ -71,6 +79,10 @@ $overrides = [ordered]@{
 foreach ($entry in $overrides.GetEnumerator()) { $values[$entry.Key] = $entry.Value }
 $values.Remove("IPE_JAVA_HOME")
 
+if (-not $values["IPE_TDENGINE_URL"]) {
+    throw "源配置缺少 IPE_TDENGINE_URL；服务器 TDengine 地址必须显式配置"
+}
+
 if (-not $values["IPE_LANGFUSE_PUBLIC_KEY"] -or -not $values["IPE_LANGFUSE_SECRET_KEY"]) {
     $keyFile = Join-Path $deployDir ".env.langfuse"
     if (Test-Path $keyFile) {
@@ -87,6 +99,10 @@ if (-not $values["IPE_LANGFUSE_PUBLIC_KEY"] -or -not $values["IPE_LANGFUSE_SECRE
 $lines = @("# 服务器部署配置，由 build-env.ps1 生成；含密钥，勿提交到仓库。")
 foreach ($entry in $values.GetEnumerator()) {
     $lines += "$($entry.Key)=$($entry.Value)"
+}
+$placeholderLines = $lines | Where-Object { $_ -match "SERVER_IP|SERVER_USER|LOCAL_IP|PEER_IP" }
+if ($placeholderLines) {
+    throw "生成的 .env 仍包含占位符，请检查源配置：`n$($placeholderLines -join "`n")"
 }
 $outFile = Join-Path $deployDir ".env"
 [IO.File]::WriteAllText($outFile, ($lines -join "`r`n") + "`r`n", (New-Object System.Text.UTF8Encoding($false)))

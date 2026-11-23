@@ -25,7 +25,6 @@ import type {
 import { ErrorAlert } from './shared'
 
 const { Paragraph, Text } = Typography
-const catalogCodePattern = /^[a-zA-Z0-9_.-]{2,64}$/
 const modelKeyPattern = /^[a-z0-9][a-z0-9-]{1,39}$/
 
 export default function ProvidersPage() {
@@ -280,7 +279,7 @@ export default function ProvidersPage() {
             label="逻辑模型 key"
             rules={[
               { required: true },
-              { pattern: catalogCodePattern, message: '请输入 2-64 位字母、数字、点、下划线或短横线' }
+              { pattern: modelKeyPattern, message: '请输入 2-40 位小写字母、数字或短横线' }
             ]}
           >
             <Input placeholder="deepseek-default" />

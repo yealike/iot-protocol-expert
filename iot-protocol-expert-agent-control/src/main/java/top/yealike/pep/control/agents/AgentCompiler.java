@@ -39,6 +39,7 @@ public class AgentCompiler {
     private static final int MAX_SKILLS = 16;
     private static final int MAX_VISIBLE_TOOLS = 32;
     private static final int MAX_SYSTEM_PROMPT = 20_000;
+    private static final int MAX_OUTPUT_TOKENS = 131_072;
     private static final int MAX_ITERATIONS = 12;
     private static final int MAX_TOOL_CALLS = 32;
     private static final long MAX_TIMEOUT_MS = 300_000L;
@@ -158,8 +159,9 @@ public class AgentCompiler {
             errors.add(new CompileIssue("TEMPERATURE_OUT_OF_RANGE", "temperature 必须在 0 到 2 之间", "model.options"));
         }
         Object maxTokens = options.get("maxTokens");
-        if (maxTokens instanceof Number number && (number.intValue() < 1 || number.intValue() > 32768)) {
-            errors.add(new CompileIssue("MAX_TOKENS_OUT_OF_RANGE", "maxTokens 必须在 1 到 32768 之间", "model.options"));
+        if (maxTokens instanceof Number number && (number.intValue() < 1 || number.intValue() > MAX_OUTPUT_TOKENS)) {
+            errors.add(new CompileIssue(
+                    "MAX_TOKENS_OUT_OF_RANGE", "maxTokens 必须在 1 到 " + MAX_OUTPUT_TOKENS + " 之间", "model.options"));
         }
         return new AgentManifest.ModelSpec(
                 model.key(),

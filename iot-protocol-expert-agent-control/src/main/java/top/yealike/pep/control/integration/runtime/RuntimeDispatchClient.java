@@ -133,9 +133,11 @@ public class RuntimeDispatchClient {
             if (payload.length > 0) {
                 request.contentType(MediaType.APPLICATION_JSON).body(payload);
             }
-            byte[] responseBody = request.retrieve().body(byte[].class);
+            org.springframework.http.ResponseEntity<byte[]> entity =
+                    request.retrieve().toEntity(byte[].class);
+            byte[] responseBody = entity.getBody();
             String text = responseBody == null ? "" : new String(responseBody, StandardCharsets.UTF_8);
-            return new Response(200, text, null, null);
+            return new Response(entity.getStatusCode().value(), text, null, null);
         } catch (RestClientResponseException exception) {
             String text = exception.getResponseBodyAsString();
             ErrorBody error = parseError(text);

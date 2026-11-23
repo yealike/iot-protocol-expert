@@ -14,6 +14,7 @@ import top.yealike.pep.model.contract.ModelGatewayCredentials;
 import top.yealike.pep.model.contract.RunTokenCodec;
 import top.yealike.pep.model.contract.RunTokenPayload;
 import top.yealike.pep.modelgateway.config.properties.GatewayProperties;
+import top.yealike.pep.modelgateway.support.OpenAiErrorWriter;
 import top.yealike.pep.observability.api.ApiResponseWriter;
 
 /** 网关只接受两类调用：Runtime 的短期运行凭据，以及控制服务的内部服务令牌。 */
@@ -61,7 +62,7 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
             throws IOException, ServletException {
         String header = request.getHeader("Authorization");
         if (header == null || !header.startsWith("Bearer ")) {
-            reject(response, "缺少模型调用凭据");
+            rejectRun(response, "缺少模型调用凭据");
             return;
         }
         try {
@@ -70,13 +71,13 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
                     properties.runTokenSecret(),
                     System.currentTimeMillis() / 1000);
             if (!ModelGatewayCredentials.REF.equals(payload.aud())) {
-                reject(response, "运行凭据受众不匹配");
+                rejectRun(response, "运行凭据受众不匹配");
                 return;
             }
             request.setAttribute(RUN_TOKEN_ATTRIBUTE, payload);
             chain.doFilter(request, response);
         } catch (IllegalArgumentException | IllegalStateException exception) {
-            reject(response, exception.getMessage());
+            rejectRun(response, exception.getMessage());
         }
     }
 
@@ -94,6 +95,10 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
 
     private static void reject(HttpServletResponse response, String message) throws IOException {
         ApiResponseWriter.write(response, HttpServletResponse.SC_UNAUTHORIZED, "MODEL_GATEWAY_UNAUTHORIZED", message);
+    }
+
+    private static void rejectRun(HttpServletResponse response, String message) throws IOException {
+        OpenAiErrorWriter.write(response, HttpServletResponse.SC_UNAUTHORIZED, "MODEL_GATEWAY_UNAUTHORIZED", message);
     }
 
     private static boolean constantTimeEquals(String expected, String provided) {

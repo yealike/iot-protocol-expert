@@ -157,7 +157,7 @@ public class DeviceInstanceController {
     @Operation(operationId = "writeDeviceProperty", summary = "写入设备属性")
     @PreAuthorize("hasAuthority('ops:operate')")
     public Map<String, Object> write(@PathVariable Long id, @RequestBody PropertyWrite input, Principal principal) {
-        DevicePropertyLatest row = properties.write(id, input.gunNo(), input.propertyId(), input.value());
+        DevicePropertyLatest row = properties.write(id, input.channelNo(), input.propertyId(), input.value());
         audits.record(
                 name(principal),
                 "device.property.write",
@@ -168,7 +168,7 @@ public class DeviceInstanceController {
         return Map.of(
                 "propertyId",
                 row.propertyId,
-                "gunNo",
+                "channelNo",
                 row.channelNo,
                 "valueType",
                 row.valueType,

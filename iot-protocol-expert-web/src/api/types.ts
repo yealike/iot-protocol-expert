@@ -429,6 +429,9 @@ export interface AiModelCreate {
   key: string
   displayName: string
   description?: string
+  baseUrl?: string
+  modelName?: string
+  credentialId?: string | null
   options?: AiModelOptions | null
 }
 
@@ -436,6 +439,9 @@ export interface AiModelUpdate {
   expectedRevision: number
   displayName: string
   description?: string
+  baseUrl?: string
+  modelName?: string
+  credentialId?: string | null
   options?: AiModelOptions | null
   enabled: boolean
 }

@@ -26,6 +26,16 @@ class ModelQuotaFailureTest {
     }
 
     @Test
+    void readsStandardOpenAiErrorObject() {
+        Throwable error = new OpenAIException(
+                "rate limit",
+                429,
+                "{\"error\":{\"message\":\"quota\",\"type\":\"rate_limit_error\",\"code\":\"QUOTA_EXHAUSTED\"}}");
+
+        assertThat(ModelQuotaFailure.from(error).orElseThrow().code()).isEqualTo("QUOTA_EXHAUSTED");
+    }
+
+    @Test
     void doesNotMisclassifyProviderRateLimitsOrMalformedResponses() {
         assertThat(ModelQuotaFailure.from(new OpenAIException("rate limit", 429, "{\"error\":\"rate_limit\"}")))
                 .isEmpty();

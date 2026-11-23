@@ -26,7 +26,11 @@ public record ModelQuotaFailure(String code, String message) {
                 var root = JSON.readTree(body);
                 String key = root.path("code").isTextual()
                         ? root.path("code").textValue()
-                        : root.path("error").isTextual() ? root.path("error").textValue() : null;
+                        : root.path("error").isTextual()
+                                ? root.path("error").textValue()
+                                : root.path("error").path("code").isTextual()
+                                        ? root.path("error").path("code").textValue()
+                                        : null;
                 if (key != null && MESSAGES.containsKey(key)) {
                     return Optional.of(new ModelQuotaFailure(key, MESSAGES.get(key)));
                 }

@@ -14,10 +14,11 @@
 
 ```powershell
 # 首次：生成服务器配置（Langfuse 密钥从 deploy\.env.langfuse 读取）
-.\deploy\build-env.ps1
+.\deploy\build-env.ps1 -ServerAddress <服务器内网地址> -LocalAddresses "<源配置中的本机/Tailscale 地址>"
 
 # 之后每次改动
-.\deploy\deploy.ps1 -ServerHost <内网地址> -ServerUser <账号> -RemoteDir /home/<账号>/iot-protocol-expert/deploy
+$env:IPE_SMOKE_USER="admin"; $env:IPE_SMOKE_PASSWORD="<冒烟账号密码>"
+.\deploy\deploy.ps1 -ServerHost <服务器可达地址> -ServerUser <账号> -RemoteDir /home/<账号>/iot-protocol-expert/deploy
 ```
 
 常用开关：
@@ -25,6 +26,7 @@
 - `-SkipBuild`：不重新执行 Maven，直接上传现有 JAR
 - `-SkipWeb`：不改前端
 - `-HealthTimeoutSeconds 0`：只上传不重启（用于调试目录）
+- `IPE_SMOKE_USER` / `IPE_SMOKE_PASSWORD`：部署后登录并查询订单、遥测和 AI 管理的业务冒烟凭据；未设置时跳过并给出警告
 
 服务器地址与账号不写进仓库，脚本里的默认值是占位符，不显式传入会直接报错退出。
 
@@ -36,6 +38,14 @@
 
 ## 部署注意事项
 
+- **构建与测试**：`deploy.ps1` 默认执行 `mvn -B -Pcoding-guidelines clean verify`，全部 Java 测试和
+  Spotless / 编码规范检查通过后才会上传。不要用 `package -DskipTests` 绕过。
+- **TDengine 地址**：服务器 TDengine 只监听 Tailscale 地址（形如 `<Tailscale 地址>:6041`），
+  因此 `build-env.ps1` 不对 `IPE_TDENGINE_URL` 做内网地址替换。若替换成服务器内网地址，
+  订单遥测和时间线会因 `Connection refused` 返回 500，而 `/actuator/health` 仍然是 UP。
+- **健康检查与冒烟**：健康检查在容器内执行，避免 Tailscale 下宿主机端口未对外监听造成误判；
+  部署后还会校验 TDengine REST、登录、订单列表、订单遥测和 AI Agent 列表。任一失败会自动尝试
+  恢复部署前镜像并返回非 0。
 - **nginx 上游缓存**：`ipe-web` 启动时解析 `ipe-ops` / `ipe-control` 的容器 IP。只重建某一个后端时
   （`docker compose up -d ipe-control`），nginx 仍指向旧 IP，页面会 502。执行
   `docker compose restart ipe-web` 即可刷新。`deploy.ps1` 全量重建不受影响。

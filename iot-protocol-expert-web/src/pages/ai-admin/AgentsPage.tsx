@@ -56,6 +56,10 @@ import {
 } from './shared'
 
 const { Text, Paragraph } = Typography
+const MAX_OUTPUT_TOKENS = 131072
+const MAX_ITERATIONS = 12
+const MAX_TOOL_CALLS = 32
+const MAX_RUN_TIMEOUT_MS = 300000
 
 interface McpBindingForm {
   mcpReleaseId?: string
@@ -338,10 +342,7 @@ export default function AgentsPage() {
   const openPublish = async () => {
     if (save.isPending || validate.isPending) return
     try {
-      await save.mutateAsync()
-      const result = await detail.refetch()
-      const agent = result.data?.agent
-      if (!agent) throw new Error('无法读取已保存的 Agent')
+      const agent = await save.mutateAsync()
       setPublishAgent(agent)
       publishForm.setFieldsValue({
         version: nextPatchVersion(agent.publishedVersion),
@@ -554,12 +555,12 @@ export default function AgentsPage() {
               <Form.Item
                 name="maxTokens"
                 label="最大输出 Token"
-                rules={[{ type: 'number', min: 1, max: 131072 }]}
+                rules={[{ type: 'number', min: 1, max: MAX_OUTPUT_TOKENS }]}
               >
                 <InputNumber
                   style={{ width: '100%' }}
                   min={1}
-                  max={131072}
+                  max={MAX_OUTPUT_TOKENS}
                   step={256}
                   placeholder="2048"
                 />
@@ -590,14 +591,28 @@ export default function AgentsPage() {
 
           <Card size="small" title="预算" style={{ marginBottom: 16 }}>
             <div className="ai-budget-grid">
-              <Form.Item name="maxIterations" label="最大迭代次数" rules={[{ required: true }]}>
-                <InputNumber min={1} max={20} style={{ width: '100%' }} />
+              <Form.Item
+                name="maxIterations"
+                label="最大迭代次数"
+                rules={[{ required: true, type: 'number', min: 1, max: MAX_ITERATIONS }]}
+              >
+                <InputNumber min={1} max={MAX_ITERATIONS} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item name="maxToolCalls" label="最大工具调用" rules={[{ required: true }]}>
-                <InputNumber min={1} max={64} style={{ width: '100%' }} />
+              <Form.Item
+                name="maxToolCalls"
+                label="最大工具调用"
+                rules={[{ required: true, type: 'number', min: 1, max: MAX_TOOL_CALLS }]}
+              >
+                <InputNumber min={1} max={MAX_TOOL_CALLS} style={{ width: '100%' }} />
               </Form.Item>
-              <Form.Item name="runTimeoutMs" label="Run 超时（毫秒）" rules={[{ required: true }]}>
-                <InputNumber min={5000} max={600000} step={5000} style={{ width: '100%' }} />
+              <Form.Item
+                name="runTimeoutMs"
+                label="Run 超时（毫秒）"
+                rules={[
+                  { required: true, type: 'number', min: 5000, max: MAX_RUN_TIMEOUT_MS }
+                ]}
+              >
+                <InputNumber min={5000} max={MAX_RUN_TIMEOUT_MS} step={5000} style={{ width: '100%' }} />
               </Form.Item>
             </div>
           </Card>
