@@ -19,7 +19,9 @@ import org.springframework.web.bind.annotation.RestController;
 import top.yealike.pep.control.access.CurrentUser;
 import top.yealike.pep.control.agents.AgentService;
 import top.yealike.pep.control.agents.domain.AgentComponent;
-import top.yealike.pep.control.agents.domain.AgentDetail;
+import top.yealike.pep.control.agents.domain.AgentComponentView;
+import top.yealike.pep.control.agents.domain.AgentDetailView;
+import top.yealike.pep.control.agents.domain.CompileResult;
 import top.yealike.pep.control.agents.domain.McpBindingInput;
 import top.yealike.pep.control.agents.domain.PublishResult;
 import top.yealike.pep.control.agents.domain.RollbackResult;
@@ -32,6 +34,7 @@ import top.yealike.pep.control.api.ai.admin.dto.AgentRollback;
 import top.yealike.pep.control.api.ai.admin.dto.AgentUpdate;
 import top.yealike.pep.control.api.ai.admin.dto.McpBindingRequest;
 import top.yealike.pep.control.api.ai.admin.dto.SkillBindingRequest;
+import top.yealike.pep.runtime.contract.OperationResult;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
 /** Agent 草稿编排、编译校验、发布与回滚。 */
@@ -53,20 +56,20 @@ public class AgentAdminController {
 
     @GetMapping("/agents")
     @Operation(summary = "查询 Agent 列表")
-    public List<AgentComponent> listAgents() {
+    public List<AgentComponentView> listAgents() {
         return agents.list();
     }
 
     @GetMapping("/agents/{id}")
-    public AgentDetail agent(@PathVariable UUID id) {
+    public AgentDetailView agent(@PathVariable UUID id) {
         return agents.detail(id);
     }
 
     @PostMapping("/agents")
     @Operation(summary = "创建 Agent 草稿")
-    public AgentComponent createAgent(@RequestBody AgentCreate request) {
+    public AgentComponentView createAgent(@RequestBody AgentCreate request) {
         UserIdentity actor = CurrentUser.require();
-        return agents.create(
+        AgentComponent created = agents.create(
                 actor,
                 request.key(),
                 request.displayName(),
@@ -77,11 +80,12 @@ public class AgentAdminController {
                 request.budget(),
                 mcpInputs(request.mcpBindings()),
                 skillInputs(request.skillBindings()));
+        return AgentComponentView.from(created);
     }
 
     @PutMapping("/agents/{id}")
-    public AgentComponent updateAgent(@PathVariable UUID id, @RequestBody AgentUpdate request) {
-        return agents.update(
+    public AgentComponentView updateAgent(@PathVariable UUID id, @RequestBody AgentUpdate request) {
+        AgentComponent updated = agents.update(
                 id,
                 request.expectedRevision(),
                 request.displayName(),
@@ -93,11 +97,12 @@ public class AgentAdminController {
                 request.enabled(),
                 request.mcpBindings() == null ? null : mcpInputs(request.mcpBindings()),
                 request.skillBindings() == null ? null : skillInputs(request.skillBindings()));
+        return AgentComponentView.from(updated);
     }
 
     @PostMapping("/agents/{id}/validate")
     @Operation(summary = "编译校验 Agent")
-    public Object validateAgent(@Parameter(description = "Agent 组件 ID") @PathVariable UUID id) {
+    public CompileResult validateAgent(@Parameter(description = "Agent 组件 ID") @PathVariable UUID id) {
         return agents.validate(id);
     }
 
@@ -119,8 +124,9 @@ public class AgentAdminController {
     }
 
     @DeleteMapping("/agents/{id}")
-    public void deleteAgent(@PathVariable UUID id) {
+    public OperationResult deleteAgent(@PathVariable UUID id) {
         agents.delete(id);
+        return new OperationResult(true, "DELETED");
     }
 
     private List<McpBindingInput> mcpInputs(List<McpBindingRequest> bindings) {

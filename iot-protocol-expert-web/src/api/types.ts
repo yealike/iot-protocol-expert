@@ -395,6 +395,18 @@ export interface AiCredentialCreate {
   secret: string
 }
 
+export interface AiModelOptions {
+  temperature?: number | null
+  maxTokens?: number | null
+  contextWindow?: number | null
+}
+
+export interface AiAgentBudget {
+  maxIterations?: number | null
+  maxToolCalls?: number | null
+  runTimeoutMs?: number | null
+}
+
 export interface AiModelProfile {
   id: string
   key: string
@@ -405,7 +417,7 @@ export interface AiModelProfile {
   modelName: string
   credentialId?: string | null
   credentialKey?: string | null
-  options: Record<string, unknown>
+  options?: AiModelOptions | null
   enabled: boolean
   revision: number
   createdBy?: string
@@ -417,14 +429,14 @@ export interface AiModelCreate {
   key: string
   displayName: string
   description?: string
-  options?: Record<string, unknown>
+  options?: AiModelOptions | null
 }
 
 export interface AiModelUpdate {
   expectedRevision: number
   displayName: string
   description?: string
-  options?: Record<string, unknown>
+  options?: AiModelOptions | null
   enabled: boolean
 }
 
@@ -470,7 +482,7 @@ export interface AiModelTestResult {
   success: boolean
   model?: string
   latencyMs?: number
-  usage?: unknown
+  usage?: AiRunUsage | null
   note?: string
   errorCode?: string
   message?: string
@@ -496,14 +508,28 @@ export interface AiMcpToolPolicy {
   reviewedAt: string
 }
 
+export interface AiMcpNativeRegistryRef {
+  serverName?: string | null
+  namespace?: string | null
+  version?: string | null
+}
+
+export interface AiMcpDraft {
+  transport?: string | null
+  contextMode?: string | null
+  timeoutMs?: number | null
+  credentialId?: string | null
+  endpoint?: string | null
+}
+
 export interface AiMcpComponent {
   id: string
   key: string
   displayName: string
   description?: string | null
   origin: AiComponentOrigin | string
-  nativeRegistryRef: Record<string, unknown>
-  draft: Record<string, unknown>
+  nativeRegistryRef?: AiMcpNativeRegistryRef | null
+  draft?: AiMcpDraft | null
   publishedVersion?: string | null
   enabled: boolean
   revision: number
@@ -512,13 +538,24 @@ export interface AiMcpComponent {
   updatedAt: string
 }
 
+export interface AiMcpEndpointPolicy {
+  endpoint?: string | null
+  authority?: string | null
+  contextMode?: string | null
+  path?: string | null
+  query?: string | null
+  serviceName?: string | null
+  timeoutMs?: number | null
+  authMode?: string | null
+}
+
 export interface AiMcpRelease {
   id: string
   componentId?: string
   componentKey?: string
   version: string
   transport?: string
-  endpointPolicy?: Record<string, unknown>
+  endpointPolicy?: AiMcpEndpointPolicy | null
   credentialId?: string | null
   tools: AiMcpToolDescriptor[]
   catalogDigest?: string
@@ -532,16 +569,16 @@ export interface AiMcpCreate {
   displayName: string
   description?: string
   origin: AiComponentOrigin
-  nativeRegistryRef: Record<string, unknown>
-  draft: Record<string, unknown>
+  nativeRegistryRef?: AiMcpNativeRegistryRef | null
+  draft?: AiMcpDraft | null
 }
 
 export interface AiMcpUpdate {
   expectedRevision: number
   displayName: string
   description?: string
-  nativeRegistryRef: Record<string, unknown>
-  draft: Record<string, unknown>
+  nativeRegistryRef?: AiMcpNativeRegistryRef | null
+  draft?: AiMcpDraft | null
   enabled: boolean
 }
 
@@ -595,10 +632,25 @@ export interface AiSkillRelease {
   version: string
   name?: string
   description?: string
-  bundle?: Record<string, unknown>
+  bundle?: AiSkillBundle | null
   bundleDigest?: string
   state: AiReleaseState | string
   createdAt: string
+}
+
+export interface AiSkillBundle {
+  key: string
+  version: string
+  name: string
+  description?: string | null
+  digest?: string | null
+  files: AiSkillBundleFile[]
+}
+
+export interface AiSkillBundleFile {
+  path: string
+  content: string
+  digest: string
 }
 
 export interface AiSkillCreate {
@@ -655,12 +707,8 @@ export interface AiAgentComponent {
   description?: string | null
   modelProfileId?: string | null
   systemPrompt: string
-  modelOptions: Record<string, unknown>
-  budget: {
-    maxIterations?: number
-    maxToolCalls?: number
-    runTimeoutMs?: number
-  }
+  modelOptions?: AiModelOptions | null
+  budget?: AiAgentBudget | null
   publishedVersion?: string | null
   enabled: boolean
   revision: number
@@ -675,8 +723,8 @@ export interface AiAgentCreate {
   description?: string
   modelProfileId?: string | null
   systemPrompt: string
-  modelOptions?: Record<string, unknown>
-  budget?: Record<string, unknown>
+  modelOptions?: AiModelOptions | null
+  budget?: AiAgentBudget | null
   mcpBindings?: AiAgentMcpBindingInput[]
   skillBindings?: AiAgentSkillBindingInput[]
 }
@@ -687,8 +735,8 @@ export interface AiAgentUpdate {
   description?: string
   modelProfileId?: string | null
   systemPrompt: string
-  modelOptions?: Record<string, unknown>
-  budget?: Record<string, unknown>
+  modelOptions?: AiModelOptions | null
+  budget?: AiAgentBudget | null
   enabled: boolean
   mcpBindings?: AiAgentMcpBindingInput[]
   skillBindings?: AiAgentSkillBindingInput[]
@@ -732,12 +780,52 @@ export interface AiAgentSkillBindingInput {
   loadMode: 'AUTO' | 'ALWAYS'
 }
 
+export interface AiAgentManifest {
+  schemaVersion: string
+  agentKey: string
+  version: string
+  displayName: string
+  systemPrompt: string
+  model: {
+    profileKey: string
+    providerType?: string | null
+    baseUrl?: string | null
+    modelName?: string | null
+    credentialRef?: string | null
+    secretRevision?: number | null
+    options?: AiModelOptions | null
+  }
+  skills: Array<{
+    key: string
+    version: string
+    digest?: string | null
+    loadMode: string
+    order: number
+  }>
+  mcp: Array<{
+    key: string
+    version: string
+    required: boolean
+    catalogDigest?: string | null
+    tools: Array<{
+      name: string
+      alias: string
+      schemaDigest?: string | null
+    }>
+  }>
+  budget: AiAgentBudget
+  executionPolicy: {
+    scriptExecution: boolean
+    unknownTool: string
+  }
+}
+
 export interface AiAgentRelease {
   id: string
   agentId?: string
   agentKey?: string
   version: string
-  manifest?: Record<string, unknown>
+  manifest?: AiAgentManifest | null
   manifestDigest?: string
   state: AiReleaseState | string
   generation: number
@@ -753,7 +841,7 @@ export interface AiAgentDetail {
 
 export interface AiAgentCompileResult {
   valid: boolean
-  manifest?: Record<string, unknown>
+  manifest?: AiAgentManifest | null
   manifestDigest?: string
   errors: AiCompileIssue[]
   warnings: AiCompileIssue[]
@@ -813,16 +901,29 @@ export interface AiRunUsage {
   outputTokens?: number
   totalTokens?: number
   modelCalls?: number
+  toolCalls?: number
+  durationMs?: number
+}
+
+export interface AiToolCallEvidence {
+  text: string
+  truncated: boolean
 }
 
 export interface AiToolCall {
   id: string
+  runId: string
+  conversationId: string
   toolName: string
   status: string
   decision: string
   denyReason?: string
+  argsSummary?: AiToolCallEvidence | null
+  resultSummary?: AiToolCallEvidence | null
   durationMs?: number
+  traceId?: string
   createdAt: string
+  finishedAt?: string
 }
 
 export interface AiRun {
@@ -880,7 +981,7 @@ export interface AiRegistryComponent {
 export interface AiRegistryInstance {
   ip: string
   port: number
-  metadata: Record<string, string>
+  metadata: { key: string; value: string }[]
 }
 
 export interface AiRegistryVersionDetail {
@@ -894,7 +995,7 @@ export interface AiRegistryVersionDetail {
   observedState?: string
   instances: AiRegistryInstance[]
   checkedAt?: string
-  error?: string
+  lastError?: string
   healthy?: boolean
 }
 
@@ -961,6 +1062,29 @@ export interface QuotaGrantRequest {
   durationSeconds?: number | null
   policyKey?: string
   reason?: string
+}
+
+export interface QuotaGrantResult {
+  accountId: string
+  revision?: number | null
+  mode: string
+  policyKey?: string
+  replayed: boolean
+}
+
+export interface OperationResult {
+  ok: boolean
+  status: string
+}
+
+export interface AiRunCancelResult {
+  ok: boolean
+  status?: string
+  note?: string
+}
+
+export interface UsageList {
+  items: UsageItem[]
 }
 
 export interface UsageItem {

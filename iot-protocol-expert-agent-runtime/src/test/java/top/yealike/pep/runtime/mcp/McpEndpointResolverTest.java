@@ -3,9 +3,9 @@ package top.yealike.pep.runtime.mcp;
 import static org.assertj.core.api.Assertions.*;
 
 import java.util.List;
-import java.util.Map;
 import org.junit.jupiter.api.Test;
 import top.yealike.pep.runtime.contract.McpDescriptor;
+import top.yealike.pep.runtime.contract.McpEndpointPolicy;
 
 class McpEndpointResolverTest {
     @Test
@@ -31,6 +31,6 @@ class McpEndpointResolverTest {
                 0,
                 "catalog",
                 List.of(),
-                Map.of("serviceName", "legacy-nacos-entry"));
+                new McpEndpointPolicy(null, null, null, null, null, "legacy-nacos-entry", null, null));
     }
 }

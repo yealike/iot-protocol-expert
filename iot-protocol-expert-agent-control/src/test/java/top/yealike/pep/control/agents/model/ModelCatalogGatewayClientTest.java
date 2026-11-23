@@ -8,7 +8,6 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
-import java.util.Map;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -17,6 +16,8 @@ import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 import top.yealike.pep.control.config.ModelGatewayProperties;
 import top.yealike.pep.control.support.AiExceptions.AiException;
+import top.yealike.pep.model.contract.gateway.GatewayModelRequest;
+import top.yealike.pep.model.contract.gateway.GatewayProviderRequest;
 
 class ModelCatalogGatewayClientTest {
 
@@ -42,7 +43,7 @@ class ModelCatalogGatewayClientTest {
 
         assertThat(client.providers())
                 .singleElement()
-                .satisfies(provider -> assertThat(provider).containsEntry("code", "deepseek"));
+                .satisfies(provider -> assertThat(provider.code()).isEqualTo("deepseek"));
         server.verify();
     }
 
@@ -54,9 +55,9 @@ class ModelCatalogGatewayClientTest {
                 .andRespond(withSuccess(
                         "{\"code\":\"deepseek\",\"credentialConfigured\":true}", MediaType.APPLICATION_JSON));
 
-        assertThat(client.registerProvider(Map.of("code", "deepseek", "apiKey", "write-only")))
-                .containsEntry("credentialConfigured", true)
-                .doesNotContainKey("apiKey");
+        assertThat(client.registerProvider(new GatewayProviderRequest("deepseek", null, null, "write-only"))
+                        .credentialConfigured())
+                .isTrue();
         server.verify();
     }
 
@@ -65,7 +66,8 @@ class ModelCatalogGatewayClientTest {
         server.expect(requestTo("http://localhost:19085/api/model-gateway/v1/admin/models"))
                 .andRespond(withStatus(HttpStatus.BAD_REQUEST).body("private gateway details"));
 
-        assertThatThrownBy(() -> client.registerModel(Map.of("key", "bad")))
+        assertThatThrownBy(
+                        () -> client.registerModel(new GatewayModelRequest("bad", null, null, null, null, null, null)))
                 .isInstanceOf(AiException.class)
                 .hasMessage("模型网关拒绝了登记请求，请检查编码、地址和模型参数")
                 .hasMessageNotContaining("private gateway details");

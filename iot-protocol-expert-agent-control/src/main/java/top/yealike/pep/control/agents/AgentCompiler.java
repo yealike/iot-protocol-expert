@@ -28,6 +28,7 @@ import top.yealike.pep.model.contract.ModelGatewayCredentials;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.ManifestDigests;
 import top.yealike.pep.runtime.contract.McpToolDescriptor;
+import top.yealike.pep.runtime.contract.ModelOptions;
 import top.yealike.pep.runtime.contract.ToolAliasCodec;
 
 /** Agent 草稿编译：把草稿与精确版本绑定冻结为可执行 manifest，无远程副作用。 */
@@ -161,7 +162,16 @@ public class AgentCompiler {
             errors.add(new CompileIssue("MAX_TOKENS_OUT_OF_RANGE", "maxTokens 必须在 1 到 32768 之间", "model.options"));
         }
         return new AgentManifest.ModelSpec(
-                model.key(), "OPENAI_COMPAT", gatewayBaseUrl(), model.key(), ModelGatewayCredentials.REF, 1, options);
+                model.key(),
+                "OPENAI_COMPAT",
+                gatewayBaseUrl(),
+                model.key(),
+                ModelGatewayCredentials.REF,
+                1,
+                new ModelOptions(
+                        decimalValue(options.get("temperature")),
+                        intValueObject(options.get("maxTokens")),
+                        intValueObject(options.get("contextWindow"))));
     }
 
     private String gatewayBaseUrl() {
@@ -322,6 +332,14 @@ public class AgentCompiler {
 
     private static int intValue(Object value, int fallback) {
         return value instanceof Number number ? number.intValue() : fallback;
+    }
+
+    private static Integer intValueObject(Object value) {
+        return value instanceof Number number ? number.intValue() : null;
+    }
+
+    private static Double decimalValue(Object value) {
+        return value instanceof Number number ? number.doubleValue() : null;
     }
 
     private static long longValue(Object value, long fallback) {

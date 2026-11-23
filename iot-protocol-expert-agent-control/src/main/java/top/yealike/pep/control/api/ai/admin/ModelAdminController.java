@@ -14,6 +14,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.yealike.pep.control.access.CurrentUser;
 import top.yealike.pep.control.agents.credential.CredentialService;
+import top.yealike.pep.control.agents.domain.CredentialSummary;
+import top.yealike.pep.control.agents.domain.ModelProfileView;
+import top.yealike.pep.control.agents.domain.ModelTestResult;
 import top.yealike.pep.control.agents.model.ModelProfileService;
 import top.yealike.pep.control.api.ai.admin.dto.CredentialCreate;
 import top.yealike.pep.control.api.ai.admin.dto.CredentialRotate;
@@ -38,13 +41,13 @@ public class ModelAdminController {
 
     @GetMapping("/models")
     @Operation(summary = "查询模型配置")
-    public Object listModels() {
+    public java.util.List<ModelProfileView> listModels() {
         return models.list();
     }
 
     @PostMapping("/models")
     @Operation(summary = "创建模型配置")
-    public Object createModel(@RequestBody ModelCreate request) {
+    public ModelProfileView createModel(@RequestBody ModelCreate request) {
         UserIdentity actor = CurrentUser.require();
         UUID id = models.create(
                 actor,
@@ -55,14 +58,14 @@ public class ModelAdminController {
                 request.modelName(),
                 request.credentialId(),
                 request.options());
-        return models.require(id);
+        return models.view(id);
     }
 
     @PutMapping("/models/{id}")
     @Operation(summary = "更新模型配置")
-    public Object updateModel(
+    public ModelProfileView updateModel(
             @Parameter(description = "模型配置 ID") @PathVariable UUID id, @RequestBody ModelUpdate request) {
-        return models.update(
+        return ModelProfileView.from(models.update(
                 id,
                 request.expectedRevision(),
                 request.displayName(),
@@ -71,31 +74,31 @@ public class ModelAdminController {
                 request.modelName(),
                 request.credentialId(),
                 request.options(),
-                request.enabled());
+                request.enabled()));
     }
 
     @PostMapping("/models/{id}/test")
     @Operation(summary = "测试模型连接")
-    public Object testModel(@Parameter(description = "模型配置 ID") @PathVariable UUID id) {
+    public ModelTestResult testModel(@Parameter(description = "模型配置 ID") @PathVariable UUID id) {
         return models.test(id);
     }
 
     @GetMapping("/credentials")
     @Operation(summary = "查询凭据列表", description = "仅返回凭据摘要，不返回密钥明文")
-    public Object listCredentials() {
+    public java.util.List<CredentialSummary> listCredentials() {
         return credentials.list().stream().map(credentials::summary).toList();
     }
 
     @PostMapping("/credentials")
     @Operation(summary = "创建模型凭据")
-    public Object createCredential(@RequestBody CredentialCreate request) {
+    public CredentialSummary createCredential(@RequestBody CredentialCreate request) {
         UserIdentity actor = CurrentUser.require();
         return credentials.summary(credentials.create(actor, request.key(), request.displayName(), request.secret()));
     }
 
     @PutMapping("/credentials/{id}")
     @Operation(summary = "轮换模型凭据密钥")
-    public Object rotateCredential(
+    public CredentialSummary rotateCredential(
             @Parameter(description = "凭据 ID") @PathVariable UUID id, @RequestBody CredentialRotate request) {
         UserIdentity actor = CurrentUser.require();
         return credentials.summary(credentials.rotate(actor, id, request.secret()));

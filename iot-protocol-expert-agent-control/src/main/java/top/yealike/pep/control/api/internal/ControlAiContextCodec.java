@@ -48,15 +48,16 @@ public class ControlAiContextCodec {
         this.maxConsumedContexts = maxConsumedContexts;
     }
 
-    public Context decode(String operation, Object encoded) throws GeneralSecurityException {
+    public Context decode(String operation, String encoded) throws GeneralSecurityException {
         String secret = properties.mcp() == null ? null : properties.mcp().token();
         if (secret == null
                 || secret.isBlank()
-                || !(encoded instanceof String value)
-                || value.length() > MAX_CONTEXT_LENGTH) {
+                || encoded == null
+                || encoded.isBlank()
+                || encoded.length() > MAX_CONTEXT_LENGTH) {
             throw new IllegalArgumentException("Invalid context");
         }
-        byte[] packed = Base64.getUrlDecoder().decode(value);
+        byte[] packed = Base64.getUrlDecoder().decode(encoded);
         if (packed.length < MIN_PACKED_LENGTH) {
             throw new IllegalArgumentException("Invalid context");
         }
@@ -76,7 +77,7 @@ public class ControlAiContextCodec {
                 || expires.longValue() > now + CONTEXT_TTL_SECONDS) {
             throw new IllegalArgumentException("Expired context");
         }
-        consume(value, expires.longValue(), now);
+        consume(encoded, expires.longValue(), now);
         return new Context(
                 claims.get("actor") instanceof String actor ? actor : null,
                 claims.get("session") instanceof String session ? session : null);

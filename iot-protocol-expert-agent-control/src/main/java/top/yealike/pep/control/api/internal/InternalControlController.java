@@ -1,9 +1,7 @@
 package top.yealike.pep.control.api.internal;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,10 +19,14 @@ import top.yealike.pep.control.api.internal.mapper.InternalControlMapper;
 import top.yealike.pep.control.runs.runtime.RuntimeRunCoordinator;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.AgentManifest;
+import top.yealike.pep.runtime.contract.ControlReadiness;
 import top.yealike.pep.runtime.contract.CredentialResolveRequest;
 import top.yealike.pep.runtime.contract.CredentialResolveResponse;
+import top.yealike.pep.runtime.contract.DesiredRelease;
+import top.yealike.pep.runtime.contract.DesiredReleasePage;
 import top.yealike.pep.runtime.contract.InternalPaths;
 import top.yealike.pep.runtime.contract.McpDescriptor;
+import top.yealike.pep.runtime.contract.OperationResult;
 import top.yealike.pep.runtime.contract.RunClaimRequest;
 import top.yealike.pep.runtime.contract.RunClaimResponse;
 import top.yealike.pep.runtime.contract.RunCompletionRequest;
@@ -111,10 +113,10 @@ public class InternalControlController {
     }
 
     @PostMapping("/runs/{runId}:complete")
-    public Map<String, Object> complete(@PathVariable UUID runId, @RequestBody RunCompletionRequest request) {
+    public OperationResult complete(@PathVariable UUID runId, @RequestBody RunCompletionRequest request) {
         requireSameRun(runId, request == null ? null : request.runId());
         runs.complete(request);
-        return Map.of("ok", true);
+        return new OperationResult(true, "COMPLETED");
     }
 
     @PostMapping("/credentials:resolve")
@@ -129,45 +131,36 @@ public class InternalControlController {
     }
 
     @GetMapping("/runtime/desired-releases")
-    public Map<String, Object> desiredReleases(
+    public DesiredReleasePage desiredReleases(
             @RequestParam(required = false) Long cursor, @RequestParam(defaultValue = "100") int limit) {
         int normalized = Math.min(Math.max(limit, 1), 200);
         long lastSeen = cursor == null || cursor < 0 ? 0L : cursor;
         List<AgentRelease> candidates = agentStore.desiredReleases().stream()
                 .filter(release -> release.releaseCursor() > lastSeen)
                 .toList();
-        List<Map<String, Object>> items = new ArrayList<>();
+        List<DesiredRelease> items = new ArrayList<>();
         long nextCursor = lastSeen;
         for (AgentRelease release : candidates) {
             if (items.size() >= normalized) {
                 break;
             }
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("releaseId", release.id());
-            item.put("agentKey", release.agentKey());
-            item.put("version", release.version());
-            item.put("manifestDigest", release.manifestDigest());
-            item.put("generation", release.generation());
-            item.put("state", release.state());
-            items.add(item);
+            items.add(new DesiredRelease(
+                    release.id(),
+                    release.agentKey(),
+                    release.version(),
+                    release.manifestDigest(),
+                    release.generation(),
+                    release.state()));
             nextCursor = release.releaseCursor();
         }
-        return Map.of(
-                "items", items, "cursor", nextCursor, "limit", normalized, "hasMore", candidates.size() > items.size());
+        return new DesiredReleasePage(items, nextCursor, normalized, candidates.size() > items.size());
     }
 
     @GetMapping("/runtime/readiness")
-    public Map<String, Object> readiness() {
+    public ControlReadiness readiness() {
         Integer probe = control.probe();
-        return Map.of(
-                "status",
-                "UP",
-                "readiness",
-                probe != null && probe == 1,
-                "service",
-                "ipe-ai-control",
-                "database",
-                probe != null && probe == 1);
+        boolean ready = probe != null && probe == 1;
+        return new ControlReadiness("UP", ready, "ipe-ai-control", ready);
     }
 
     private static void requireSameRun(UUID pathRunId, UUID bodyRunId) {

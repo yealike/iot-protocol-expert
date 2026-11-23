@@ -1,13 +1,16 @@
 package top.yealike.pep.control.agents.model;
 
 import java.util.List;
-import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
-import tools.jackson.core.type.TypeReference;
 import top.yealike.pep.control.config.ModelGatewayProperties;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.control.support.JsonSupport;
+import top.yealike.pep.model.contract.gateway.GatewayModel;
+import top.yealike.pep.model.contract.gateway.GatewayModelRequest;
+import top.yealike.pep.model.contract.gateway.GatewayProvider;
+import top.yealike.pep.model.contract.gateway.GatewayProviderRequest;
+import top.yealike.pep.observability.api.ApiResponse;
 
 @Service
 public class ModelCatalogGatewayClient {
@@ -20,30 +23,30 @@ public class ModelCatalogGatewayClient {
         this.http = builder.build();
     }
 
-    public List<Map<String, Object>> providers() {
-        return getList("/api/model-gateway/v1/admin/providers");
+    public List<GatewayProvider> providers() {
+        return getList("/api/model-gateway/v1/admin/providers", GatewayProvider.class);
     }
 
-    public List<Map<String, Object>> models() {
-        return getList("/api/model-gateway/v1/admin/models");
+    public List<GatewayModel> models() {
+        return getList("/api/model-gateway/v1/admin/models", GatewayModel.class);
     }
 
-    public Map<String, Object> registerProvider(Map<String, Object> request) {
-        return post("/api/model-gateway/v1/admin/providers", request);
+    public GatewayProvider registerProvider(GatewayProviderRequest request) {
+        return post("/api/model-gateway/v1/admin/providers", request, GatewayProvider.class);
     }
 
-    public Map<String, Object> registerModel(Map<String, Object> request) {
-        return post("/api/model-gateway/v1/admin/models", request);
+    public GatewayModel registerModel(GatewayModelRequest request) {
+        return post("/api/model-gateway/v1/admin/models", request, GatewayModel.class);
     }
 
-    private List<Map<String, Object>> getList(String path) {
+    private <T> List<T> getList(String path, Class<T> type) {
         try {
             String response = http.get()
                     .uri(baseUrl() + path)
                     .header("X-PEP-Service-Token", serviceToken())
                     .retrieve()
                     .body(String.class);
-            return JsonSupport.mapper().readValue(response, new TypeReference<List<Map<String, Object>>>() {});
+            return unwrapList(response, type);
         } catch (org.springframework.web.client.RestClientResponseException exception) {
             if (exception.getStatusCode().value() == 401
                     || exception.getStatusCode().value() == 403) {
@@ -55,7 +58,7 @@ public class ModelCatalogGatewayClient {
         }
     }
 
-    private Map<String, Object> post(String path, Map<String, Object> request) {
+    private <T> T post(String path, Object request, Class<T> type) {
         try {
             String response = http.post()
                     .uri(baseUrl() + path)
@@ -63,7 +66,7 @@ public class ModelCatalogGatewayClient {
                     .body(request)
                     .retrieve()
                     .body(String.class);
-            return JsonSupport.readMap(response);
+            return unwrap(response, type);
         } catch (org.springframework.web.client.RestClientResponseException exception) {
             if (exception.getStatusCode().value() == 401
                     || exception.getStatusCode().value() == 403) {
@@ -84,6 +87,38 @@ public class ModelCatalogGatewayClient {
             throw AiExceptions.unavailable("未配置模型网关地址");
         }
         return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+    }
+
+    private static <T> T unwrap(String text, Class<T> type) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        var root = JsonSupport.mapper().readTree(text);
+        if (root != null && root.has("code") && root.has("msg") && root.has("data")) {
+            requireSuccess(root);
+            var data = root.get("data");
+            return data == null || data.isNull() ? null : JsonSupport.read(JsonSupport.write(data), type);
+        }
+        return JsonSupport.read(text, type);
+    }
+
+    private static <T> List<T> unwrapList(String text, Class<T> type) {
+        if (text == null || text.isBlank()) {
+            return List.of();
+        }
+        var root = JsonSupport.mapper().readTree(text);
+        if (root != null && root.has("code") && root.has("msg") && root.has("data")) {
+            requireSuccess(root);
+            var data = root.get("data");
+            return data == null || data.isNull() ? List.of() : JsonSupport.readList(JsonSupport.write(data), type);
+        }
+        return JsonSupport.readList(text, type);
+    }
+
+    private static void requireSuccess(tools.jackson.databind.JsonNode root) {
+        if (!ApiResponse.SUCCESS_CODE.equals(root.path("code").asText())) {
+            throw AiExceptions.unavailable("模型网关返回错误：" + root.path("msg").asText());
+        }
     }
 
     private String serviceToken() {

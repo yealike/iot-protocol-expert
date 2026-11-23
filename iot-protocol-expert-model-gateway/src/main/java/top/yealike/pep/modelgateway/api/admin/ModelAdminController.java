@@ -3,19 +3,19 @@ package top.yealike.pep.modelgateway.api.admin;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import top.yealike.pep.model.contract.gateway.GatewayModel;
+import top.yealike.pep.model.contract.gateway.GatewayModelRequest;
+import top.yealike.pep.model.contract.gateway.GatewayProvider;
+import top.yealike.pep.model.contract.gateway.GatewayProviderRequest;
 import top.yealike.pep.modelgateway.catalog.CatalogService;
 import top.yealike.pep.modelgateway.catalog.domain.ModelProfile;
 import top.yealike.pep.modelgateway.catalog.domain.Provider;
-import top.yealike.pep.modelgateway.catalog.dto.ModelRequest;
-import top.yealike.pep.modelgateway.catalog.dto.ProviderRequest;
 
 /** 逻辑模型目录管理；上游密钥只写不读，列表接口不会回显任何密钥。 */
 @RestController
@@ -32,7 +32,7 @@ public class ModelAdminController {
 
     @Operation(operationId = "registerProvider", summary = "登记或更新模型供应商")
     @PostMapping("/providers")
-    public Map<String, Object> provider(@RequestBody ProviderRequest request) {
+    public GatewayProvider provider(@RequestBody GatewayProviderRequest request) {
         Provider provider =
                 catalog.registerProvider(request.code(), request.name(), request.baseUrl(), request.apiKey());
         return describe(provider);
@@ -40,13 +40,13 @@ public class ModelAdminController {
 
     @Operation(operationId = "listProviders", summary = "列出模型供应商")
     @GetMapping("/providers")
-    public List<Map<String, Object>> providers() {
+    public List<GatewayProvider> providers() {
         return catalog.providers().stream().map(ModelAdminController::describe).toList();
     }
 
     @Operation(operationId = "registerModel", summary = "登记或更新逻辑模型")
     @PostMapping("/models")
-    public Map<String, Object> model(@RequestBody ModelRequest request) {
+    public GatewayModel model(@RequestBody GatewayModelRequest request) {
         return describe(catalog.registerModel(
                 request.key(),
                 request.displayName(),
@@ -59,32 +59,30 @@ public class ModelAdminController {
 
     @Operation(operationId = "listModels", summary = "列出逻辑模型")
     @GetMapping("/models")
-    public List<Map<String, Object>> models() {
+    public List<GatewayModel> models() {
         return catalog.models().stream().map(ModelAdminController::describe).toList();
     }
 
-    static Map<String, Object> describe(Provider provider) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("id", provider.id().toString());
-        body.put("code", provider.code());
-        body.put("name", provider.name());
-        body.put("baseUrl", provider.baseUrl());
-        body.put("state", provider.state());
-        body.put("credentialConfigured", provider.credentialCipher() != null);
-        return body;
+    static GatewayProvider describe(Provider provider) {
+        return new GatewayProvider(
+                provider.id(),
+                provider.code(),
+                provider.name(),
+                provider.baseUrl(),
+                provider.state(),
+                provider.credentialCipher() != null);
     }
 
-    static Map<String, Object> describe(ModelProfile profile) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("id", profile.id().toString());
-        body.put("key", profile.key());
-        body.put("displayName", profile.displayName());
-        body.put("providerId", profile.providerId().toString());
-        body.put("upstreamModel", profile.upstreamModel());
-        body.put("contextWindow", profile.contextWindow());
-        body.put("maxOutputTokens", profile.maxOutputTokens());
-        body.put("countingMode", profile.countingMode());
-        body.put("state", profile.state());
-        return body;
+    static GatewayModel describe(ModelProfile profile) {
+        return new GatewayModel(
+                profile.id(),
+                profile.key(),
+                profile.displayName(),
+                profile.providerId(),
+                profile.upstreamModel(),
+                profile.contextWindow(),
+                profile.maxOutputTokens(),
+                profile.countingMode(),
+                profile.state());
     }
 }

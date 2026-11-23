@@ -22,6 +22,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 import org.springframework.web.filter.OncePerRequestFilter;
 import top.yealike.pep.control.integration.OpsIdentityClient;
 import top.yealike.pep.control.support.AiExceptions.AiException;
+import top.yealike.pep.observability.api.ApiResponseWriter;
 
 /** Control 不创建浏览器会话；每次用户请求都向 OPS 校验原始 Cookie。 */
 @Configuration
@@ -50,8 +51,10 @@ public class SecurityConfig {
                         .permitAll()
                         .anyRequest()
                         .authenticated())
-                .exceptionHandling(errors ->
-                        errors.authenticationEntryPoint((request, response, exception) -> response.sendError(401)))
+                .exceptionHandling(errors -> errors.authenticationEntryPoint((request, response, exception) ->
+                                ApiResponseWriter.write(response, 401, "UNAUTHORIZED", "未登录或会话已过期"))
+                        .accessDeniedHandler((request, response, exception) ->
+                                ApiResponseWriter.write(response, 403, "FORBIDDEN", "无权执行此操作")))
                 .addFilterBefore(
                         new InternalServiceTokenFilter(internalServiceToken),
                         UsernamePasswordAuthenticationFilter.class)
@@ -84,9 +87,7 @@ public class SecurityConfig {
                     || !MessageDigest.isEqual(
                             expectedToken.getBytes(StandardCharsets.UTF_8),
                             providedToken.getBytes(StandardCharsets.UTF_8))) {
-                response.setStatus(401);
-                response.setContentType("application/json;charset=UTF-8");
-                response.getWriter().write("{\"error\":\"SERVICE_TOKEN_INVALID\",\"message\":\"服务身份校验失败\"}");
+                ApiResponseWriter.write(response, 401, "SERVICE_TOKEN_INVALID", "服务身份校验失败");
                 return;
             }
             chain.doFilter(request, response);
@@ -117,7 +118,7 @@ public class SecurityConfig {
                 SecurityContextHolder.getContext()
                         .setAuthentication(new UsernamePasswordAuthenticationToken(identity, null, authorities));
             } catch (AiException exception) {
-                response.sendError(exception.status(), exception.getMessage());
+                ApiResponseWriter.write(response, exception.status(), exception.code(), exception.getMessage());
                 return;
             }
             chain.doFilter(request, response);

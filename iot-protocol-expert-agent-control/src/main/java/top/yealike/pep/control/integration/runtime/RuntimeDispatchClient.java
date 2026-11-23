@@ -5,7 +5,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,12 +14,14 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
+import tools.jackson.databind.JsonNode;
 import top.yealike.pep.control.config.properties.PlatformProperties;
 import top.yealike.pep.control.config.properties.PlatformSecurity;
 import top.yealike.pep.control.integration.runtime.dto.DispatchResult;
 import top.yealike.pep.control.integration.runtime.dto.PrepareResult;
 import top.yealike.pep.control.integration.runtime.dto.RuntimeTarget;
 import top.yealike.pep.control.support.JsonSupport;
+import top.yealike.pep.observability.api.ApiResponse;
 import top.yealike.pep.runtime.contract.InternalPaths;
 import top.yealike.pep.runtime.contract.InternalSignature;
 import top.yealike.pep.runtime.contract.ReleasePrepareRequest;
@@ -69,7 +70,7 @@ public class RuntimeDispatchClient {
         if (response.error() != null) {
             return new PrepareResult(false, "FAILED", null, response.error(), response.message(), response.status());
         }
-        ReleasePrepareResponse value = JsonSupport.read(response.body(), ReleasePrepareResponse.class);
+        ReleasePrepareResponse value = readData(response.body(), ReleasePrepareResponse.class);
         if (value == null) {
             return new PrepareResult(
                     false, "FAILED", null, "CONTROL_EMPTY_RESPONSE", "Runtime 未返回发布准备结果", response.status());
@@ -92,7 +93,7 @@ public class RuntimeDispatchClient {
         if (response.error() != null) {
             return new DispatchResult(false, response.status(), null, response.error(), response.message());
         }
-        RunDispatchReceipt receipt = JsonSupport.read(response.body(), RunDispatchReceipt.class);
+        RunDispatchReceipt receipt = readData(response.body(), RunDispatchReceipt.class);
         return new DispatchResult(receipt != null && receipt.accepted(), response.status(), receipt, null, null);
     }
 
@@ -102,12 +103,12 @@ public class RuntimeDispatchClient {
         if (response.error() != null) {
             return null;
         }
-        return JsonSupport.read(response.body(), RuntimeRunStatus.class);
+        return readData(response.body(), RuntimeRunStatus.class);
     }
 
     public boolean cancel(RuntimeTarget target, UUID runId, long executionToken) {
         String path = InternalPaths.runtimeCancel(runId) + "?executionToken=" + executionToken;
-        Response response = execute("POST", target, path, Map.of());
+        Response response = execute("POST", target, path, null);
         return response.error() == null || response.status() == 404;
     }
 
@@ -159,13 +160,26 @@ public class RuntimeDispatchClient {
             return new ErrorBody("CONTROL_ERROR", "Runtime 请求失败");
         }
         try {
-            Map<String, Object> body = JsonSupport.readMap(text);
+            JsonNode body = JsonSupport.mapper().readTree(text);
             return new ErrorBody(
-                    String.valueOf(body.getOrDefault("error", "CONTROL_ERROR")),
-                    String.valueOf(body.getOrDefault("message", "Runtime 请求失败")));
+                    firstText(body, "CONTROL_ERROR", "code", "error"),
+                    firstText(body, "Runtime 请求失败", "msg", "detail", "message"));
         } catch (RuntimeException exception) {
             return new ErrorBody("CONTROL_ERROR", "Runtime 请求失败");
         }
+    }
+
+    private static String firstText(JsonNode body, String fallback, String... fields) {
+        if (body == null || body.isNull()) {
+            return fallback;
+        }
+        for (String field : fields) {
+            JsonNode value = body.get(field);
+            if (value != null && value.isTextual() && !value.asText().isBlank()) {
+                return value.asText();
+            }
+        }
+        return fallback;
     }
 
     private static String safeMessage(RuntimeException exception) {
@@ -179,6 +193,26 @@ public class RuntimeDispatchClient {
             return security.internalServiceKey().strip();
         }
         return "";
+    }
+
+    private static <T> T readData(String text, Class<T> type) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            var root = JsonSupport.mapper().readTree(text);
+            if (root != null && root.has("code") && root.has("msg") && root.has("data")) {
+                String code = root.path("code").asText();
+                if (!ApiResponse.SUCCESS_CODE.equals(code)) {
+                    return null;
+                }
+                var data = root.get("data");
+                return data == null || data.isNull() ? null : JsonSupport.read(JsonSupport.write(data), type);
+            }
+            return JsonSupport.read(text, type);
+        } catch (RuntimeException exception) {
+            return null;
+        }
     }
 
     private record ErrorBody(String code, String message) {}

@@ -10,10 +10,14 @@ import org.springframework.web.client.RestClient;
 import top.yealike.pep.control.agents.credential.CredentialService;
 import top.yealike.pep.control.agents.domain.Credential;
 import top.yealike.pep.control.agents.domain.ModelProfile;
+import top.yealike.pep.control.agents.domain.ModelProfileView;
+import top.yealike.pep.control.agents.domain.ModelTestResult;
 import top.yealike.pep.control.agents.store.CredentialStore;
 import top.yealike.pep.control.agents.store.ModelStore;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.control.support.JsonSupport;
+import top.yealike.pep.runtime.contract.ModelOptions;
+import top.yealike.pep.runtime.contract.RunUsage;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
 /** 模型 profile 管理：列表永不回显密钥，测试与保存分离。 */
@@ -45,8 +49,12 @@ public class ModelProfileService {
         this.http = builder.build();
     }
 
-    public List<ModelProfile> list() {
-        return models.list();
+    public List<ModelProfileView> list() {
+        return models.list().stream().map(ModelProfileView::from).toList();
+    }
+
+    public ModelProfileView view(UUID id) {
+        return ModelProfileView.from(require(id));
     }
 
     public ModelProfile require(UUID id) {
@@ -65,7 +73,7 @@ public class ModelProfileService {
             String baseUrl,
             String modelName,
             UUID credentialId,
-            Map<String, Object> options) {
+            ModelOptions options) {
         CredentialService.requireKey(key);
         validateOptions(options);
         if (models.findByKey(key).isPresent()) {
@@ -79,7 +87,7 @@ public class ModelProfileService {
                 gatewayBaseUrl(),
                 key,
                 null,
-                JsonSupport.write(options == null ? Map.of() : options),
+                JsonSupport.write(options == null ? Map.of() : options.asMap()),
                 actor.username());
     }
 
@@ -91,7 +99,7 @@ public class ModelProfileService {
             String baseUrl,
             String modelName,
             UUID credentialId,
-            Map<String, Object> options,
+            ModelOptions options,
             boolean enabled) {
         require(id);
         validateOptions(options);
@@ -103,7 +111,7 @@ public class ModelProfileService {
                 gatewayBaseUrl(),
                 models.find(id).orElseThrow().key(),
                 null,
-                JsonSupport.write(options == null ? Map.of() : options),
+                JsonSupport.write(options == null ? Map.of() : options.asMap()),
                 enabled);
         if (updated == 0) {
             throw AiExceptions.conflict("REVISION_CONFLICT", "模型已被其他请求修改，请刷新后重试");
@@ -111,7 +119,7 @@ public class ModelProfileService {
         return require(id);
     }
 
-    public Map<String, Object> test(UUID id) {
+    public ModelTestResult test(UUID id) {
         ModelProfile profile = require(id);
         if (!profile.enabled()) {
             throw AiExceptions.conflict("MODEL_DISABLED", "模型已停用");
@@ -124,13 +132,15 @@ public class ModelProfileService {
         long started = System.nanoTime();
         try {
             Map<String, Object> result = gateway.chat(gatewayTokens.issueForEvaluator(profile.key()), body);
-            Map<String, Object> data = new LinkedHashMap<>();
-            data.put("success", true);
-            data.put("model", profile.key());
-            data.put("latencyMs", Duration.ofNanos(System.nanoTime() - started).toMillis());
-            data.put("usage", result.get("usage"));
-            data.put("note", "测试会产生少量模型 token 消耗，并按评测服务账号计量");
-            return data;
+            long latencyMs = Duration.ofNanos(System.nanoTime() - started).toMillis();
+            return new ModelTestResult(
+                    true,
+                    profile.key(),
+                    latencyMs,
+                    usage(result.get("usage"), latencyMs),
+                    "测试会产生少量模型 token 消耗，并按评测服务账号计量",
+                    null,
+                    null);
         } catch (AiExceptions.AiException exception) {
             throw exception;
         } catch (RuntimeException exception) {
@@ -145,17 +155,32 @@ public class ModelProfileService {
         }
     }
 
-    private static void validateOptions(Map<String, Object> options) {
+    private static void validateOptions(ModelOptions options) {
         if (options != null) {
-            Object temperature = options.get("temperature");
-            if (temperature instanceof Number number && (number.doubleValue() < 0 || number.doubleValue() > 2)) {
+            if (options.temperature() != null && (options.temperature() < 0 || options.temperature() > 2)) {
                 throw AiExceptions.badRequest("temperature 必须在 0-2 之间");
             }
-            Object maxTokens = options.get("maxTokens");
-            if (maxTokens instanceof Number number && (number.intValue() < 1 || number.intValue() > 131072)) {
+            if (options.maxTokens() != null && (options.maxTokens() < 1 || options.maxTokens() > 131072)) {
                 throw AiExceptions.badRequest("maxTokens 必须在 1-131072 之间");
             }
         }
+    }
+
+    private static RunUsage usage(Object value, long latencyMs) {
+        if (value instanceof Map<?, ?> usage) {
+            return new RunUsage(
+                    longValue(usage.get("prompt_tokens")),
+                    longValue(usage.get("completion_tokens")),
+                    longValue(usage.get("total_tokens")),
+                    1L,
+                    0L,
+                    latencyMs);
+        }
+        return new RunUsage(null, null, null, 1L, 0L, latencyMs);
+    }
+
+    private static Long longValue(Object value) {
+        return value instanceof Number number ? number.longValue() : null;
     }
 
     private String gatewayBaseUrl() {

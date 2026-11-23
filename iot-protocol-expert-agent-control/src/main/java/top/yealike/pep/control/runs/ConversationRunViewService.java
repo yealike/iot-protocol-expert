@@ -4,7 +4,9 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import top.yealike.pep.control.conversations.ConversationService;
 import top.yealike.pep.control.runs.domain.ConversationView;
+import top.yealike.pep.control.runs.domain.MessageView;
 import top.yealike.pep.control.runs.domain.Run;
+import top.yealike.pep.control.runs.domain.RunView;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
 /** 在 Run 所属功能内组装会话详情，避免 conversations 反向依赖 runs。 */
@@ -27,6 +29,10 @@ public class ConversationRunViewService {
                         .findFirst()
                         .orElse(null)
                 : currentRun;
-        return new ConversationView(detail.conversation(), detail.messages(), currentRun, latestRun);
+        return new ConversationView(
+                detail.conversation(),
+                detail.messages().stream().map(MessageView::from).toList(),
+                currentRun == null ? null : RunView.from(currentRun, runs.listToolCalls(currentRun.id())),
+                latestRun == null ? null : RunView.from(latestRun, runs.listToolCalls(latestRun.id())));
     }
 }

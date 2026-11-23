@@ -23,8 +23,11 @@ public record ModelQuotaFailure(String code, String message) {
             String body = http.getResponseBody();
             if (body == null || body.length() > 8192) continue;
             try {
-                Object code = JSON.readValue(body, Map.class).get("error");
-                if (code instanceof String key && MESSAGES.containsKey(key)) {
+                var root = JSON.readTree(body);
+                String key = root.path("code").isTextual()
+                        ? root.path("code").textValue()
+                        : root.path("error").isTextual() ? root.path("error").textValue() : null;
+                if (key != null && MESSAGES.containsKey(key)) {
                     return Optional.of(new ModelQuotaFailure(key, MESSAGES.get(key)));
                 }
             } catch (RuntimeException ignored) {

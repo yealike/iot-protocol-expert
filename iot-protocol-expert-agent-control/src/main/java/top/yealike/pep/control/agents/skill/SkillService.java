@@ -3,7 +3,6 @@ package top.yealike.pep.control.agents.skill;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -11,7 +10,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.pep.control.agents.domain.SkillComponent;
 import top.yealike.pep.control.agents.domain.SkillDraftFile;
+import top.yealike.pep.control.agents.domain.SkillFileView;
 import top.yealike.pep.control.agents.domain.SkillRelease;
+import top.yealike.pep.control.agents.domain.SkillValidationResult;
 import top.yealike.pep.control.agents.skill.domain.PublishResult;
 import top.yealike.pep.control.agents.skill.domain.Validation;
 import top.yealike.pep.control.agents.store.PublicationStore;
@@ -80,17 +81,16 @@ public class SkillService {
         store.delete(component.id());
     }
 
-    public List<Map<String, Object>> fileList(UUID id) {
+    public List<SkillFileView> fileList(UUID id) {
         require(id);
-        List<Map<String, Object>> result = new ArrayList<>();
+        List<SkillFileView> result = new ArrayList<>();
         for (SkillDraftFile file : store.files(id)) {
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("path", file.path());
-            row.put("digest", file.digest());
-            row.put("size", file.content().getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
-            row.put("entry", "SKILL.md".equals(file.path()));
-            row.put("updatedAt", file.updatedAt());
-            result.add(row);
+            result.add(new SkillFileView(
+                    file.path(),
+                    file.digest(),
+                    file.content().getBytes(java.nio.charset.StandardCharsets.UTF_8).length,
+                    "SKILL.md".equals(file.path()),
+                    file.updatedAt()));
         }
         return result;
     }
@@ -124,22 +124,20 @@ public class SkillService {
         store.deleteFile(id, path);
     }
 
-    public Map<String, Object> validate(UUID id) {
+    public SkillValidationResult validate(UUID id) {
         SkillComponent component = require(id);
         Validation validation = validator.validate(component.key(), draftFiles(id));
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("valid", validation.errors().isEmpty());
-        result.put("errors", validation.errors());
-        result.put("warnings", validation.warnings());
-        result.put("metadata", validation.metadata());
-        result.put("draftRevision", component.revision());
-        result.put("fileCount", store.files(id).size());
-        result.put(
-                "totalBytes",
-                store.files(id).stream()
+        List<SkillDraftFile> files = store.files(id);
+        return new SkillValidationResult(
+                validation.errors().isEmpty(),
+                validation.errors(),
+                validation.warnings(),
+                validation.metadata(),
+                component.revision(),
+                files.size(),
+                files.stream()
                         .mapToLong(file -> file.content().getBytes(java.nio.charset.StandardCharsets.UTF_8).length)
                         .sum());
-        return result;
     }
 
     @Transactional

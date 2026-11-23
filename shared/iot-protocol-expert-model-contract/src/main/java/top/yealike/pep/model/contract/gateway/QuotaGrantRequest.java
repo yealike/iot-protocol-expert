@@ -1,6 +1,7 @@
-package top.yealike.pep.control.api.control.dto;
+package top.yealike.pep.model.contract.gateway;
 
-public record GrantRequest(
+/** 分配或调整额度的请求体；幂等键由 Idempotency-Key 头提供。 */
+public record QuotaGrantRequest(
         String scopeKind,
         String subjectId,
         String mode,

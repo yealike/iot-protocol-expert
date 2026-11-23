@@ -6,7 +6,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -29,6 +28,7 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.support.TransactionTemplate;
 import top.yealike.pep.model.contract.ModelErrorCodes;
 import top.yealike.pep.model.contract.ModelUsage;
+import top.yealike.pep.model.contract.gateway.QuotaGrantResult;
 import top.yealike.pep.modelgateway.config.properties.GatewayCounting;
 import top.yealike.pep.modelgateway.config.properties.GatewayProperties;
 import top.yealike.pep.modelgateway.mybatis.UuidTypeHandler;
@@ -93,11 +93,9 @@ class QuotaServicePostgresTest {
     @Test
     void windowStartsOnFirstReservationAndSettlementUsesNormalizedUsage() {
         grant("ON_FIRST_USE_WINDOW", 100, 18_000L, "win-" + subject);
-        assertThat(quota.snapshot("USER", subject).get("policies"))
-                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.LIST)
+        assertThat(quota.snapshot("USER", subject).policies())
                 .singleElement()
-                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
-                .containsEntry("activationState", "NOT_ACTIVATED");
+                .satisfies(policy -> assertThat(policy.activationState()).isEqualTo("NOT_ACTIVATED"));
 
         var reservation = quota.reserve(request(10));
         assertThat(reservation.replayed()).isFalse();
@@ -112,10 +110,10 @@ class QuotaServicePostgresTest {
                 reservation.reservationId(), usage(7), "provider-1", "{\"prompt_tokens\":4,\"completion_tokens\":3}");
 
         var snapshot = quota.snapshot("USER", subject);
-        @SuppressWarnings("unchecked")
-        var policy = ((List<java.util.Map<String, Object>>) snapshot.get("policies")).getFirst();
-        assertThat(policy).containsEntry("activationState", "ACTIVE").containsEntry("usedUnits", 7L);
-        assertThat(policy).containsEntry("remainingUnits", 93L);
+        var policy = snapshot.policies().getFirst();
+        assertThat(policy.activationState()).isEqualTo("ACTIVE");
+        assertThat(policy.usedUnits()).isEqualTo(7L);
+        assertThat(policy.remainingUnits()).isEqualTo(93L);
         assertThat(jdbc.queryForObject(
                         "select count(*) from pep_metering.model_usage where quality = 'PROVIDER'", Long.class))
                 .isEqualTo(1L);
@@ -271,8 +269,8 @@ class QuotaServicePostgresTest {
                 new GrantRequest("USER", subject, "TOTAL", 100, null, "key-" + subject, "test", "admin", "grant-1");
         var first = quota.grant(request);
         var second = quota.grant(request);
-        assertThat(second).containsEntry("replayed", true);
-        assertThat(second.get("revision")).isEqualTo(first.get("revision"));
+        assertThat(second.replayed()).isTrue();
+        assertThat(second.revision()).isEqualTo(first.revision());
         assertThat(jdbc.queryForObject(
                         "select count(*) from pep_metering.quota_policy_version where policy_key = ?",
                         Long.class,
@@ -307,13 +305,11 @@ class QuotaServicePostgresTest {
 
         grant("TOTAL", 200, null, policyKey);
 
-        assertThat(quota.snapshot("USER", subject).get("policies"))
-                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.LIST)
-                .singleElement()
-                .asInstanceOf(org.assertj.core.api.InstanceOfAssertFactories.MAP)
-                .containsEntry("mode", "TOTAL")
-                .containsEntry("activationState", "NOT_ACTIVATED")
-                .containsEntry("endAt", null);
+        assertThat(quota.snapshot("USER", subject).policies()).singleElement().satisfies(policy -> {
+            assertThat(policy.mode()).isEqualTo("TOTAL");
+            assertThat(policy.activationState()).isEqualTo("NOT_ACTIVATED");
+            assertThat(policy.endAt()).isNull();
+        });
         var totalReservation = quota.reserve(request(20));
 
         assertThat(jdbc.queryForObject(
@@ -340,13 +336,11 @@ class QuotaServicePostgresTest {
         grant("TOTAL", 200, null, policyKey);
 
         var snapshot = quota.snapshot("USER", subject);
-        @SuppressWarnings("unchecked")
-        var policy = ((List<java.util.Map<String, Object>>) snapshot.get("policies")).getFirst();
-        assertThat(policy)
-                .containsEntry("limitUnits", 200L)
-                .containsEntry("usedUnits", 0L)
-                .containsEntry("heldUnits", 10L)
-                .containsEntry("remainingUnits", 190L);
+        var policy = snapshot.policies().getFirst();
+        assertThat(policy.limitUnits()).isEqualTo(200L);
+        assertThat(policy.usedUnits()).isZero();
+        assertThat(policy.heldUnits()).isEqualTo(10L);
+        assertThat(policy.remainingUnits()).isEqualTo(190L);
         assertThat(jdbc.queryForObject(
                         "select policy_revision from pep_metering.quota_bucket where id = "
                                 + "(select current_bucket_id from pep_metering.quota_account)",
@@ -365,13 +359,11 @@ class QuotaServicePostgresTest {
         grant("ON_FIRST_USE_WINDOW", 200, 7_200L, policyKey);
 
         var snapshot = quota.snapshot("USER", subject);
-        @SuppressWarnings("unchecked")
-        var policy = ((List<java.util.Map<String, Object>>) snapshot.get("policies")).getFirst();
-        assertThat(policy)
-                .containsEntry("limitUnits", 200L)
-                .containsEntry("usedUnits", 7L)
-                .containsEntry("heldUnits", 0L)
-                .containsEntry("remainingUnits", 193L);
+        var policy = snapshot.policies().getFirst();
+        assertThat(policy.limitUnits()).isEqualTo(200L);
+        assertThat(policy.usedUnits()).isEqualTo(7L);
+        assertThat(policy.heldUnits()).isZero();
+        assertThat(policy.remainingUnits()).isEqualTo(193L);
         assertThat(jdbc.queryForObject(
                         "select policy_revision from pep_metering.quota_bucket where id = "
                                 + "(select current_bucket_id from pep_metering.quota_account)",
@@ -403,7 +395,7 @@ class QuotaServicePostgresTest {
                 .isEqualTo("UNCERTAIN");
         assertThat(jdbc.queryForObject("select held_units from pep_metering.quota_bucket", Long.class))
                 .isEqualTo(10L);
-        assertThat(quota.snapshot("USER", subject)).containsEntry("pendingReconciliation", 1L);
+        assertThat(quota.snapshot("USER", subject).pendingReconciliation()).isEqualTo(1L);
 
         quota.reconcileRelease(reservation.reservationId());
 
@@ -414,7 +406,7 @@ class QuotaServicePostgresTest {
                         String.class,
                         reservation.reservationId()))
                 .isEqualTo("RELEASED");
-        assertThat(quota.snapshot("USER", subject)).containsEntry("pendingReconciliation", 0L);
+        assertThat(quota.snapshot("USER", subject).pendingReconciliation()).isZero();
     }
 
     @Test
@@ -534,7 +526,7 @@ class QuotaServicePostgresTest {
     void concurrentGrantsForSamePolicyUseDistinctRevisions() throws Exception {
         String policyKey = "concurrent-" + subject;
         CountDownLatch start = new CountDownLatch(1);
-        List<Callable<Map<String, Object>>> tasks = List.of(
+        List<Callable<QuotaGrantResult>> tasks = List.of(
                 () -> {
                     start.await(10, TimeUnit.SECONDS);
                     return quota.grant(new GrantRequest(
@@ -562,10 +554,10 @@ class QuotaServicePostgresTest {
                             "grant-b-" + UUID.randomUUID()));
                 });
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
-            List<Future<Map<String, Object>>> futures =
+            List<Future<QuotaGrantResult>> futures =
                     tasks.stream().map(executor::submit).toList();
             start.countDown();
-            for (Future<Map<String, Object>> future : futures) {
+            for (Future<QuotaGrantResult> future : futures) {
                 future.get(20, TimeUnit.SECONDS);
             }
         }
@@ -587,7 +579,7 @@ class QuotaServicePostgresTest {
         var request =
                 new GrantRequest("USER", subject, "TOTAL", 100, null, "idem-" + subject, "test", "admin", "same-key");
         CountDownLatch start = new CountDownLatch(1);
-        List<Callable<Map<String, Object>>> tasks = List.of(
+        List<Callable<QuotaGrantResult>> tasks = List.of(
                 () -> {
                     start.await(10, TimeUnit.SECONDS);
                     return quota.grant(request);
@@ -597,10 +589,10 @@ class QuotaServicePostgresTest {
                     return quota.grant(request);
                 });
         try (ExecutorService executor = Executors.newFixedThreadPool(2)) {
-            List<Future<Map<String, Object>>> futures =
+            List<Future<QuotaGrantResult>> futures =
                     tasks.stream().map(executor::submit).toList();
             start.countDown();
-            for (Future<Map<String, Object>> future : futures) {
+            for (Future<QuotaGrantResult> future : futures) {
                 future.get(20, TimeUnit.SECONDS);
             }
         }

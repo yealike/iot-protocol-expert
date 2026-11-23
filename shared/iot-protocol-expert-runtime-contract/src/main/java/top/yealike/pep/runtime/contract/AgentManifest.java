@@ -1,7 +1,6 @@
 package top.yealike.pep.runtime.contract;
 
 import java.util.List;
-import java.util.Map;
 
 /**
  * Agent 发布清单。清单只包含定位信息与稳定摘要，不包含运行入口、用户权限或密钥明文。
@@ -30,12 +29,7 @@ public record AgentManifest(
             String modelName,
             String credentialRef,
             long secretRevision,
-            Map<String, Object> options) {
-
-        public ModelSpec {
-            options = options == null ? Map.of() : Map.copyOf(options);
-        }
-    }
+            ModelOptions options) {}
 
     public record SkillBinding(String key, String version, String digest, String loadMode, int order) {}
 

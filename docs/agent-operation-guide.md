@@ -100,6 +100,10 @@ await fetch('/api/control/v1/admin/quota-grants', {
 }).then(async response => ({ status: response.status, body: await response.json() }))
 ```
 
+`/api/ai/v1`、`/api/control/v1` 与 `/api/model-gateway/v1` 的普通 JSON 响应统一为
+`{ code, msg, data }`。判断成功使用 `code === 'OK'`，业务字段读取 `body.data`；OpenAI 兼容接口、SSE
+事件流和 Higress REST-to-MCP 工具入口不套用该信封。
+
 - `TOTAL` 的 `limitUnits` 是额度上限，调整同一策略的上限应复用 `policyKey`；不是“增加这些 Token”。
 - 首次使用窗口使用 `mode: 'ON_FIRST_USE_WINDOW'` 并提供 `durationSeconds`，如 3600。第一次实际调用激活窗口，后续受窗口内额度约束；到期后由后续请求开启新窗口。
 - 同时存在总量和窗口策略时，两项都约束同一笔消费，不能把两个余额相加。

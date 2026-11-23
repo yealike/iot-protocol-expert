@@ -2,7 +2,6 @@ package top.yealike.pep.runtime.contract;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
@@ -11,12 +10,20 @@ class ManifestDigestsTest {
 
     @Test
     void digestIsStableAcrossEquivalentManifests() {
-        AgentManifest one = manifest(new BigDecimal("0.10"));
-        AgentManifest two = manifest(new BigDecimal("0.1"));
+        AgentManifest one = manifest(0.10);
+        AgentManifest two = manifest(0.1);
         assertThat(ManifestDigests.digest(one)).isEqualTo(ManifestDigests.digest(two));
     }
 
-    private static AgentManifest manifest(Object temperature) {
+    @Test
+    void canonicalManifestUsesTheStoredModelOptionsMapShape() {
+        Map<?, ?> canonicalModel =
+                (Map<?, ?>) ManifestDigests.canonical(manifest(0.1)).get("model");
+
+        assertThat(canonicalModel.get("options")).isEqualTo(Map.of("temperature", 0.1, "maxTokens", 1024));
+    }
+
+    private static AgentManifest manifest(double temperature) {
         AgentManifest.ModelSpec model = new AgentManifest.ModelSpec(
                 "default",
                 "OPENAI_COMPAT",
@@ -24,7 +31,7 @@ class ManifestDigestsTest {
                 "deepseek-flash",
                 "model-default",
                 1,
-                Map.of("temperature", temperature));
+                new ModelOptions(temperature, 1024, null));
         return new AgentManifest(
                 "ipe.agent/v1",
                 "protocol-expert",

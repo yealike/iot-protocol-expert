@@ -115,6 +115,11 @@ Runtime 的 Maven 依赖未声明 JDBC 驱动、MyBatis、Flyway 或数据源 st
 
 统一前缀 `/api/ai/v1`，管理接口要求 `ai:admin`，写请求还要求 `X-AI-Client` 头。
 
+除 OpenAI 兼容调用、SSE 事件流和 Higress REST-to-MCP 工具入口外，三个 HTTP 服务的 JSON 接口统一返回
+`ApiResponse<T>`：`{ "code": "OK", "msg": "Success", "data": ... }`。成功时 `code` 为 `OK`，失败时为稳定业务错误码；
+HTTP 状态码仍表达传输层结果。Controller 返回业务 DTO，由公共 `ResponseBodyAdvice` 自动包装；Spring MVC 的
+ProblemDetail 输出已关闭，OpenAPI 成功响应 Schema 也同步包装为 `ApiResponse`。
+
 | 资源 | 主要接口 |
 |---|---|
 | 模型 | `GET/POST /models`、`PUT /models/{id}`、`POST /models/{id}/test` |
@@ -124,7 +129,7 @@ Runtime 的 Maven 依赖未声明 JDBC 驱动、MyBatis、Flyway 或数据源 st
 | Agent | `GET/POST /agents`、`GET/PUT/DELETE /agents/{id}`、`POST /agents/{id}/validate`、`POST /agents/{id}/publish`、`POST /agents/{id}/rollback` |
 | 发布/注册 | `GET /publications/{id}`、`POST /publications/{id}/retry`、`GET /registry/components`、`GET /registry/components/{type}/{key}/versions/{version}` |
 
-当前未实现设计稿中的草稿预览 Run、组件 disable/revoke、发布列表分页和完整 OpenAPI/JSON Schema 导出；不得把现有接口说明为已具备这些能力。错误体当前是 `{error,message}`，不是设计要求的 ProblemDetail + `code,traceId`；Skill 路径非法在保存时返回 400，而设计/T14 期望 422。
+当前未实现设计稿中的草稿预览 Run、组件 disable/revoke、发布列表分页和完整 OpenAPI/JSON Schema 导出；不得把现有接口说明为已具备这些能力。错误体统一为 `ApiResponse {code,msg,data}`，HTTP 状态码保留；Skill 路径非法在保存时返回 400，而设计/T14 期望 422。
 
 ### 4.2 对话 API
 

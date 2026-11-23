@@ -27,7 +27,6 @@ import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.config.properties.AiProperties;
 import top.yealike.pep.control.config.properties.PlatformProperties;
 import top.yealike.pep.control.conversations.ConversationRepository;
-import top.yealike.pep.control.conversations.domain.Citation;
 import top.yealike.pep.control.conversations.domain.Message;
 import top.yealike.pep.control.integration.OpsIdentityClient;
 import top.yealike.pep.control.runs.RunEventService;
@@ -269,7 +268,7 @@ public class RuntimeRunCoordinator {
                                 current.id(),
                                 "assistant",
                                 answer,
-                                citations(request.citations()),
+                                request.citations(),
                                 "FINAL",
                                 seq,
                                 Instant.now());
@@ -475,40 +474,5 @@ public class RuntimeRunCoordinator {
 
     private int leaseSeconds() {
         return Math.max(30, platform.runtime().leaseSeconds());
-    }
-
-    private static List<Citation> citations(List<Map<String, Object>> values) {
-        List<Citation> result = new ArrayList<>();
-        if (values == null) {
-            return result;
-        }
-        for (Map<String, Object> value : values) {
-            result.add(new Citation(
-                    string(value.get("documentId")),
-                    string(value.get("title")),
-                    string(value.get("protocolVersion")),
-                    string(value.get("sectionPath")),
-                    integer(value.get("pageNo")),
-                    string(value.get("sourceDocumentId"))));
-        }
-        return result;
-    }
-
-    private static String string(Object value) {
-        return value == null ? null : String.valueOf(value);
-    }
-
-    private static Integer integer(Object value) {
-        if (value instanceof Number number) {
-            return number.intValue();
-        }
-        if (value == null) {
-            return null;
-        }
-        try {
-            return Integer.valueOf(String.valueOf(value));
-        } catch (NumberFormatException exception) {
-            return null;
-        }
     }
 }

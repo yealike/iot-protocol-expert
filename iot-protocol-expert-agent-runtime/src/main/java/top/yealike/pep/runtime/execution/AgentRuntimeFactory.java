@@ -6,7 +6,6 @@ import io.agentscope.core.model.Model;
 import io.agentscope.core.tool.Toolkit;
 import io.agentscope.extensions.model.openai.OpenAIChatModel;
 import io.micrometer.core.instrument.MeterRegistry;
-import java.util.Map;
 import org.springframework.stereotype.Component;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.McpDescriptor;
@@ -81,9 +80,12 @@ public class AgentRuntimeFactory {
     }
 
     private Model model(AgentManifest.ModelSpec spec, String secret) {
-        Map<String, Object> options = spec.options() == null ? Map.of() : spec.options();
-        int maxTokens = integer(options.get("maxTokens"), 2048);
-        double temperature = decimal(options.get("temperature"), 0.1);
+        int maxTokens = spec.options() == null || spec.options().maxTokens() == null
+                ? 2048
+                : spec.options().maxTokens();
+        double temperature = spec.options() == null || spec.options().temperature() == null
+                ? 0.1
+                : spec.options().temperature();
         return OpenAIChatModel.builder()
                 .baseUrl(spec.baseUrl())
                 .apiKey(secret == null ? "" : secret)
@@ -93,13 +95,5 @@ public class AgentRuntimeFactory {
                         .temperature(temperature)
                         .build())
                 .build();
-    }
-
-    private static int integer(Object value, int fallback) {
-        return value instanceof Number number ? number.intValue() : fallback;
-    }
-
-    private static double decimal(Object value, double fallback) {
-        return value instanceof Number number ? number.doubleValue() : fallback;
     }
 }

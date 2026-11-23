@@ -446,8 +446,8 @@ function RegistryDetail({ detail }: { detail: AiRegistryVersionDetail }) {
           {detail.releaseState ? <StateTag state={detail.releaseState} /> : '-'}
         </Descriptions.Item>
       </Descriptions>
-      {detail.error ? (
-        <Alert type="warning" showIcon message={detail.error} style={{ marginTop: 12 }} />
+      {detail.lastError ? (
+        <Alert type="warning" showIcon message={detail.lastError} style={{ marginTop: 12 }} />
       ) : null}
     </div>
   )

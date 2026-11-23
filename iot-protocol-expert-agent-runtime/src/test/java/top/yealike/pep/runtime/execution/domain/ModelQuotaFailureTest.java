@@ -11,11 +11,18 @@ class ModelQuotaFailureTest {
         Throwable error = new RuntimeException(new OpenAIException(
                 "private transport details",
                 429,
-                "{\"error\":\"QUOTA_TOTAL_EXHAUSTED\",\"message\":\"private provider details\"}"));
+                "{\"code\":\"QUOTA_TOTAL_EXHAUSTED\",\"msg\":\"private provider details\",\"data\":null}"));
 
         ModelQuotaFailure failure = ModelQuotaFailure.from(error).orElseThrow();
         assertThat(failure.code()).isEqualTo("QUOTA_TOTAL_EXHAUSTED");
         assertThat(failure.message()).contains("补充额度").doesNotContain("private");
+    }
+
+    @Test
+    void keepsReadCompatibilityWithLegacyErrorBodies() {
+        Throwable error = new OpenAIException("rate limit", 429, "{\"error\":\"QUOTA_EXHAUSTED\"}");
+
+        assertThat(ModelQuotaFailure.from(error).orElseThrow().code()).isEqualTo("QUOTA_EXHAUSTED");
     }
 
     @Test

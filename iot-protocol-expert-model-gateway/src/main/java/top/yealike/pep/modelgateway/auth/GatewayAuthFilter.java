@@ -14,6 +14,7 @@ import top.yealike.pep.model.contract.ModelGatewayCredentials;
 import top.yealike.pep.model.contract.RunTokenCodec;
 import top.yealike.pep.model.contract.RunTokenPayload;
 import top.yealike.pep.modelgateway.config.properties.GatewayProperties;
+import top.yealike.pep.observability.api.ApiResponseWriter;
 
 /** 网关只接受两类调用：Runtime 的短期运行凭据，以及控制服务的内部服务令牌。 */
 @Component
@@ -53,7 +54,7 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
             authenticateService(request, response, chain);
             return;
         }
-        response.sendError(HttpServletResponse.SC_NOT_FOUND);
+        ApiResponseWriter.write(response, HttpServletResponse.SC_NOT_FOUND, "NOT_FOUND", "接口不存在");
     }
 
     private void authenticateRun(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -92,10 +93,7 @@ public class GatewayAuthFilter extends OncePerRequestFilter {
     }
 
     private static void reject(HttpServletResponse response, String message) throws IOException {
-        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-        response.setContentType("application/json;charset=UTF-8");
-        response.getWriter()
-                .write("{\"error\":\"MODEL_GATEWAY_UNAUTHORIZED\",\"message\":\"" + message.replace("\"", "'") + "\"}");
+        ApiResponseWriter.write(response, HttpServletResponse.SC_UNAUTHORIZED, "MODEL_GATEWAY_UNAUTHORIZED", message);
     }
 
     private static boolean constantTimeEquals(String expected, String provided) {

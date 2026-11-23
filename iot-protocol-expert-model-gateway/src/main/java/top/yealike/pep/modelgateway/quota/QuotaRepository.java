@@ -1,14 +1,12 @@
 package top.yealike.pep.modelgateway.quota;
 
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
 import top.yealike.pep.model.contract.ModelUsage;
+import top.yealike.pep.model.contract.gateway.UsageItem;
 import top.yealike.pep.modelgateway.quota.domain.Account;
 import top.yealike.pep.modelgateway.quota.domain.Bucket;
 import top.yealike.pep.modelgateway.quota.domain.Call;
@@ -223,29 +221,25 @@ public class QuotaRepository {
         mapper.adjustBucketUsed(bucketId, delta);
     }
 
-    public List<Map<String, Object>> usageRows(
-            String scopeKind, String subjectId, int limit, String modelKey, String projectId) {
+    public List<UsageItem> usageRows(String scopeKind, String subjectId, int limit, String modelKey, String projectId) {
         List<UsageRow> rows =
                 mapper.usageRows(scopeKind, subjectId, Math.max(1, Math.min(limit, 500)), modelKey, projectId);
-        List<Map<String, Object>> result = new ArrayList<>(rows.size());
-        for (UsageRow row : rows) {
-            Map<String, Object> item = new LinkedHashMap<>();
-            item.put("callId", row.callId());
-            item.put("logicalCallId", row.logicalCallId());
-            item.put("attemptNo", row.attemptNo());
-            item.put("model", row.model());
-            item.put("provider", row.provider());
-            item.put("projectId", row.projectId());
-            item.put("runId", row.runId());
-            item.put("state", row.state());
-            item.put("createdAt", row.createdAt());
-            item.put("inputTokens", row.inputTokens());
-            item.put("outputTokens", row.outputTokens());
-            item.put("quotaUnits", row.quotaUnits());
-            item.put("quality", row.quality());
-            result.add(item);
-        }
-        return result;
+        return rows.stream()
+                .map(row -> new UsageItem(
+                        row.callId(),
+                        row.logicalCallId(),
+                        row.attemptNo(),
+                        row.model(),
+                        row.provider(),
+                        row.projectId(),
+                        row.runId(),
+                        row.state(),
+                        row.createdAt(),
+                        row.inputTokens(),
+                        row.outputTokens(),
+                        row.quotaUnits(),
+                        row.quality()))
+                .toList();
     }
 
     public Integer maxPolicyRevision(String policyKey) {

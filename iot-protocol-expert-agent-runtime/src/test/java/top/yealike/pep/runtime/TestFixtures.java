@@ -13,8 +13,10 @@ import top.yealike.pep.runtime.config.properties.RuntimeProperties;
 import top.yealike.pep.runtime.config.properties.SkillProperties;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.McpDescriptor;
+import top.yealike.pep.runtime.contract.McpEndpointPolicy;
 import top.yealike.pep.runtime.contract.McpToolDescriptor;
 import top.yealike.pep.runtime.contract.McpToolSchemas;
+import top.yealike.pep.runtime.contract.ModelOptions;
 
 /** 单测共享的纯数据构造器；不启动 Spring，也不连接 Nacos/Control。 */
 public final class TestFixtures {
@@ -70,7 +72,7 @@ public final class TestFixtures {
                 0L,
                 top.yealike.pep.runtime.contract.ComponentDigests.mcpCatalog(List.of(tool)),
                 List.of(tool),
-                Map.of("contextMode", "OPS"));
+                new McpEndpointPolicy(null, null, "OPS", null, null, null, null, null));
     }
 
     public static AgentManifest manifest(UUID releaseId, boolean requiredMcp, List<AgentManifest.SkillBinding> skills) {
@@ -95,7 +97,7 @@ public final class TestFixtures {
                         "deepseek-chat",
                         "model-key",
                         1L,
-                        Map.of("temperature", 0.1, "maxTokens", 1024)),
+                        new ModelOptions(0.1, 1024, null)),
                 skills,
                 List.of(binding),
                 new AgentManifest.Budget(6, 12, 120_000L),

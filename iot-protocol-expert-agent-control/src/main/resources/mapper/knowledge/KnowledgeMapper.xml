@@ -92,7 +92,16 @@
         delete from ai_chunk where document_id = #{documentId}
     </delete>
 
-    <select id="preview" resultType="map">
+    <resultMap id="KnowledgePreviewMap" type="top.yealike.pep.control.knowledge.domain.KnowledgePreviewItem">
+        <constructor>
+            <arg column="chunkNo" javaType="_int"/>
+            <arg column="sectionPath" javaType="java.lang.String"/>
+            <arg column="pageNo" javaType="java.lang.Integer"/>
+            <arg column="content" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <select id="preview" resultMap="KnowledgePreviewMap">
         select chunk_no as "chunkNo", section_path as "sectionPath", page_no as "pageNo", content from ai_chunk where
             document_id = #{documentId} order by chunk_no limit 50
     </select>

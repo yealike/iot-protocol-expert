@@ -20,6 +20,7 @@ import top.yealike.pep.control.knowledge.domain.DocumentRow;
 import top.yealike.pep.control.knowledge.domain.Hit;
 import top.yealike.pep.control.knowledge.domain.IngestReport;
 import top.yealike.pep.control.knowledge.domain.IngestResult;
+import top.yealike.pep.control.knowledge.domain.KnowledgePreviewItem;
 import top.yealike.pep.control.knowledge.domain.Page;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.UserIdentity;
@@ -304,7 +305,7 @@ public class KnowledgeService {
         return repository.listDocuments();
     }
 
-    public List<Map<String, Object>> preview(UUID documentId) {
+    public List<KnowledgePreviewItem> preview(UUID documentId) {
         return repository.preview(documentId);
     }
 

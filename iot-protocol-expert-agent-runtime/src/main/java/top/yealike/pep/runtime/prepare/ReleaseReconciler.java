@@ -11,11 +11,11 @@ import org.springframework.core.Ordered;
 import org.springframework.core.annotation.Order;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import top.yealike.pep.runtime.contract.DesiredRelease;
+import top.yealike.pep.runtime.contract.DesiredReleasePage;
 import top.yealike.pep.runtime.contract.ReleasePrepareRequest;
 import top.yealike.pep.runtime.control.ControlClient;
 import top.yealike.pep.runtime.control.ControlException;
-import top.yealike.pep.runtime.control.dto.DesiredRelease;
-import top.yealike.pep.runtime.control.dto.DesiredReleasePage;
 
 /**
  * Runtime 重启后的期望版本对账。

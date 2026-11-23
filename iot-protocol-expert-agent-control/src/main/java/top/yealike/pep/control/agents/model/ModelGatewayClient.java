@@ -1,17 +1,22 @@
 package top.yealike.pep.control.agents.model;
 
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.util.UriComponentsBuilder;
 import top.yealike.pep.control.config.ModelGatewayProperties;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.control.support.JsonSupport;
 import top.yealike.pep.model.contract.ModelCallHeaders;
+import top.yealike.pep.model.contract.gateway.QuotaGrantRequest;
+import top.yealike.pep.model.contract.gateway.QuotaGrantResult;
+import top.yealike.pep.model.contract.gateway.QuotaSnapshot;
+import top.yealike.pep.model.contract.gateway.ReconcileReleaseResult;
+import top.yealike.pep.model.contract.gateway.UsageList;
+import top.yealike.pep.observability.api.ApiResponse;
 
 /** 控制服务对模型网关的调用；浏览器和 Runtime 都不直接访问网关管理面。 */
 @Service
@@ -48,30 +53,30 @@ public class ModelGatewayClient {
         }
     }
 
-    public Map<String, Object> quota(String scopeKind, String subjectId) {
-        return get("/api/model-gateway/v1/me/quota?scopeKind=" + scopeKind + "&subjectId=" + subjectId);
+    public QuotaSnapshot quota(String scopeKind, String subjectId) {
+        String path = UriComponentsBuilder.fromPath("/api/model-gateway/v1/me/quota")
+                .queryParam("scopeKind", scopeKind)
+                .queryParam("subjectId", subjectId)
+                .build()
+                .toUriString();
+        return get(path, QuotaSnapshot.class);
     }
 
-    @SuppressWarnings("unchecked")
-    public List<Map<String, Object>> usage(
-            String scopeKind, String subjectId, int limit, String model, String projectId) {
-        StringBuilder path = new StringBuilder("/api/model-gateway/v1/me/usage?scopeKind=")
-                .append(scopeKind)
-                .append("&subjectId=")
-                .append(subjectId)
-                .append("&limit=")
-                .append(limit);
+    public UsageList usage(String scopeKind, String subjectId, int limit, String model, String projectId) {
+        UriComponentsBuilder builder = UriComponentsBuilder.fromPath("/api/model-gateway/v1/me/usage")
+                .queryParam("scopeKind", scopeKind)
+                .queryParam("subjectId", subjectId)
+                .queryParam("limit", limit);
         if (model != null && !model.isBlank()) {
-            path.append("&model=").append(model);
+            builder.queryParam("model", model);
         }
         if (projectId != null && !projectId.isBlank()) {
-            path.append("&projectId=").append(projectId);
+            builder.queryParam("projectId", projectId);
         }
-        Object payload = get(path.toString()).get("items");
-        return payload instanceof List<?> list ? (List<Map<String, Object>>) list : List.of();
+        return get(builder.build().toUriString(), UsageList.class);
     }
 
-    public Map<String, Object> grant(Map<String, Object> request, String idempotencyKey) {
+    public QuotaGrantResult grant(QuotaGrantRequest request, String idempotencyKey) {
         try {
             String response = http.post()
                     .uri(baseUrl() + "/api/model-gateway/v1/admin/quota-grants")
@@ -80,25 +85,20 @@ public class ModelGatewayClient {
                     .body(request)
                     .retrieve()
                     .body(String.class);
-            return JsonSupport.readMap(response);
+            return unwrap(response, QuotaGrantResult.class);
         } catch (RuntimeException exception) {
             throw AiExceptions.unavailable("模型网关额度管理暂不可用");
         }
     }
 
-    public Map<String, Object> registerProvider(Map<String, Object> request) {
-        return post("/api/model-gateway/v1/admin/providers", request);
+    public ReconcileReleaseResult reconcileRelease(UUID reservationId) {
+        return post(
+                "/api/model-gateway/v1/admin/calls/" + reservationId + "/reconcile-release",
+                null,
+                ReconcileReleaseResult.class);
     }
 
-    public Map<String, Object> registerModel(Map<String, Object> request) {
-        return post("/api/model-gateway/v1/admin/models", request);
-    }
-
-    public Map<String, Object> reconcileRelease(UUID reservationId) {
-        return post("/api/model-gateway/v1/admin/calls/" + reservationId + "/reconcile-release", Map.of());
-    }
-
-    private Map<String, Object> get(String path) {
+    private <T> T get(String path, Class<T> type) {
         String url = baseUrl() + path;
         String token = serviceToken();
         try {
@@ -107,7 +107,7 @@ public class ModelGatewayClient {
                     .header("X-PEP-Service-Token", token)
                     .retrieve()
                     .body(String.class);
-            return JsonSupport.readMap(response);
+            return unwrap(response, type);
         } catch (org.springframework.web.client.RestClientResponseException exception) {
             log.error("模型网关查询失败，HTTP 状态码：{}", exception.getStatusCode().value(), exception);
             if (exception.getStatusCode().value() == 401
@@ -121,7 +121,7 @@ public class ModelGatewayClient {
         }
     }
 
-    private Map<String, Object> post(String path, Map<String, Object> body) {
+    private <T> T post(String path, Object body, Class<T> type) {
         try {
             String response = http.post()
                     .uri(baseUrl() + path)
@@ -129,12 +129,10 @@ public class ModelGatewayClient {
                     .body(body)
                     .retrieve()
                     .body(String.class);
-            return JsonSupport.readMap(response);
+            return unwrap(response, type);
         } catch (org.springframework.web.client.RestClientResponseException exception) {
-            Map<String, Object> detail = new LinkedHashMap<>();
-            detail.put("status", exception.getStatusCode().value());
-            detail.put("body", exception.getResponseBodyAsString());
-            throw AiExceptions.unavailable("模型网关管理接口暂不可用：" + detail);
+            log.warn("模型网关管理接口失败，HTTP 状态码：{}", exception.getStatusCode().value());
+            throw AiExceptions.unavailable("模型网关管理接口暂不可用");
         } catch (RuntimeException exception) {
             throw AiExceptions.unavailable("模型网关管理接口暂不可用");
         }
@@ -146,6 +144,22 @@ public class ModelGatewayClient {
             throw AiExceptions.unavailable("未配置模型网关地址");
         }
         return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+    }
+
+    private static <T> T unwrap(String text, Class<T> type) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        var root = JsonSupport.mapper().readTree(text);
+        if (root != null && root.has("code") && root.has("msg") && root.has("data")) {
+            String code = root.path("code").asText();
+            if (!ApiResponse.SUCCESS_CODE.equals(code)) {
+                throw AiExceptions.unavailable("模型网关返回错误：" + root.path("msg").asText());
+            }
+            var data = root.get("data");
+            return data == null || data.isNull() ? null : JsonSupport.read(JsonSupport.write(data), type);
+        }
+        return JsonSupport.read(text, type);
     }
 
     private String serviceToken() {

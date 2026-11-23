@@ -29,11 +29,13 @@ import top.yealike.pep.modelgateway.chat.ProviderClient;
 import top.yealike.pep.modelgateway.chat.domain.PreparedCall;
 import top.yealike.pep.modelgateway.chat.domain.ProviderResponse;
 import top.yealike.pep.modelgateway.support.ApiException;
+import top.yealike.pep.observability.api.RawResponse;
 
 /**
  * OpenAI 兼容入口。Runtime 只拿到短期运行凭据和网关地址，供应商密钥只在本进程内使用。
  */
 @RestController
+@RawResponse
 @Tag(name = "模型网关-OpenAI 兼容接口", description = "按运行凭据路由到逻辑模型；支持普通响应与 SSE 流式响应")
 @SecurityRequirement(name = "runtimeBearer")
 public class ChatCompletionsController {

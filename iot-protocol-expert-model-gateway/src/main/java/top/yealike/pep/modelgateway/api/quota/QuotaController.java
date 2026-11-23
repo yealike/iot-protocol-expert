@@ -3,7 +3,6 @@ package top.yealike.pep.modelgateway.api.quota;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -13,6 +12,13 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import top.yealike.pep.model.contract.gateway.QuotaAccountStateResult;
+import top.yealike.pep.model.contract.gateway.QuotaGrantRequest;
+import top.yealike.pep.model.contract.gateway.QuotaGrantResult;
+import top.yealike.pep.model.contract.gateway.QuotaSnapshot;
+import top.yealike.pep.model.contract.gateway.ReconcileReleaseResult;
+import top.yealike.pep.model.contract.gateway.UsageAdjustmentResult;
+import top.yealike.pep.model.contract.gateway.UsageList;
 import top.yealike.pep.modelgateway.quota.QuotaService;
 import top.yealike.pep.modelgateway.quota.dto.AdjustmentRequest;
 import top.yealike.pep.modelgateway.quota.dto.GrantRequest;
@@ -37,26 +43,25 @@ public class QuotaController {
 
     @Operation(operationId = "getQuotaSnapshot", summary = "查询主体额度")
     @GetMapping("/me/quota")
-    public Map<String, Object> quota(
-            @RequestParam(defaultValue = "USER") String scopeKind, @RequestParam String subjectId) {
+    public QuotaSnapshot quota(@RequestParam(defaultValue = "USER") String scopeKind, @RequestParam String subjectId) {
         return quota.snapshot(scopeKind, subjectId);
     }
 
     @Operation(operationId = "listUsage", summary = "查询主体用量明细")
     @GetMapping("/me/usage")
-    public Map<String, Object> usage(
+    public UsageList usage(
             @RequestParam(defaultValue = "USER") String scopeKind,
             @RequestParam String subjectId,
             @RequestParam(defaultValue = "100") int limit,
             @RequestParam(required = false) String model,
             @RequestParam(required = false) String projectId) {
-        return Map.of("items", quota.usage(scopeKind, subjectId, limit, model, projectId));
+        return new UsageList(quota.usage(scopeKind, subjectId, limit, model, projectId));
     }
 
     @Operation(operationId = "grantQuota", summary = "分配或调整额度")
     @PostMapping("/admin/quota-grants")
-    public Map<String, Object> grant(
-            @RequestHeader("Idempotency-Key") String idempotencyKey, @RequestBody GrantRequest request) {
+    public QuotaGrantResult grant(
+            @RequestHeader("Idempotency-Key") String idempotencyKey, @RequestBody QuotaGrantRequest request) {
         return quota.grant(new GrantRequest(
                 request.scopeKind(),
                 request.subjectId(),
@@ -71,7 +76,7 @@ public class QuotaController {
 
     @Operation(operationId = "updateQuotaAccountState", summary = "停用或恢复额度账户")
     @PostMapping("/admin/quota-accounts/{accountId}/state")
-    public Map<String, Object> state(
+    public QuotaAccountStateResult state(
             @PathVariable UUID accountId,
             @RequestParam String state,
             @RequestParam(defaultValue = "system") String actorId,
@@ -81,7 +86,7 @@ public class QuotaController {
 
     @Operation(operationId = "adjustUsage", summary = "追加用量调整")
     @PostMapping("/admin/usage-adjustments")
-    public Map<String, Object> adjust(
+    public UsageAdjustmentResult adjust(
             @RequestHeader("Idempotency-Key") String idempotencyKey, @RequestBody AdjustmentRequest request) {
         return quota.adjust(
                 request.modelCallId(), request.deltaUnits(), request.reason(), request.operatorId(), idempotencyKey);
@@ -89,8 +94,8 @@ public class QuotaController {
 
     @Operation(operationId = "reconcileRelease", summary = "对不确定调用做释放对账")
     @PostMapping("/admin/calls/{reservationId}/reconcile-release")
-    public Map<String, Object> reconcile(@PathVariable UUID reservationId) {
+    public ReconcileReleaseResult reconcile(@PathVariable UUID reservationId) {
         quota.reconcileRelease(reservationId);
-        return Map.of("reservationId", reservationId.toString(), "state", "RELEASED");
+        return new ReconcileReleaseResult(reservationId, "RELEASED");
     }
 }

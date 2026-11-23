@@ -13,20 +13,32 @@
 - 标准 Bearer 和固定服务令牌使用 `SecurityScheme` + 类级 `@SecurityRequirement`，不在每个方法重复请求头。
 - Runtime 的四个 HMAC 请求头由 `OpenApiConfig` 统一注入，Controller 不重复声明。
 - `@ApiResponse` 只用于框架无法推导的状态码，例如异步受理的 `202`；成功响应默认由返回类型生成。
-- `400`、`401`、`500` 等公共错误由 `OpenApiConfig` 统一注入 `ApiError` schema，方法上不再重复大段响应声明。
+- `400`、`401`、`500` 等公共错误由 `OpenApiConfig` 统一注入 `ApiResponse` schema，方法上不再重复大段响应声明。
 - 普通 JSON 接口声明 `produces = application/json`；同时支持 JSON 与 SSE 的接口保留多个媒体类型。
+
+## 统一响应
+
+- 普通 JSON 接口统一返回 `ApiResponse<T>`：`{ "code": "OK", "msg": "Success", "data": ... }`。
+- 成功时 `code` 固定为 `OK`；失败时 `code` 是稳定的业务错误码，`msg` 是可直接展示的摘要。HTTP 状态码仍表达传输层结果。
+- `OpenApiConfig` 会把普通 JSON 成功响应的业务 Schema 包装进 `ApiResponse.data`，文档与实际正文保持一致。
+- Controller 只返回业务 DTO（或 `ResponseEntity<业务 DTO>`），由公共 `ApiResponseAdvice` 自动包装；不要在 Controller
+  里重复声明 `ResponseEntity<ApiResponse<T>>`，避免二次包装。
+- 参数校验异常、业务异常、Spring Security 401/403 和过滤器错误同样输出 `ApiResponse`；错误响应不暴露堆栈、SQL 或上游正文。
+- 服务统一关闭 Spring MVC 的 ProblemDetail 输出，避免出现 `application/problem+json` 第二套错误结构。
+- OpenAI 兼容接口、SSE 事件流和 Higress REST-to-MCP 工具入口属于固定外部协议，使用 `@RawResponse` 排除统一包装。
 
 ## DTO 与 Schema
 
 - 请求 record 使用 `@Schema(name, description)` 说明整体用途，不逐字段堆 description 和 example。
 - 必填字段使用 `@Schema(requiredMode = REQUIRED)`；敏感字段使用 `format = "password"` 或 `hidden = true`。
 - 只有在字段名无法表达取值集合时才使用 `allowableValues`；长度、大小等约束以实际校验逻辑为准。
-- 错误响应统一为 `{ "error": "...", "message": "..." }`，由 `ApiError` 和全局 OpenAPI 配置维护。
+- 请求和响应必须优先使用具名 record/DTO；`Map` 只允许出现在 OpenAI 兼容请求、MCP JSON Schema、SSE payload 等
+  协议本身要求动态字段的边界。
 - 领域内部 record 放 `domain`，HTTP 请求/响应 record 放 `dto`；仅类内强耦合的 private record 可以留在所属类中。
 
 ## 全局配置
 
-- 提供 `OpenAPI` Bean，写 `title`、`version`、`description`，并注册公共 `ApiError` schema。
+- 提供 `OpenAPI` Bean，写 `title`、`version`、`description`，并注册公共 `ApiResponse` schema。
 - `springdoc.paths-to-match` 必须覆盖全部业务前缀；新增 `/v1/**`、`/internal/**` 等入口时同步检查。
 - `operationId` 必须全局唯一。Knife4j 5.7.9 会用 `Controller_method` 覆盖显式 `operationId`，由 `OpenApiConfig`
   保留显式值；升级 Knife4j 后应复核 `/v3/api-docs`。
@@ -39,5 +51,6 @@
 - 每个 `@RequestMapping` 方法都有唯一 `operationId`；
 - 路径、查询、请求头参数仍能从方法签名和全局配置生成；
 - 请求 DTO 出现在 `components.schemas`，敏感字段不出现或为 `password`；
-- 公共 4xx/5xx 响应使用统一 `ApiError` schema；
+- 公共 4xx/5xx 响应使用统一 `ApiResponse` schema；
+- 普通 JSON 成功响应的实际正文带 `code`、`msg`、`data` 三个字段，且 `@RawResponse` 只出现在协议例外入口；
 - `/v1/**` 等非 `/api/**` 入口没有被 `paths-to-match` 漏掉。

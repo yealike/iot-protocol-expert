@@ -23,7 +23,9 @@ import { useNavigate } from 'react-router-dom'
 import { api } from '../../api/client'
 import type {
   AiComponentOrigin,
+  AiMcpDraft,
   AiMcpComponent,
+  AiMcpNativeRegistryRef,
   AiMcpTestResult,
   AiMcpToolDescriptor,
   AiMcpToolExecutionCategory,
@@ -55,10 +57,6 @@ interface PublishFormValues {
   idempotencyKey: string
 }
 
-function stringValue(value: unknown): string | undefined {
-  return typeof value === 'string' && value ? value : undefined
-}
-
 export default function McpsPage() {
   const { message, modal } = App.useApp()
   const navigate = useNavigate()
@@ -87,27 +85,21 @@ export default function McpsPage() {
 
   const saveMcp = useMutation({
     mutationFn: async ({ values, mcp }: { values: McpFormValues; mcp: AiMcpComponent | null }) => {
-      const nativeRegistryRef =
+      const nativeRegistryRef: AiMcpNativeRegistryRef | undefined =
         values.origin === 'NATIVE_REGISTRY'
           ? {
-              ...(mcp?.nativeRegistryRef ?? {}),
-              serverName: values.serverName?.trim(),
-              namespace: values.namespace?.trim(),
-              version: values.version?.trim()
+              serverName: values.serverName?.trim() || undefined,
+              namespace: values.namespace?.trim() || undefined,
+              version: values.version?.trim() || undefined
             }
-          : {}
-      const draft: Record<string, unknown> = {
-        ...(mcp?.draft ?? {}),
+          : undefined
+      const draft: AiMcpDraft = {
         transport: 'STREAMABLE_HTTP',
         contextMode: values.contextMode ?? 'NONE',
-        timeoutMs: values.timeoutMs ?? 20000
+        timeoutMs: values.timeoutMs ?? 20000,
+        credentialId: values.credentialId,
+        endpoint: values.endpoint?.trim() || undefined
       }
-      if (values.credentialId) {
-        draft.credentialId = values.credentialId
-      } else {
-        delete draft.credentialId
-      }
-      draft.endpoint = values.endpoint?.trim()
       if (mcp) {
         return api.aiUpdateMcp(mcp.id, {
           expectedRevision: mcp.revision,
@@ -215,11 +207,11 @@ export default function McpsPage() {
               draft.contextMode === 'OPS' || (!draft.contextMode && mcp.key === 'ops')
                 ? 'OPS'
                 : 'NONE',
-            credentialId: stringValue(draft.credentialId),
-            endpoint: stringValue(draft.endpoint),
-            serverName: stringValue(nativeRef.serverName),
-            namespace: stringValue(nativeRef.namespace) ?? 'public',
-            version: stringValue(nativeRef.version) ?? '1.0.0'
+            credentialId: draft.credentialId ?? undefined,
+            endpoint: draft.endpoint ?? undefined,
+            serverName: nativeRef.serverName ?? undefined,
+            namespace: nativeRef.namespace ?? 'public',
+            version: nativeRef.version ?? '1.0.0'
           }
         : {
             key: '',

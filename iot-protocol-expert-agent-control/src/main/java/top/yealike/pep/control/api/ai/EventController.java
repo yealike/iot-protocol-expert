@@ -26,6 +26,7 @@ import top.yealike.pep.control.conversations.ConversationService;
 import top.yealike.pep.control.integration.OpsIdentityClient;
 import top.yealike.pep.control.observability.AiObservability;
 import top.yealike.pep.control.runs.RunEventService;
+import top.yealike.pep.observability.api.RawResponse;
 
 /** 按持久化游标读取已提交事件，重放和实时事件采用相同顺序，支持跨实例。 */
 @RestController
@@ -62,6 +63,7 @@ public class EventController {
     }
 
     @GetMapping(value = "/conversations/{id}/events", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    @RawResponse
     @Operation(summary = "订阅对话事件流", description = "实时推送消息增量、工具进度和 Run 终态；使用游标续传")
     public SseEmitter stream(
             @Parameter(description = "会话 ID") @PathVariable UUID id,

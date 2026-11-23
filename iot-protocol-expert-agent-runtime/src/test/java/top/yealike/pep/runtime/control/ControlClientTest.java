@@ -11,7 +11,6 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -22,6 +21,7 @@ import top.yealike.pep.runtime.TestFixtures;
 import top.yealike.pep.runtime.contract.InternalSignature;
 import top.yealike.pep.runtime.contract.RunCompletionRequest;
 import top.yealike.pep.runtime.contract.RunTerminalStatus;
+import top.yealike.pep.runtime.contract.RunUsage;
 import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 
 class ControlClientTest {
@@ -91,29 +91,29 @@ class ControlClientTest {
         HttpServer discovered = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         discovered.createContext("/internal/ai/v1/runtime/readiness", exchange -> {
             discoveredHits.incrementAndGet();
-            respond(exchange, "{\"status\":\"UP\"}");
+            respond(exchange, readinessJson());
         });
         discovered.createContext("/internal/ai/v1/runs/", exchange -> {
             discoveredHits.incrementAndGet();
-            respond(exchange, "{\"ok\":true}");
+            respond(exchange, "{\"code\":\"OK\",\"msg\":\"Success\",\"data\":{\"ok\":true,\"status\":\"COMPLETED\"}}");
         });
         discovered.start();
         AtomicInteger bootstrapHits = new AtomicInteger();
         HttpServer bootstrap = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         bootstrap.createContext("/", exchange -> {
             bootstrapHits.incrementAndGet();
-            respond(exchange, "{\"status\":\"UP\"}");
+            respond(exchange, readinessJson());
         });
         bootstrap.start();
         AtomicInteger replacementHits = new AtomicInteger();
         HttpServer replacement = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         replacement.createContext("/internal/ai/v1/runtime/readiness", exchange -> {
             replacementHits.incrementAndGet();
-            respond(exchange, "{\"status\":\"UP\"}");
+            respond(exchange, readinessJson());
         });
         replacement.createContext("/internal/ai/v1/runs/", exchange -> {
             replacementHits.incrementAndGet();
-            respond(exchange, "{\"ok\":true}");
+            respond(exchange, "{\"code\":\"OK\",\"msg\":\"Success\",\"data\":{\"ok\":true,\"status\":\"COMPLETED\"}}");
         });
         replacement.start();
         try {
@@ -140,7 +140,7 @@ class ControlClientTest {
                     "",
                     List.of(),
                     List.of(),
-                    Map.of(),
+                    new RunUsage(0L, 0L, 0L, 0L, 0L, 0L),
                     null,
                     null));
 
@@ -156,7 +156,7 @@ class ControlClientTest {
                     "",
                     List.of(),
                     List.of(),
-                    Map.of(),
+                    new RunUsage(0L, 0L, 0L, 0L, 0L, 0L),
                     null,
                     null));
             assertThat(replacementHits).hasValue(2);
@@ -186,6 +186,11 @@ class ControlClientTest {
                 });
     }
 
+    private static String readinessJson() {
+        return "{\"code\":\"OK\",\"msg\":\"Success\",\"data\":{\"status\":\"UP\","
+                + "\"readiness\":true,\"service\":\"control\",\"database\":true}}";
+    }
+
     private static void handle(HttpExchange exchange, AtomicBoolean signatureValid, AtomicBoolean serviceHeaderValid)
             throws IOException {
         byte[] body = exchange.getRequestBody().readAllBytes();
@@ -202,7 +207,7 @@ class ControlClientTest {
         signatureValid.set(InternalSignature.verify(
                 "test-secret", signature, "GET", pathAndQuery, body, timestamp, nonce, "control"));
 
-        respond(exchange, "{\"status\":\"UP\"}");
+        respond(exchange, readinessJson());
     }
 
     private static void respond(HttpExchange exchange, String json) throws IOException {

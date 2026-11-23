@@ -58,6 +58,7 @@ import top.yealike.pep.runtime.contract.RunContext;
 import top.yealike.pep.runtime.contract.RunDispatchReceipt;
 import top.yealike.pep.runtime.contract.RunDispatchRequest;
 import top.yealike.pep.runtime.contract.RunTerminalStatus;
+import top.yealike.pep.runtime.contract.RunUsage;
 import top.yealike.pep.runtime.contract.RuntimeRunStatus;
 import top.yealike.pep.runtime.control.ControlClient;
 import top.yealike.pep.runtime.control.ControlException;
@@ -780,13 +781,13 @@ public class AgentExecutionService {
         if (finalAnswer.length() < (answer == null ? 0 : answer.length())) {
             execution.warning("最终回答超过 60000 字符，已截断");
         }
-        Map<String, Object> usage = new LinkedHashMap<>();
-        usage.put("inputTokens", execution.inputTokens());
-        usage.put("outputTokens", execution.outputTokens());
-        usage.put("totalTokens", execution.inputTokens() + execution.outputTokens());
-        usage.put("modelCalls", execution.modelCalls());
-        usage.put("toolCalls", execution.guard() == null ? 0 : execution.guard().toolCalls());
-        usage.put("durationMs", durationMs);
+        RunUsage usage = new RunUsage(
+                execution.inputTokens(),
+                execution.outputTokens(),
+                execution.inputTokens() + execution.outputTokens(),
+                execution.modelCalls(),
+                execution.guard() == null ? 0L : execution.guard().toolCalls(),
+                durationMs);
         RunCompletionRequest completion = new RunCompletionRequest(
                 execution.runId(),
                 execution.executionToken(),

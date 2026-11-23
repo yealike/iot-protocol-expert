@@ -31,7 +31,7 @@
             <arg column="status" javaType="java.lang.String"/>
             <arg column="seq" javaType="_long"/>
             <arg column="created_at" javaType="java.time.Instant"/>
-            <arg column="usage_json" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="usage_json" javaType="top.yealike.pep.runtime.contract.RunUsage" typeHandler="top.yealike.pep.control.mybatis.RunUsageTypeHandler"/>
         </constructor>
     </resultMap>
 

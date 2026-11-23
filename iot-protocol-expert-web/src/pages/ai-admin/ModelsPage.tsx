@@ -9,6 +9,7 @@ import {
   Descriptions,
   Form,
   Input,
+  InputNumber,
   Modal,
   Space,
   Switch,
@@ -18,7 +19,7 @@ import {
 import { api } from '../../api/client'
 import type { AiCredential, AiModelProfile, AiModelTestResult } from '../../api/types'
 import { formatDateTime } from '../../utils/dateTime'
-import { enabledTag, ErrorAlert, jsonText, parseJsonObject } from './shared'
+import { enabledTag, ErrorAlert, jsonText } from './shared'
 
 const { Paragraph, Text } = Typography
 
@@ -27,7 +28,9 @@ interface ModelFormValues {
   displayName: string
   description?: string
   enabled: boolean
-  optionsJson: string
+  temperature?: number
+  maxTokens?: number
+  contextWindow?: number
 }
 
 interface CredentialFormValues {
@@ -64,7 +67,11 @@ export default function ModelsPage() {
       values: ModelFormValues
       model: AiModelProfile | null
     }) => {
-      const options = parseJsonObject(values.optionsJson)
+      const options = {
+        temperature: values.temperature,
+        maxTokens: values.maxTokens,
+        contextWindow: values.contextWindow
+      }
       if (model) {
         return api.aiUpdateModel(model.id, {
           expectedRevision: model.revision,
@@ -135,14 +142,18 @@ export default function ModelsPage() {
             displayName: model.displayName,
             description: model.description ?? '',
             enabled: model.enabled,
-            optionsJson: jsonText(model.options)
+            temperature: model.options?.temperature ?? undefined,
+            maxTokens: model.options?.maxTokens ?? undefined,
+            contextWindow: model.options?.contextWindow ?? undefined
           }
         : {
             key: '',
             displayName: '',
             description: '',
             enabled: true,
-            optionsJson: jsonText({ temperature: 0.1, maxTokens: 2048 })
+            temperature: 0.1,
+            maxTokens: 2048,
+            contextWindow: undefined
           }
     )
     setModelEditorOpen(true)
@@ -378,29 +389,35 @@ export default function ModelsPage() {
           <Form.Item name="description" label="说明">
             <Input.TextArea autoSize={{ minRows: 2, maxRows: 4 }} maxLength={2000} />
           </Form.Item>
-          <Form.Item
-            name="optionsJson"
-            label="生成参数（JSON 对象）"
-            extra="例如 temperature、maxTokens、contextWindow；由 Runtime 按模型 profile 读取。"
-            rules={[
-              { required: true },
-              {
-                validator: async (_, value: string) => {
-                  try {
-                    parseJsonObject(value)
-                  } catch {
-                    throw new Error('必须是合法 JSON 对象')
-                  }
-                }
-              }
-            ]}
-          >
-            <Input.TextArea
-              className="mono"
-              autoSize={{ minRows: 6, maxRows: 14 }}
-              spellCheck={false}
-            />
-          </Form.Item>
+          <div className="product-form-grid">
+            <Form.Item
+              name="temperature"
+              label="Temperature"
+              rules={[{ type: 'number', min: 0, max: 2 }]}
+            >
+              <InputNumber style={{ width: '100%' }} min={0} max={2} step={0.1} placeholder="0.1" />
+            </Form.Item>
+            <Form.Item
+              name="maxTokens"
+              label="最大输出 Token"
+              rules={[{ type: 'number', min: 1, max: 131072 }]}
+            >
+              <InputNumber
+                style={{ width: '100%' }}
+                min={1}
+                max={131072}
+                step={256}
+                placeholder="2048"
+              />
+            </Form.Item>
+            <Form.Item
+              name="contextWindow"
+              label="上下文窗口"
+              rules={[{ type: 'number', min: 1 }]}
+            >
+              <InputNumber style={{ width: '100%' }} min={1} step={1024} placeholder="可选" />
+            </Form.Item>
+          </div>
         </Form>
       </Modal>
 

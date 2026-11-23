@@ -35,12 +35,12 @@ public final class OpsMcpInvocationAdapter {
         if (descriptor == null) {
             return false;
         }
-        Object mode = descriptor.endpointPolicy().get("contextMode");
-        if ("OPS".equalsIgnoreCase(String.valueOf(mode))) {
+        if (descriptor.endpointPolicy() != null
+                && "OPS".equalsIgnoreCase(descriptor.endpointPolicy().contextMode())) {
             return true;
         }
-        Object authMode = descriptor.endpointPolicy().get("authMode");
-        if ("OPS_CONTEXT".equalsIgnoreCase(String.valueOf(authMode))) {
+        if (descriptor.endpointPolicy() != null
+                && "OPS_CONTEXT".equalsIgnoreCase(descriptor.endpointPolicy().authMode())) {
             return true;
         }
         // 兼容存量 ops 组件：MCP key 固定为 ops，且端点由 ipe-ops-rest 提供。

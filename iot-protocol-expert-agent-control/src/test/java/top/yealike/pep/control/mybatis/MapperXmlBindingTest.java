@@ -39,6 +39,7 @@ import top.yealike.pep.control.runs.mapper.RunMapper;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.McpToolDescriptor;
 import top.yealike.pep.runtime.contract.McpToolExecutionCategory;
+import top.yealike.pep.runtime.contract.RunUsage;
 import top.yealike.pep.runtime.contract.SkillBundle;
 
 class MapperXmlBindingTest {
@@ -263,7 +264,11 @@ class MapperXmlBindingTest {
                 }
                 if (row instanceof Message message) {
                     assertEquals(nullable ? 0 : 1, message.citations().size());
-                    assertEquals(nullable ? Map.of() : Map.of("tokens", 7), message.usage());
+                    if (nullable) {
+                        assertNull(message.usage());
+                    } else {
+                        assertEquals(7L, message.usage().inputTokens());
+                    }
                     if (!nullable)
                         assertEquals("doc", message.citations().getFirst().documentId());
                 }
@@ -305,7 +310,10 @@ class MapperXmlBindingTest {
             else if (type == Long.class) value = 1L;
             else if (type == BigDecimal.class) value = BigDecimal.ONE;
             else if (type == Map.class) value = "{\"tokens\":7}";
-            else if (type == AgentManifest.class) {
+            else if (type == RunUsage.class) {
+                value = "{\"inputTokens\":7,\"outputTokens\":1,\"totalTokens\":8,\"modelCalls\":1,"
+                        + "\"toolCalls\":0,\"durationMs\":5}";
+            } else if (type == AgentManifest.class) {
                 value = "{\"agentKey\":\"agent\",\"version\":\"1.0.0\",\"skills\":[],\"mcp\":[]}";
             } else if (type == SkillBundle.class) {
                 value = "{\"key\":\"skill\",\"version\":\"1.0.0\",\"name\":\"Skill\",\"files\":[]}";

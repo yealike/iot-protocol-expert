@@ -18,14 +18,18 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import top.yealike.pep.control.access.CurrentUser;
+import top.yealike.pep.control.agents.domain.SkillComponent;
 import top.yealike.pep.control.agents.domain.SkillDraftFile;
+import top.yealike.pep.control.agents.domain.SkillFileView;
 import top.yealike.pep.control.agents.domain.SkillRelease;
+import top.yealike.pep.control.agents.domain.SkillValidationResult;
 import top.yealike.pep.control.agents.skill.SkillService;
 import top.yealike.pep.control.agents.skill.domain.PublishResult;
 import top.yealike.pep.control.api.ai.admin.dto.SkillCreate;
 import top.yealike.pep.control.api.ai.admin.dto.SkillFileSave;
 import top.yealike.pep.control.api.ai.admin.dto.SkillPublish;
 import top.yealike.pep.control.api.ai.admin.dto.SkillUpdate;
+import top.yealike.pep.runtime.contract.OperationResult;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
 /** Skill 草稿文件、校验与不可变发布。 */
@@ -43,31 +47,32 @@ public class SkillAdminController {
 
     @GetMapping("/skills")
     @Operation(summary = "查询 Skill 列表")
-    public Object listSkills() {
+    public List<SkillComponent> listSkills() {
         return skills.list();
     }
 
     @PostMapping("/skills")
     @Operation(summary = "创建 Skill 草稿")
-    public Object createSkill(@RequestBody SkillCreate request) {
+    public SkillComponent createSkill(@RequestBody SkillCreate request) {
         UserIdentity actor = CurrentUser.require();
         UUID id = skills.create(actor, request.key(), request.displayName(), request.description());
         return skills.require(id);
     }
 
     @PutMapping("/skills/{id}")
-    public Object updateSkill(@PathVariable UUID id, @RequestBody SkillUpdate request) {
+    public SkillComponent updateSkill(@PathVariable UUID id, @RequestBody SkillUpdate request) {
         return skills.update(
                 id, request.expectedRevision(), request.displayName(), request.description(), request.enabled());
     }
 
     @DeleteMapping("/skills/{id}")
-    public void deleteSkill(@PathVariable UUID id) {
+    public OperationResult deleteSkill(@PathVariable UUID id) {
         skills.delete(id);
+        return new OperationResult(true, "DELETED");
     }
 
     @GetMapping("/skills/{id}/files")
-    public Object skillFiles(@PathVariable UUID id) {
+    public List<SkillFileView> skillFiles(@PathVariable UUID id) {
         return skills.fileList(id);
     }
 
@@ -88,13 +93,15 @@ public class SkillAdminController {
     }
 
     @DeleteMapping("/skills/{id}/file")
-    public void deleteSkillFile(@PathVariable UUID id, @RequestParam String path, @RequestParam long expectedRevision) {
+    public OperationResult deleteSkillFile(
+            @PathVariable UUID id, @RequestParam String path, @RequestParam long expectedRevision) {
         skills.deleteFile(id, expectedRevision, path);
+        return new OperationResult(true, "DELETED");
     }
 
     @PostMapping("/skills/{id}/validate")
     @Operation(summary = "校验 Skill 草稿")
-    public Object validateSkill(@Parameter(description = "Skill 组件 ID") @PathVariable UUID id) {
+    public SkillValidationResult validateSkill(@Parameter(description = "Skill 组件 ID") @PathVariable UUID id) {
         return skills.validate(id);
     }
 

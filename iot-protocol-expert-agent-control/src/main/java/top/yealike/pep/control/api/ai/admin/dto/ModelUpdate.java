@@ -1,7 +1,7 @@
 package top.yealike.pep.control.api.ai.admin.dto;
 
-import java.util.Map;
 import java.util.UUID;
+import top.yealike.pep.runtime.contract.ModelOptions;
 
 public record ModelUpdate(
         long expectedRevision,
@@ -10,5 +10,5 @@ public record ModelUpdate(
         String baseUrl,
         String modelName,
         UUID credentialId,
-        Map<String, Object> options,
+        ModelOptions options,
         boolean enabled) {}

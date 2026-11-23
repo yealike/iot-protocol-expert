@@ -3,9 +3,7 @@ package top.yealike.pep.control.api.ai;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -24,7 +22,11 @@ import top.yealike.pep.control.conversations.ConversationService;
 import top.yealike.pep.control.conversations.domain.Conversation;
 import top.yealike.pep.control.runs.ConversationRunViewService;
 import top.yealike.pep.control.runs.RunService;
+import top.yealike.pep.control.runs.domain.ConversationPage;
+import top.yealike.pep.control.runs.domain.ConversationView;
 import top.yealike.pep.control.runs.domain.Run;
+import top.yealike.pep.control.runs.domain.RunCancelResult;
+import top.yealike.pep.control.runs.domain.RunView;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
 /** 会话与 Run 的 HTTP 契约：提交与事件流分离，提交负责幂等，事件流负责续传。 */
@@ -67,32 +69,31 @@ public class ConversationController {
 
     @GetMapping("/conversations")
     @Operation(summary = "分页查询对话", description = "仅返回当前用户拥有的会话")
-    public Map<String, Object> list(
+    public ConversationPage list(
             @Parameter(description = "从 0 开始的页码", example = "0") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "每页数量，最大 100", example = "20") @RequestParam(defaultValue = "20") int size) {
         UserIdentity identity = CurrentUser.require();
         int normalizedSize = Math.min(Math.max(size, 1), 100);
         List<Conversation> content = conversations.list(identity, page, normalizedSize);
         long total = conversations.count(identity);
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("content", content);
-        result.put("page", Math.max(page, 0));
-        result.put("size", normalizedSize);
-        result.put("total", total);
-        result.put("totalPages", normalizedSize == 0 ? 0 : (total + normalizedSize - 1) / normalizedSize);
-        return result;
+        return new ConversationPage(
+                content,
+                Math.max(page, 0),
+                normalizedSize,
+                total,
+                normalizedSize == 0 ? 0 : (total + normalizedSize - 1) / normalizedSize);
     }
 
     @GetMapping("/conversations/{id}")
     @Operation(summary = "查询对话详情", description = "返回会话消息和当前运行任务")
-    public Object detail(@Parameter(description = "会话 ID") @PathVariable UUID id) {
+    public ConversationView detail(@Parameter(description = "会话 ID") @PathVariable UUID id) {
         UserIdentity identity = CurrentUser.require();
         return conversationRuns.detail(identity, id);
     }
 
     @PostMapping("/conversations/{id}/runs")
     @Operation(summary = "提交用户消息", description = "异步创建 Run，返回 202；回答和执行进度通过事件流接收")
-    public ResponseEntity<Object> submit(
+    public ResponseEntity<RunView> submit(
             @Parameter(description = "目标会话 ID") @PathVariable UUID id, @RequestBody SubmitRun request) {
         UserIdentity identity = CurrentUser.require();
         if (request == null) {
@@ -106,8 +107,8 @@ public class ConversationController {
 
     @PostMapping("/runs/{id}/cancel")
     @Operation(summary = "取消 Run", description = "发出协作式取消请求；已发送到外部工具的请求不保证撤回")
-    public Map<String, Object> cancel(@Parameter(description = "Run ID") @PathVariable UUID id) {
+    public RunCancelResult cancel(@Parameter(description = "Run ID") @PathVariable UUID id) {
         String status = runs.cancel(CurrentUser.require(), id);
-        return Map.of("ok", true, "status", status, "note", "已发出的外部请求不保证远端未执行；工具调用状态可能为 UNKNOWN");
+        return new RunCancelResult(true, status, "已发出的外部请求不保证远端未执行；工具调用状态可能为 UNKNOWN");
     }
 }

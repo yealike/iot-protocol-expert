@@ -18,6 +18,7 @@ import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.runtime.contract.McpDescriptor;
+import top.yealike.pep.runtime.contract.McpEndpointPolicy;
 import top.yealike.pep.runtime.contract.McpToolDescriptor;
 import top.yealike.pep.runtime.contract.ToolAuthorizeResponse;
 import top.yealike.pep.runtime.control.ControlClient;
@@ -43,7 +44,15 @@ class McpAgentToolTest {
         PreparedTool prepared =
                 new PreparedTool("mcp_ops__get_device_detail", "ops", "1.0.0", descriptor.name(), descriptor);
         McpDescriptor mcp = new McpDescriptor(
-                "ops", "1.0.0", "streamable-http", null, null, 0, "catalog", List.of(descriptor), Map.of());
+                "ops",
+                "1.0.0",
+                "streamable-http",
+                null,
+                null,
+                0,
+                "catalog",
+                List.of(descriptor),
+                new McpEndpointPolicy(null, null, null, null, null, null, null, null));
         RunGuard guard = new RunGuard(UUID.randomUUID(), 9L, 7L, Instant.now().plusSeconds(30), 2);
         McpAgentTool tool = new McpAgentTool(
                 prepared,

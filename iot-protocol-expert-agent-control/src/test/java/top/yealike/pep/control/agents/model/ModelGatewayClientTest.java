@@ -71,9 +71,15 @@ class ModelGatewayClientTest {
     void quotaQueryUsesServiceTokenAndReturnsSnapshot() {
         server.expect(requestTo("http://localhost:19085/api/model-gateway/v1/me/quota?scopeKind=USER&subjectId=user-1"))
                 .andExpect(header("X-PEP-Service-Token", "test-service-token"))
-                .andRespond(withSuccess("{\"policies\":[],\"pendingReconciliation\":0}", MediaType.APPLICATION_JSON));
+                .andRespond(withSuccess("""
+                        {"code":"OK","msg":"Success","data":{"scopeKind":"USER","subjectId":"user-1",
+                        "policies":[],"availableUnits":0,"pendingReconciliation":0}}
+                        """, MediaType.APPLICATION_JSON));
 
-        assertThat(client.quota("USER", "user-1")).containsEntry("pendingReconciliation", 0);
+        assertThat(client.quota("USER", "user-1")).satisfies(snapshot -> {
+            assertThat(snapshot.subjectId()).isEqualTo("user-1");
+            assertThat(snapshot.pendingReconciliation()).isZero();
+        });
         server.verify();
     }
 

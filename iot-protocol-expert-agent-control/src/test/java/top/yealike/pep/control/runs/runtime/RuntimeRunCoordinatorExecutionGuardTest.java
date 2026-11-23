@@ -38,6 +38,7 @@ import top.yealike.pep.runtime.contract.RunCompletionRequest;
 import top.yealike.pep.runtime.contract.RunEventAck;
 import top.yealike.pep.runtime.contract.RunEventBatch;
 import top.yealike.pep.runtime.contract.RunTerminalStatus;
+import top.yealike.pep.runtime.contract.RunUsage;
 import top.yealike.pep.runtime.contract.ToolAuthorizeRequest;
 
 class RuntimeRunCoordinatorExecutionGuardTest {
@@ -79,7 +80,8 @@ class RuntimeRunCoordinatorExecutionGuardTest {
         Run run = run(runId, "CANCEL_REQUESTED", "runtime-1", token, conversationId);
         when(runs.find(runId)).thenReturn(Optional.of(run));
         when(runs.lock(runId)).thenReturn(Optional.of(run));
-        when(runs.markCancelled(runId, token, "runtime-1", Map.of())).thenReturn(true);
+        when(runs.markCancelled(eq(runId), eq(token), eq("runtime-1"), any(RunUsage.class)))
+                .thenReturn(true);
         TransactionStatus status = mock(TransactionStatus.class);
         when(transactionManager.getTransaction(any())).thenReturn(status);
         RunEventAck ack = new RunEventAck(List.of(), 3L);
@@ -97,7 +99,7 @@ class RuntimeRunCoordinatorExecutionGuardTest {
                 "",
                 List.of(),
                 List.of(),
-                Map.of(),
+                new RunUsage(0L, 0L, 0L, 0L, 0L, 0L),
                 null,
                 null));
 

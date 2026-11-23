@@ -45,7 +45,8 @@ public final class ManifestDigests {
         value.put("modelName", model.modelName());
         value.put("credentialRef", model.credentialRef());
         value.put("secretRevision", model.secretRevision());
-        value.put("options", model.options());
+        value.put(
+                "options", model.options() == null ? Map.of() : model.options().asMap());
         return value;
     }
 

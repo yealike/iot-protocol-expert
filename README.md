@@ -47,6 +47,10 @@ Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:19085/api/model-gateway/v1
   -Body (@{ key='deepseek-default'; displayName='DeepSeek'; providerCode='deepseek'; upstreamModel='deepseek-chat'; contextWindow=65536; maxOutputTokens=4096; countingMode='ESTIMATE' } | ConvertTo-Json)
 ```
 
+`/api/ai/v1`、`/api/control/v1` 与 `/api/model-gateway/v1` 的普通 JSON 响应统一返回
+`{ "code": "OK", "msg": "Success", "data": ... }`，脚本读取业务字段时使用响应的 `.data`；OpenAI 兼容接口、SSE
+事件流和 Higress REST-to-MCP 工具入口保留各自协议格式。
+
 浏览器端额度查询走 Control 的 `/api/control/v1/me/quota` 与 `/me/usage`，不直接接触网关令牌。首次使用协议问答前，以管理员身份调用 `POST /api/ai/v1/knowledge/index` 建立索引。
 
 如果额度页提示未配置模型网关服务令牌或服务身份校验失败，检查 `.env.local` 中的 `PEP_MODEL_GATEWAY_SERVICE_TOKEN` 是否非空，并确保 Control 与模型网关加载相同值。IDE 启动不会使用本地脚本补充的默认值；从旧配置迁移时需参照 `.env.example` 补齐变量，再重启这两个服务。健康检查正常只说明服务存活，不代表服务间鉴权通过。

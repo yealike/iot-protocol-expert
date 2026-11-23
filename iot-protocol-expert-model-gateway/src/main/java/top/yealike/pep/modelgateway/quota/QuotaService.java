@@ -18,6 +18,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import top.yealike.pep.model.contract.ModelErrorCodes;
 import top.yealike.pep.model.contract.ModelUsage;
+import top.yealike.pep.model.contract.gateway.QuotaAccountStateResult;
+import top.yealike.pep.model.contract.gateway.QuotaGrantResult;
+import top.yealike.pep.model.contract.gateway.QuotaPolicyState;
+import top.yealike.pep.model.contract.gateway.QuotaSnapshot;
+import top.yealike.pep.model.contract.gateway.UsageAdjustmentResult;
+import top.yealike.pep.model.contract.gateway.UsageItem;
 import top.yealike.pep.modelgateway.config.properties.GatewayProperties;
 import top.yealike.pep.modelgateway.quota.domain.Account;
 import top.yealike.pep.modelgateway.quota.domain.Bucket;
@@ -449,7 +455,7 @@ public class QuotaService {
 
     // ---------------------------------------------------------------- 管理
 
-    public Map<String, Object> grant(GrantRequest request) {
+    public QuotaGrantResult grant(GrantRequest request) {
         String mode = request.mode() == null ? "" : request.mode().toUpperCase(java.util.Locale.ROOT);
         if (!"TOTAL".equals(mode) && !"ON_FIRST_USE_WINDOW".equals(mode)) {
             throw ApiException.badRequest(ModelErrorCodes.REQUEST_INVALID, "额度模式必须是 TOTAL 或 ON_FIRST_USE_WINDOW");
@@ -472,12 +478,12 @@ public class QuotaService {
             var replay = repository.findChangeRequest(request.actorId(), request.idempotencyKey());
             if (replay.isPresent()) {
                 requireMatchingReplay(request, mode, policyKey, replay.get());
-                Map<String, Object> body = new LinkedHashMap<>();
-                body.put("accountId", replay.get().accountId().toString());
-                body.put("revision", replay.get().newRevision());
-                body.put("mode", replay.get().effectiveMode());
-                body.put("replayed", true);
-                return body;
+                return new QuotaGrantResult(
+                        replay.get().accountId(),
+                        replay.get().newRevision(),
+                        replay.get().effectiveMode(),
+                        policyKey,
+                        true);
             }
             repository.lockAdvisory("quota-policy:" + policyKey);
             int max = repository.maxPolicyRevision(policyKey);
@@ -522,12 +528,7 @@ public class QuotaService {
                     request.reason() == null ? "" : request.reason(),
                     request.actorId(),
                     request.idempotencyKey());
-            Map<String, Object> body = new LinkedHashMap<>();
-            body.put("accountId", account.id().toString());
-            body.put("policyKey", policyKey);
-            body.put("revision", revision);
-            body.put("mode", mode);
-            return body;
+            return new QuotaGrantResult(account.id(), revision, mode, policyKey, false);
         });
     }
 
@@ -563,7 +564,7 @@ public class QuotaService {
         }
     }
 
-    public Map<String, Object> suspend(UUID accountId, String state, String actorId, String reason) {
+    public QuotaAccountStateResult suspend(UUID accountId, String state, String actorId, String reason) {
         transactions.executeWithoutResult(status -> {
             repository.lockAccount(accountId).orElseThrow(() -> ApiException.notFound("额度账户不存在"));
             repository.updateAccountState(accountId, state);
@@ -577,10 +578,10 @@ public class QuotaService {
                     actorId,
                     UUID.randomUUID().toString());
         });
-        return Map.of("accountId", accountId.toString(), "state", state);
+        return new QuotaAccountStateResult(accountId, state);
     }
 
-    public Map<String, Object> adjust(UUID modelCallId, long deltaUnits, String reason, String operator, String key) {
+    public UsageAdjustmentResult adjust(UUID modelCallId, long deltaUnits, String reason, String operator, String key) {
         return transactions.execute(status -> {
             var call = repository.findCallById(modelCallId).orElseThrow(() -> ApiException.notFound("模型调用不存在"));
             int adjustmentNo = repository.nextAdjustmentNo(modelCallId);
@@ -596,14 +597,14 @@ public class QuotaService {
                         0,
                         "ADJUSTMENT:" + key);
             }
-            return Map.of("modelCallId", call.id().toString(), "adjustmentNo", adjustmentNo, "deltaUnits", deltaUnits);
+            return new UsageAdjustmentResult(call.id(), adjustmentNo, deltaUnits);
         });
     }
 
-    public Map<String, Object> snapshot(String scopeKind, String subjectId) {
+    public QuotaSnapshot snapshot(String scopeKind, String subjectId) {
         OffsetDateTime now = repository.now();
         List<Account> accounts = repository.accounts(scopeKind, subjectId);
-        List<Map<String, Object>> policies = new ArrayList<>();
+        List<QuotaPolicyState> policies = new ArrayList<>();
         long availableUnits = Long.MAX_VALUE;
         for (Account account : accounts) {
             Policy policy = repository
@@ -626,36 +627,33 @@ public class QuotaService {
                     ? Math.max(0, expiredWindow ? policy.limitUnits() : remaining)
                     : 0;
             availableUnits = Math.min(availableUnits, available);
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("accountId", account.id().toString());
-            row.put("policyKey", account.policyKey());
-            row.put("mode", policy.mode());
-            row.put("state", account.state());
-            row.put("limitUnits", policy.limitUnits());
-            row.put("durationSeconds", policy.durationSeconds());
-            row.put("usedUnits", used);
-            row.put("heldUnits", held);
-            row.put("remainingUnits", remaining);
-            row.put("availableUnits", available);
-            row.put("effective", effective);
-            row.put("expiredWindow", expiredWindow);
-            row.put("activationState", bucket == null ? "NOT_ACTIVATED" : bucket.activationState());
-            row.put("startAt", bucket == null ? null : bucket.startAt());
-            row.put("endAt", bucket == null ? null : bucket.endAt());
-            row.put("debtUnits", account.debtUnits());
-            policies.add(row);
+            policies.add(new QuotaPolicyState(
+                    account.id(),
+                    account.policyKey(),
+                    policy.mode(),
+                    account.state(),
+                    policy.limitUnits(),
+                    policy.durationSeconds(),
+                    used,
+                    held,
+                    remaining,
+                    available,
+                    effective,
+                    expiredWindow,
+                    bucket == null ? "NOT_ACTIVATED" : bucket.activationState(),
+                    bucket == null ? null : bucket.startAt(),
+                    bucket == null ? null : bucket.endAt(),
+                    account.debtUnits()));
         }
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("scopeKind", scopeKind);
-        body.put("subjectId", subjectId);
-        body.put("policies", policies);
-        body.put("availableUnits", accounts.isEmpty() ? 0 : availableUnits);
-        body.put("pendingReconciliation", repository.pendingReconciliation(scopeKind, subjectId));
-        return body;
+        return new QuotaSnapshot(
+                scopeKind,
+                subjectId,
+                policies,
+                accounts.isEmpty() ? 0 : availableUnits,
+                repository.pendingReconciliation(scopeKind, subjectId));
     }
 
-    public List<Map<String, Object>> usage(
-            String scopeKind, String subjectId, int limit, String model, String projectId) {
+    public List<UsageItem> usage(String scopeKind, String subjectId, int limit, String model, String projectId) {
         return repository.usageRows(scopeKind, subjectId, limit, model, projectId);
     }
 

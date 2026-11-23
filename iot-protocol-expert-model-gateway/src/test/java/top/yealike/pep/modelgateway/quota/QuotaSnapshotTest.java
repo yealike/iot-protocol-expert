@@ -32,10 +32,10 @@ class QuotaSnapshotTest {
         when(repository.now()).thenReturn(NOW);
         when(repository.accounts("USER", SUBJECT)).thenReturn(List.of(total, window));
 
-        assertThat(service.snapshot("USER", SUBJECT)).containsEntry("availableUnits", 50L);
+        assertThat(service.snapshot("USER", SUBJECT).availableUnits()).isEqualTo(50L);
 
         when(repository.accounts("USER", SUBJECT)).thenReturn(List.of(total));
-        assertThat(service.snapshot("USER", SUBJECT)).containsEntry("availableUnits", 70L);
+        assertThat(service.snapshot("USER", SUBJECT).availableUnits()).isEqualTo(70L);
     }
 
     @Test
@@ -47,9 +47,9 @@ class QuotaSnapshotTest {
         when(repository.accounts("USER", SUBJECT))
                 .thenReturn(List.of(active, disabled), List.of(active, expired), List.of());
 
-        assertThat(service.snapshot("USER", SUBJECT)).containsEntry("availableUnits", 0L);
-        assertThat(service.snapshot("USER", SUBJECT)).containsEntry("availableUnits", 0L);
-        assertThat(service.snapshot("USER", SUBJECT)).containsEntry("availableUnits", 0L);
+        assertThat(service.snapshot("USER", SUBJECT).availableUnits()).isZero();
+        assertThat(service.snapshot("USER", SUBJECT).availableUnits()).isZero();
+        assertThat(service.snapshot("USER", SUBJECT).availableUnits()).isZero();
     }
 
     private Account account(

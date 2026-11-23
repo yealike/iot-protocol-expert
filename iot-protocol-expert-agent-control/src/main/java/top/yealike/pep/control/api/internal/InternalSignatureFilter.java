@@ -21,6 +21,7 @@ import org.springframework.web.filter.OncePerRequestFilter;
 import top.yealike.pep.control.api.internal.mapper.InternalControlMapper;
 import top.yealike.pep.control.config.properties.PlatformProperties;
 import top.yealike.pep.control.config.properties.PlatformSecurity;
+import top.yealike.pep.observability.api.ApiResponseWriter;
 import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.runtime.contract.InternalPaths;
 import top.yealike.pep.runtime.contract.InternalRequestBodies;
@@ -118,10 +119,7 @@ public class InternalSignatureFilter extends OncePerRequestFilter {
     }
 
     private static void reject(HttpServletResponse response, int status, String message) throws IOException {
-        response.setStatus(status);
-        response.setContentType("application/json;charset=UTF-8");
-        response.getWriter()
-                .write("{\"error\":\"" + ErrorCodes.INTERNAL_SIGNATURE_INVALID + "\",\"message\":\"" + message + "\"}");
+        ApiResponseWriter.write(response, status, ErrorCodes.INTERNAL_SIGNATURE_INVALID, message);
     }
 
     private static boolean blank(String value) {

@@ -3,7 +3,6 @@ package top.yealike.pep.control.agents.mcp;
 import java.net.URI;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -11,8 +10,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.pep.control.agents.credential.CredentialService;
 import top.yealike.pep.control.agents.domain.McpComponent;
+import top.yealike.pep.control.agents.domain.McpComponentView;
+import top.yealike.pep.control.agents.domain.McpDraft;
+import top.yealike.pep.control.agents.domain.McpNativeRegistryRef;
 import top.yealike.pep.control.agents.domain.McpRelease;
+import top.yealike.pep.control.agents.domain.McpReleaseView;
 import top.yealike.pep.control.agents.domain.McpTestReport;
+import top.yealike.pep.control.agents.domain.McpTestResult;
+import top.yealike.pep.control.agents.domain.McpToolCatalog;
 import top.yealike.pep.control.agents.domain.McpToolPolicy;
 import top.yealike.pep.control.agents.mcp.domain.CatalogEntry;
 import top.yealike.pep.control.agents.mcp.domain.ProbeResult;
@@ -30,6 +35,7 @@ import top.yealike.pep.runtime.contract.Digests;
 import top.yealike.pep.runtime.contract.EndpointPolicy;
 import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.runtime.contract.McpDescriptor;
+import top.yealike.pep.runtime.contract.McpEndpointPolicy;
 import top.yealike.pep.runtime.contract.McpToolDescriptor;
 import top.yealike.pep.runtime.contract.McpToolExecutionCategory;
 import top.yealike.pep.runtime.contract.UserIdentity;
@@ -60,17 +66,25 @@ public class McpService {
         this.publications = publications;
     }
 
-    public List<McpComponent> list() {
-        return store.list();
+    public List<McpComponentView> list() {
+        return store.list().stream().map(McpComponentView::from).toList();
     }
 
-    public McpComponent require(UUID id) {
+    public McpComponentView require(UUID id) {
+        return McpComponentView.from(component(id));
+    }
+
+    private McpComponent component(UUID id) {
         return store.find(id).orElseThrow(() -> AiExceptions.notFound("MCP 不存在"));
     }
 
     public List<McpRelease> releases(UUID componentId) {
-        require(componentId);
+        component(componentId);
         return store.releases(componentId);
+    }
+
+    public List<McpReleaseView> releaseViews(UUID componentId) {
+        return releases(componentId).stream().map(McpReleaseView::from).toList();
     }
 
     public McpRelease release(String key, String version) {
@@ -91,8 +105,8 @@ public class McpService {
             String displayName,
             String description,
             String origin,
-            Map<String, Object> nativeRegistryRef,
-            Map<String, Object> draft) {
+            McpNativeRegistryRef nativeRegistryRef,
+            McpDraft draft) {
         requireKey(key);
         if (store.findByKey(key).isPresent()) {
             throw AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "MCP key 已存在");
@@ -103,36 +117,40 @@ public class McpService {
         if (!"REMOTE".equals(origin)) {
             throw AiExceptions.badRequest("新增 MCP 请使用 REMOTE，并填写 Higress 或远程 MCP 入口");
         }
-        validateConfig(origin, nativeRegistryRef, draft);
-        validateCredential(draft);
+        Map<String, Object> nativeRegistryRefValues = nativeRegistryRef == null ? Map.of() : nativeRegistryRef.asMap();
+        Map<String, Object> draftValues = draft == null ? Map.of() : draft.asMap();
+        validateConfig(origin, nativeRegistryRefValues, draftValues);
+        validateCredential(draftValues);
         return store.insert(
                 key,
                 displayName,
                 description,
                 origin,
-                JsonSupport.write(nativeRegistryRef == null ? Map.of() : nativeRegistryRef),
-                JsonSupport.write(draft == null ? Map.of() : draft),
+                JsonSupport.write(nativeRegistryRefValues),
+                JsonSupport.write(draftValues),
                 actor.username());
     }
 
-    public McpComponent update(
+    public McpComponentView update(
             UUID id,
             long expectedRevision,
             String displayName,
             String description,
-            Map<String, Object> nativeRegistryRef,
-            Map<String, Object> draft,
+            McpNativeRegistryRef nativeRegistryRef,
+            McpDraft draft,
             boolean enabled) {
-        McpComponent component = require(id);
-        validateConfig(component.origin(), nativeRegistryRef, draft);
-        validateCredential(draft);
+        McpComponent component = component(id);
+        Map<String, Object> nativeRegistryRefValues = nativeRegistryRef == null ? Map.of() : nativeRegistryRef.asMap();
+        Map<String, Object> draftValues = draft == null ? Map.of() : draft.asMap();
+        validateConfig(component.origin(), nativeRegistryRefValues, draftValues);
+        validateCredential(draftValues);
         int updated = store.update(
                 id,
                 expectedRevision,
                 displayName,
                 description,
-                JsonSupport.write(nativeRegistryRef == null ? Map.of() : nativeRegistryRef),
-                JsonSupport.write(draft == null ? Map.of() : draft),
+                JsonSupport.write(nativeRegistryRefValues),
+                JsonSupport.write(draftValues),
                 enabled);
         if (updated == 0) {
             throw AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "MCP 已被其他请求修改，请刷新后重试");
@@ -155,7 +173,7 @@ public class McpService {
     }
 
     public List<McpToolPolicy> toolPolicies(UUID id) {
-        require(id);
+        component(id);
         return store.toolPolicies(id);
     }
 
@@ -180,8 +198,8 @@ public class McpService {
                 .orElseThrow(() -> AiExceptions.unavailable("MCP 工具审核记录保存失败"));
     }
 
-    public Map<String, Object> test(UUID id) {
-        McpComponent component = require(id);
+    public McpTestResult test(UUID id) {
+        McpComponent component = component(id);
         Resolved resolved = resolve(component);
         String configDigest = configDigest(component, resolved.endpoint());
         long started = System.nanoTime();
@@ -191,56 +209,80 @@ public class McpService {
                 throw AiExceptions.unprocessable(ErrorCodes.MCP_INIT_FAILED, "MCP 未提供任何工具，禁止发布");
             }
             List<String> warnings = nativeWarnings(component, result);
-            Map<String, Object> report = new LinkedHashMap<>();
-            report.put("endpoint", resolved.endpoint());
-            report.put("serverName", result.serverName());
-            report.put("serverVersion", result.serverVersion());
-            report.put("protocolVersion", result.protocolVersion());
-            report.put("tools", result.tools());
-            report.put("latencyMs", result.latencyMs());
-            report.put("warnings", warnings);
-            report.put("success", true);
+            McpTestResult report = new McpTestResult(
+                    resolved.endpoint(),
+                    result.serverName(),
+                    result.serverVersion(),
+                    result.protocolVersion(),
+                    result.tools(),
+                    result.latencyMs(),
+                    warnings,
+                    true,
+                    null,
+                    configDigest,
+                    Instant.now(),
+                    null,
+                    null);
             UUID reportId =
                     store.insertTestReport(id, component.revision(), configDigest, JsonSupport.write(report), true);
-            report.put("reportId", reportId);
-            report.put("configDigest", configDigest);
-            report.put("testedAt", Instant.now());
-            return report;
+            return new McpTestResult(
+                    report.endpoint(),
+                    report.serverName(),
+                    report.serverVersion(),
+                    report.protocolVersion(),
+                    report.tools(),
+                    report.latencyMs(),
+                    report.warnings(),
+                    true,
+                    reportId,
+                    configDigest,
+                    report.testedAt(),
+                    null,
+                    null);
         } catch (AiExceptions.AiException exception) {
-            Map<String, Object> report = new LinkedHashMap<>();
-            report.put("endpoint", resolved.endpoint());
-            report.put("success", false);
-            report.put("errorCode", exception.code());
-            report.put("message", exception.getMessage());
-            report.put("latencyMs", (System.nanoTime() - started) / 1_000_000);
+            McpTestResult report = new McpTestResult(
+                    resolved.endpoint(),
+                    null,
+                    null,
+                    null,
+                    List.of(),
+                    (System.nanoTime() - started) / 1_000_000,
+                    List.of(),
+                    false,
+                    null,
+                    configDigest,
+                    Instant.now(),
+                    exception.code(),
+                    exception.getMessage());
             UUID reportId =
                     store.insertTestReport(id, component.revision(), configDigest, JsonSupport.write(report), false);
-            report.put("reportId", reportId);
             throw exception;
         }
     }
 
-    public Map<String, Object> latestTools(UUID id) {
-        McpComponent component = require(id);
-        Map<String, Object> data = new LinkedHashMap<>();
-        store.latestTestReport(id)
-                .ifPresentOrElse(
-                        report -> {
-                            data.put("source", "TEST");
-                            data.put("reportId", report.id());
-                            data.put("success", report.success());
-                            data.put("testedAt", report.createdAt());
-                            data.put("tools", report.result().get("tools"));
-                            data.put("warnings", report.result().getOrDefault("warnings", List.of()));
-                        },
-                        () -> data.put("source", "NONE"));
-        store.latestActive(id).ifPresent(release -> {
-            data.put("publishedVersion", release.version());
-            data.put("publishedTools", release.tools());
-            data.put("catalogDigest", release.catalogDigest());
-        });
-        data.put("publishedVersion", component.publishedVersion());
-        return data;
+    public McpToolCatalog latestTools(UUID id) {
+        McpComponent component = component(id);
+        McpTestReport latestReport = store.latestTestReport(id).orElse(null);
+        McpRelease activeRelease = store.latestActive(id).orElse(null);
+        List<McpToolDescriptor> tools = latestReport == null
+                ? List.of()
+                : JsonSupport.readList(
+                        JsonSupport.write(latestReport.result().getOrDefault("tools", List.of())),
+                        McpToolDescriptor.class);
+        List<String> warnings = latestReport == null
+                ? List.of()
+                : JsonSupport.readStringList(
+                        JsonSupport.write(latestReport.result().getOrDefault("warnings", List.of())));
+        return new McpToolCatalog(
+                latestReport == null ? "NONE" : "TEST",
+                latestReport == null ? null : latestReport.id(),
+                latestReport == null ? null : latestReport.success(),
+                latestReport == null ? null : latestReport.createdAt(),
+                tools,
+                warnings,
+                component.publishedVersion(),
+                activeRelease == null ? List.of() : activeRelease.tools(),
+                activeRelease == null ? null : activeRelease.catalogDigest());
     }
 
     @Transactional
@@ -298,16 +340,16 @@ public class McpService {
                 tools,
                 "contextMode",
                 contextMode(component)));
-        Map<String, Object> endpointPolicy = new LinkedHashMap<>();
         URI resolvedUri = URI.create(resolved.endpoint());
-        endpointPolicy.put("endpoint", resolved.endpoint());
-        endpointPolicy.put("authority", "PLATFORM");
-        endpointPolicy.put("contextMode", contextMode(component));
-        endpointPolicy.put("path", resolvedUri.getRawPath());
-        endpointPolicy.put("query", resolvedUri.getRawQuery() == null ? "" : resolvedUri.getRawQuery());
-        endpointPolicy.put(
-                "serviceName", ComponentNames.serviceName(ComponentType.MCP, component.key(), resolvedVersion));
-        endpointPolicy.put("timeoutMs", timeoutMs(component));
+        McpEndpointPolicy endpointPolicy = new McpEndpointPolicy(
+                resolved.endpoint(),
+                "PLATFORM",
+                contextMode(component),
+                resolvedUri.getRawPath(),
+                resolvedUri.getRawQuery() == null ? "" : resolvedUri.getRawQuery(),
+                ComponentNames.serviceName(ComponentType.MCP, component.key(), resolvedVersion),
+                timeoutMs(component),
+                null);
         UUID releaseId = store.insertRelease(
                 component.id(),
                 resolvedVersion,
@@ -367,7 +409,7 @@ public class McpService {
                 secretRevision,
                 release.catalogDigest(),
                 tools,
-                release.endpointPolicy());
+                endpointPolicy(release));
     }
 
     private List<McpToolDescriptor> availableTools(McpComponent component) {
@@ -401,11 +443,14 @@ public class McpService {
 
     private String resolvePublishedEndpoint(McpRelease release) {
         try {
-            return ComponentEndpoint.parse(text(release.endpointPolicy().get("endpoint")))
-                    .toUri();
+            return ComponentEndpoint.parse(endpointPolicy(release).endpoint()).toUri();
         } catch (IllegalArgumentException exception) {
             throw AiExceptions.unprocessable("MCP_ENDPOINT_INVALID", "MCP 发布入口无效，请重新测试并发布：" + release.componentKey());
         }
+    }
+
+    private static McpEndpointPolicy endpointPolicy(McpRelease release) {
+        return JsonSupport.read(JsonSupport.write(release.endpointPolicy()), McpEndpointPolicy.class);
     }
 
     private static String text(Object value) {

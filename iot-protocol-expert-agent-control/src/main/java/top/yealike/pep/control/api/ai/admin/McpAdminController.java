@@ -17,13 +17,18 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import top.yealike.pep.control.access.CurrentUser;
-import top.yealike.pep.control.agents.domain.McpRelease;
+import top.yealike.pep.control.agents.domain.McpComponentView;
+import top.yealike.pep.control.agents.domain.McpReleaseView;
+import top.yealike.pep.control.agents.domain.McpTestResult;
+import top.yealike.pep.control.agents.domain.McpToolCatalog;
+import top.yealike.pep.control.agents.domain.McpToolPolicy;
 import top.yealike.pep.control.agents.mcp.McpService;
 import top.yealike.pep.control.agents.mcp.domain.PublishResult;
 import top.yealike.pep.control.api.ai.admin.dto.McpCreate;
 import top.yealike.pep.control.api.ai.admin.dto.McpPublish;
 import top.yealike.pep.control.api.ai.admin.dto.McpToolPolicyUpdate;
 import top.yealike.pep.control.api.ai.admin.dto.McpUpdate;
+import top.yealike.pep.runtime.contract.OperationResult;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
 /** MCP 草稿、连通性测试、工具审核与不可变发布。 */
@@ -41,13 +46,13 @@ public class McpAdminController {
 
     @GetMapping("/mcps")
     @Operation(summary = "查询 MCP 服务")
-    public Object listMcps() {
+    public List<McpComponentView> listMcps() {
         return mcps.list();
     }
 
     @PostMapping("/mcps")
     @Operation(summary = "创建 MCP 草稿")
-    public Object createMcp(@RequestBody McpCreate request) {
+    public McpComponentView createMcp(@RequestBody McpCreate request) {
         UserIdentity actor = CurrentUser.require();
         UUID id = mcps.create(
                 actor,
@@ -61,7 +66,7 @@ public class McpAdminController {
     }
 
     @PutMapping("/mcps/{id}")
-    public Object updateMcp(@PathVariable UUID id, @RequestBody McpUpdate request) {
+    public McpComponentView updateMcp(@PathVariable UUID id, @RequestBody McpUpdate request) {
         return mcps.update(
                 id,
                 request.expectedRevision(),
@@ -73,35 +78,36 @@ public class McpAdminController {
     }
 
     @DeleteMapping("/mcps/{id}")
-    public void deleteMcp(@PathVariable UUID id) {
+    public OperationResult deleteMcp(@PathVariable UUID id) {
         mcps.delete(id);
+        return new OperationResult(true, "DELETED");
     }
 
     @PostMapping("/mcps/{id}/test")
     @Operation(summary = "测试 MCP 连通性并读取工具目录")
-    public Object testMcp(@Parameter(description = "MCP 组件 ID") @PathVariable UUID id) {
+    public McpTestResult testMcp(@Parameter(description = "MCP 组件 ID") @PathVariable UUID id) {
         return mcps.test(id);
     }
 
     @GetMapping("/mcps/{id}/tools")
-    public Object mcpTools(@PathVariable UUID id) {
+    public McpToolCatalog mcpTools(@PathVariable UUID id) {
         return mcps.latestTools(id);
     }
 
     @GetMapping("/mcps/{id}/tool-policies")
-    public Object mcpToolPolicies(@PathVariable UUID id) {
+    public List<McpToolPolicy> mcpToolPolicies(@PathVariable UUID id) {
         return mcps.toolPolicies(id);
     }
 
     @PutMapping("/mcps/{id}/tool-policies")
-    public Object reviewMcpTool(@PathVariable UUID id, @RequestBody McpToolPolicyUpdate request) {
+    public McpToolPolicy reviewMcpTool(@PathVariable UUID id, @RequestBody McpToolPolicyUpdate request) {
         UserIdentity actor = CurrentUser.require();
         return mcps.reviewTool(actor, id, request.toolName(), request.executionCategory());
     }
 
     @GetMapping("/mcps/{id}/releases")
-    public List<McpRelease> mcpReleases(@PathVariable UUID id) {
-        return mcps.releases(id);
+    public List<McpReleaseView> mcpReleases(@PathVariable UUID id) {
+        return mcps.releaseViews(id);
     }
 
     @PostMapping("/mcps/{id}/publish")

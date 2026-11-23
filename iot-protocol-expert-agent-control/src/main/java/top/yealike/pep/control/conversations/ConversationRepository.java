@@ -5,11 +5,11 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
-import top.yealike.pep.control.conversations.domain.Citation;
 import top.yealike.pep.control.conversations.domain.Conversation;
 import top.yealike.pep.control.conversations.domain.Message;
 import top.yealike.pep.control.conversations.mapper.ConversationMapper;
 import top.yealike.pep.control.support.JsonSupport;
+import top.yealike.pep.runtime.contract.RunCitation;
 
 /** 会话与消息持久化。所有递增序号用 UPDATE ... RETURNING 原子分配，避免并发重号。 */
 @Repository
@@ -69,7 +69,7 @@ public class ConversationRepository {
             UUID runId,
             String role,
             String content,
-            List<Citation> citations,
+            List<RunCitation> citations,
             String status,
             long seq,
             Instant createdAt) {

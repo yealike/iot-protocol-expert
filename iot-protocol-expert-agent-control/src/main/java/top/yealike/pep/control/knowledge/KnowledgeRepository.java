@@ -1,13 +1,13 @@
 package top.yealike.pep.control.knowledge;
 
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Repository;
 import top.yealike.pep.control.knowledge.domain.Chunk;
 import top.yealike.pep.control.knowledge.domain.ChunkRow;
 import top.yealike.pep.control.knowledge.domain.DocumentRow;
+import top.yealike.pep.control.knowledge.domain.KnowledgePreviewItem;
 import top.yealike.pep.control.knowledge.mapper.KnowledgeMapper;
 
 /** 知识索引表访问层。显式列清单：pgvector 未安装时表上没有 embedding 列，不能使用 select *。 */
@@ -58,7 +58,7 @@ public class KnowledgeRepository {
         mapper.deleteChunks(documentId);
     }
 
-    public List<Map<String, Object>> preview(UUID documentId) {
+    public List<KnowledgePreviewItem> preview(UUID documentId) {
         return mapper.preview(documentId);
     }
 

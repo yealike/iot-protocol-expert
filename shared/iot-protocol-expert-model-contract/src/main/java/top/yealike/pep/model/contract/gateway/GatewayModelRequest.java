@@ -1,6 +1,7 @@
-package top.yealike.pep.control.api.ai.dto;
+package top.yealike.pep.model.contract.gateway;
 
-public record ModelCreate(
+/** 登记逻辑模型的请求体。 */
+public record GatewayModelRequest(
         String key,
         String displayName,
         String providerCode,

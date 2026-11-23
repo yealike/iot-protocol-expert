@@ -10,9 +10,11 @@ import java.util.UUID;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.pep.control.access.policy.PolicyService;
+import top.yealike.pep.control.agents.domain.AgentBudget;
 import top.yealike.pep.control.agents.domain.AgentCatalogItem;
 import top.yealike.pep.control.agents.domain.AgentComponent;
-import top.yealike.pep.control.agents.domain.AgentDetail;
+import top.yealike.pep.control.agents.domain.AgentComponentView;
+import top.yealike.pep.control.agents.domain.AgentDetailView;
 import top.yealike.pep.control.agents.domain.AgentRelease;
 import top.yealike.pep.control.agents.domain.CompileResult;
 import top.yealike.pep.control.agents.domain.McpBindingInput;
@@ -29,6 +31,7 @@ import top.yealike.pep.control.agents.store.SkillStore;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.control.support.JsonSupport;
 import top.yealike.pep.runtime.contract.ErrorCodes;
+import top.yealike.pep.runtime.contract.ModelOptions;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
 /** Agent 草稿、绑定、编译、发布与目录。发布只生成不可变 release 与异步 publication。 */
@@ -57,17 +60,21 @@ public class AgentService {
         this.policy = policy;
     }
 
-    public List<AgentComponent> list() {
-        return agents.list();
+    public List<AgentComponentView> list() {
+        return agents.list().stream().map(AgentComponentView::from).toList();
     }
 
     public AgentComponent require(UUID id) {
         return agents.find(id).orElseThrow(() -> AiExceptions.notFound("Agent 不存在"));
     }
 
-    public AgentDetail detail(UUID id) {
+    public AgentDetailView detail(UUID id) {
         AgentComponent component = require(id);
-        return new AgentDetail(component, agents.mcpBindings(id), agents.skillBindings(id), agents.releases(id));
+        return new AgentDetailView(
+                AgentComponentView.from(component),
+                agents.mcpBindings(id),
+                agents.skillBindings(id),
+                agents.releases(id));
     }
 
     @Transactional
@@ -78,8 +85,8 @@ public class AgentService {
             String description,
             UUID modelProfileId,
             String systemPrompt,
-            Map<String, Object> modelOptions,
-            Map<String, Object> budget,
+            ModelOptions modelOptions,
+            AgentBudget budget,
             List<McpBindingInput> mcpBindings,
             List<SkillBindingInput> skillBindings) {
         requireKey(key);
@@ -93,8 +100,8 @@ public class AgentService {
                 description,
                 modelProfileId,
                 systemPrompt == null ? "" : systemPrompt,
-                JsonSupport.write(modelOptions == null ? Map.of() : modelOptions),
-                JsonSupport.write(budget == null ? Map.of() : budget),
+                JsonSupport.write(modelOptions == null ? Map.of() : modelOptions.asMap()),
+                JsonSupport.write(budget == null ? Map.of() : budget.asMap()),
                 actor.username());
         agents.replaceBindings(
                 id, mcpBindings == null ? List.of() : mcpBindings, skillBindings == null ? List.of() : skillBindings);
@@ -109,8 +116,8 @@ public class AgentService {
             String description,
             UUID modelProfileId,
             String systemPrompt,
-            Map<String, Object> modelOptions,
-            Map<String, Object> budget,
+            ModelOptions modelOptions,
+            AgentBudget budget,
             boolean enabled,
             List<McpBindingInput> mcpBindings,
             List<SkillBindingInput> skillBindings) {
@@ -126,8 +133,8 @@ public class AgentService {
                 description,
                 modelProfileId,
                 systemPrompt == null ? "" : systemPrompt,
-                JsonSupport.write(modelOptions == null ? Map.of() : modelOptions),
-                JsonSupport.write(budget == null ? Map.of() : budget),
+                JsonSupport.write(modelOptions == null ? Map.of() : modelOptions.asMap()),
+                JsonSupport.write(budget == null ? Map.of() : budget.asMap()),
                 enabled);
         if (updated == 0) {
             throw AiExceptions.conflict(ErrorCodes.REVISION_CONFLICT, "Agent 已被其他请求修改，请刷新后重试");

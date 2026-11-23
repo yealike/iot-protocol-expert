@@ -15,6 +15,7 @@ import top.yealike.pep.control.runs.domain.RuntimeEventInsert;
 import top.yealike.pep.control.runs.domain.ToolCall;
 import top.yealike.pep.control.runs.mapper.RunMapper;
 import top.yealike.pep.control.support.JsonSupport;
+import top.yealike.pep.runtime.contract.RunUsage;
 
 /** Run / 事件 / 工具调用的 SQL 访问层。 */
 @Repository
@@ -146,8 +147,17 @@ public class RunRepository {
         return mapper.markCompletedWithToken(JsonSupport.write(usage), id, executionToken, instanceId) > 0;
     }
 
+    public boolean markCompleted(UUID id, long executionToken, String instanceId, RunUsage usage) {
+        return mapper.markCompletedWithToken(JsonSupport.write(usage), id, executionToken, instanceId) > 0;
+    }
+
     public boolean markFailed(
             UUID id, long executionToken, String instanceId, String code, String message, Map<String, Object> usage) {
+        return mapper.markFailedWithToken(code, message, JsonSupport.write(usage), id, executionToken, instanceId) > 0;
+    }
+
+    public boolean markFailed(
+            UUID id, long executionToken, String instanceId, String code, String message, RunUsage usage) {
         return mapper.markFailedWithToken(code, message, JsonSupport.write(usage), id, executionToken, instanceId) > 0;
     }
 
@@ -157,6 +167,10 @@ public class RunRepository {
     }
 
     public boolean markCancelled(UUID id, long executionToken, String instanceId, Map<String, Object> usage) {
+        return mapper.markCancelledWithToken(JsonSupport.write(usage), id, executionToken, instanceId) > 0;
+    }
+
+    public boolean markCancelled(UUID id, long executionToken, String instanceId, RunUsage usage) {
         return mapper.markCancelledWithToken(JsonSupport.write(usage), id, executionToken, instanceId) > 0;
     }
 

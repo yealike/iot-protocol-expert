@@ -51,8 +51,6 @@ import { formatDateTime } from '../../utils/dateTime'
 import {
   enabledTag,
   ErrorAlert,
-  jsonText,
-  parseJsonObject,
   rememberPublication,
   StateTag
 } from './shared'
@@ -82,7 +80,9 @@ interface AgentForm {
   description?: string
   modelProfileId?: string
   systemPrompt: string
-  modelOptionsJson: string
+  temperature?: number
+  maxTokens?: number
+  contextWindow?: number
   maxIterations: number
   maxToolCalls: number
   runTimeoutMs: number
@@ -149,7 +149,9 @@ export default function AgentsPage() {
       description: agent.description ?? '',
       modelProfileId: agent.modelProfileId ?? undefined,
       systemPrompt: agent.systemPrompt,
-      modelOptionsJson: jsonText(agent.modelOptions),
+      temperature: agent.modelOptions?.temperature ?? undefined,
+      maxTokens: agent.modelOptions?.maxTokens ?? undefined,
+      contextWindow: agent.modelOptions?.contextWindow ?? undefined,
       maxIterations: agent.budget?.maxIterations ?? 6,
       maxToolCalls: agent.budget?.maxToolCalls ?? 12,
       runTimeoutMs: agent.budget?.runTimeoutMs ?? 120000,
@@ -169,7 +171,9 @@ export default function AgentsPage() {
       description: '',
       modelProfileId: models.data?.[0]?.id,
       systemPrompt: '',
-      modelOptionsJson: '{}',
+      temperature: 0.1,
+      maxTokens: 2048,
+      contextWindow: undefined,
       maxIterations: 6,
       maxToolCalls: 12,
       runTimeoutMs: 120000,
@@ -199,11 +203,10 @@ export default function AgentsPage() {
     if (editingId && !detail.data) {
       throw new Error('Agent 详情尚未加载，请稍后重试')
     }
-    let options: Record<string, unknown>
-    try {
-      options = parseJsonObject(values.modelOptionsJson)
-    } catch (error) {
-      throw new Error(`模型参数 JSON 无效：${(error as Error).message}`)
+    const options = {
+      temperature: values.temperature,
+      maxTokens: values.maxTokens,
+      contextWindow: values.contextWindow
     }
     const budget = {
       maxIterations: values.maxIterations,
@@ -486,7 +489,9 @@ export default function AgentsPage() {
           layout="vertical"
           disabled={Boolean(editingId) && detail.isLoading}
           initialValues={{
-            modelOptionsJson: '{}',
+            temperature: 0.1,
+            maxTokens: 2048,
+            contextWindow: undefined,
             maxIterations: 6,
             maxToolCalls: 12,
             runTimeoutMs: 120000,
@@ -540,27 +545,31 @@ export default function AgentsPage() {
                 />
               </Form.Item>
               <Form.Item
-                name="modelOptionsJson"
-                label="模型参数 JSON"
-                rules={[
-                  { required: true },
-                  {
-                    validator: (_, value: string) => {
-                      try {
-                        parseJsonObject(value)
-                        return Promise.resolve()
-                      } catch (error) {
-                        return Promise.reject(error)
-                      }
-                    }
-                  }
-                ]}
+                name="temperature"
+                label="Temperature"
+                rules={[{ type: 'number', min: 0, max: 2 }]}
               >
-                <Input.TextArea
-                  className="mono ai-json-editor"
-                  spellCheck={false}
-                  placeholder='{"temperature":0.1,"maxTokens":2048}'
+                <InputNumber style={{ width: '100%' }} min={0} max={2} step={0.1} placeholder="0.1" />
+              </Form.Item>
+              <Form.Item
+                name="maxTokens"
+                label="最大输出 Token"
+                rules={[{ type: 'number', min: 1, max: 131072 }]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={1}
+                  max={131072}
+                  step={256}
+                  placeholder="2048"
                 />
+              </Form.Item>
+              <Form.Item
+                name="contextWindow"
+                label="上下文窗口"
+                rules={[{ type: 'number', min: 1 }]}
+              >
+                <InputNumber style={{ width: '100%' }} min={1} step={1024} placeholder="可选" />
               </Form.Item>
             </div>
           </Card>

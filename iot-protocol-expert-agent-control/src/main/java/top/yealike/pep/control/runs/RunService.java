@@ -173,22 +173,7 @@ public class RunService {
     }
 
     public RunView toView(Run run) {
-        return new RunView(
-                run.id(),
-                run.conversationId(),
-                run.question(),
-                run.agentKey(),
-                run.agentVersion(),
-                run.manifestDigest(),
-                run.traceContext(),
-                run.status(),
-                run.priority(),
-                run.errorCode(),
-                run.errorMessage(),
-                run.startedAt(),
-                run.finishedAt(),
-                run.createdAt(),
-                runs.listToolCalls(run.id()));
+        return RunView.from(run, runs.listToolCalls(run.id()));
     }
 
     private Conversation requireConversation(UserIdentity identity, UUID conversationId) {

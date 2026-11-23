@@ -3,7 +3,6 @@ package top.yealike.pep.runtime.control;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
-import java.util.Map;
 import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,13 +13,17 @@ import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
 import tools.jackson.databind.ObjectMapper;
+import top.yealike.pep.observability.api.ApiResponse;
 import top.yealike.pep.runtime.config.properties.RuntimeProperties;
 import top.yealike.pep.runtime.contract.AgentManifest;
+import top.yealike.pep.runtime.contract.ControlReadiness;
 import top.yealike.pep.runtime.contract.CredentialResolveRequest;
 import top.yealike.pep.runtime.contract.CredentialResolveResponse;
+import top.yealike.pep.runtime.contract.DesiredReleasePage;
 import top.yealike.pep.runtime.contract.InternalPaths;
 import top.yealike.pep.runtime.contract.InternalSignature;
 import top.yealike.pep.runtime.contract.McpDescriptor;
+import top.yealike.pep.runtime.contract.OperationResult;
 import top.yealike.pep.runtime.contract.RunClaimRequest;
 import top.yealike.pep.runtime.contract.RunClaimResponse;
 import top.yealike.pep.runtime.contract.RunCompletionRequest;
@@ -31,7 +34,6 @@ import top.yealike.pep.runtime.contract.SkillDescriptor;
 import top.yealike.pep.runtime.contract.SkillFile;
 import top.yealike.pep.runtime.contract.ToolAuthorizeRequest;
 import top.yealike.pep.runtime.contract.ToolAuthorizeResponse;
-import top.yealike.pep.runtime.control.dto.DesiredReleasePage;
 import top.yealike.pep.runtime.registry.NacosRuntimeRegistry;
 
 /**
@@ -107,7 +109,7 @@ public class ControlClient {
     }
 
     public void complete(RunCompletionRequest request) {
-        post(InternalPaths.controlComplete(request.runId()), request, Map.class);
+        post(InternalPaths.controlComplete(request.runId()), request, OperationResult.class);
     }
 
     public ToolAuthorizeResponse authorize(ToolAuthorizeRequest request) {
@@ -128,8 +130,8 @@ public class ControlClient {
 
     public boolean readiness() {
         try {
-            Map<?, ?> body = get(InternalPaths.controlReadiness(), Map.class);
-            return body != null && !"DOWN".equalsIgnoreCase(String.valueOf(body.get("status")));
+            ControlReadiness body = get(InternalPaths.controlReadiness(), ControlReadiness.class);
+            return body != null && !"DOWN".equalsIgnoreCase(body.status());
         } catch (RuntimeException exception) {
             return false;
         }
@@ -163,7 +165,8 @@ public class ControlClient {
             if (payload.length > 0) {
                 request.contentType(MediaType.APPLICATION_JSON).body(new String(payload, StandardCharsets.UTF_8));
             }
-            return request.retrieve().body(type);
+            String text = request.retrieve().body(String.class);
+            return unwrap(text, type);
         } catch (ControlException exception) {
             throw exception;
         } catch (RestClientResponseException exception) {
@@ -171,6 +174,31 @@ public class ControlClient {
         } catch (RuntimeException exception) {
             log.warn("control call failed: method={} path={} reason={}", method, path, safeMessage(exception));
             throw new ControlException(502, "CONTROL_UNAVAILABLE", "控制面暂时不可用：" + safeMessage(exception));
+        }
+    }
+
+    private <T> T unwrap(String text, Class<T> type) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        try {
+            var root = json.readTree(text);
+            if (root != null && root.has("code") && root.has("msg") && root.has("data")) {
+                String code = root.path("code").isTextual()
+                        ? root.path("code").textValue()
+                        : root.path("code").asText();
+                String message = root.path("msg").isTextual() ? root.path("msg").textValue() : "控制面请求失败";
+                if (!ApiResponse.SUCCESS_CODE.equals(code)) {
+                    throw new ControlException(502, code == null || code.isBlank() ? "CONTROL_ERROR" : code, message);
+                }
+                var data = root.get("data");
+                return data == null || data.isNull() ? null : json.readValue(json.writeValueAsString(data), type);
+            }
+            return json.readValue(text, type);
+        } catch (ControlException exception) {
+            throw exception;
+        } catch (RuntimeException exception) {
+            throw new ControlException(502, "CONTROL_RESPONSE_INVALID", "控制面返回了无法解析的响应");
         }
     }
 
@@ -192,12 +220,18 @@ public class ControlClient {
         String code = "CONTROL_" + exception.getStatusCode().value();
         String message = "控制面请求失败";
         try {
-            Map<?, ?> body = json.readValue(exception.getResponseBodyAsString(), Map.class);
-            if (body.get("error") != null) {
-                code = String.valueOf(body.get("error"));
+            var body = json.readTree(exception.getResponseBodyAsString());
+            if (body.path("code").isTextual()) {
+                code = body.path("code").textValue();
+            } else if (body.path("error").isTextual()) {
+                code = body.path("error").textValue();
             }
-            if (body.get("message") != null) {
-                message = String.valueOf(body.get("message"));
+            if (body.path("msg").isTextual()) {
+                message = body.path("msg").textValue();
+            } else if (body.path("detail").isTextual()) {
+                message = body.path("detail").textValue();
+            } else if (body.path("message").isTextual()) {
+                message = body.path("message").textValue();
             }
         } catch (RuntimeException ignored) {
             // 非 JSON 错误体只保留状态码，避免把 HTML 或内部页面写入日志

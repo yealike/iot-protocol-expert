@@ -8,24 +8,28 @@ import io.swagger.v3.oas.models.Operation;
 import io.swagger.v3.oas.models.info.Info;
 import io.swagger.v3.oas.models.media.Content;
 import io.swagger.v3.oas.models.media.MediaType;
+import io.swagger.v3.oas.models.media.ObjectSchema;
 import io.swagger.v3.oas.models.media.Schema;
+import io.swagger.v3.oas.models.media.StringSchema;
 import io.swagger.v3.oas.models.responses.ApiResponse;
 import io.swagger.v3.oas.models.responses.ApiResponses;
 import io.swagger.v3.oas.models.security.SecurityScheme;
+import java.util.List;
+import java.util.Locale;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.core.annotation.AnnotatedElementUtils;
 import org.springframework.util.StringUtils;
 import org.springframework.web.method.HandlerMethod;
 import top.yealike.pep.modelgateway.auth.GatewayAuthFilter;
-import top.yealike.pep.modelgateway.support.dto.ApiError;
+import top.yealike.pep.observability.api.RawResponse;
 
 /** OpenAPI 元数据与 Knife4j 适配；保留显式声明的 operationId。 */
 @Configuration(proxyBeanMethods = false)
 public class OpenApiConfig {
 
     private static final String JSON = "application/json";
-    private static final String API_ERROR_REF = "#/components/schemas/ApiError";
+    private static final String API_RESPONSE_REF = "#/components/schemas/ApiResponse";
 
     @Bean
     public OpenAPI modelGatewayOpenApi() {
@@ -44,7 +48,9 @@ public class OpenApiConfig {
                                 .in(SecurityScheme.In.HEADER)
                                 .name(GatewayAuthFilter.SERVICE_TOKEN_HEADER)
                                 .description("Control 内部服务令牌"));
-        ModelConverters.getInstance().read(ApiError.class).forEach(components::addSchemas);
+        ModelConverters.getInstance()
+                .read(top.yealike.pep.observability.api.ApiResponse.class)
+                .forEach(components::addSchemas);
         return new OpenAPI()
                 .info(new Info()
                         .title("模型网关 API")
@@ -65,6 +71,7 @@ public class OpenApiConfig {
                     customized.setOperationId(annotation.operationId());
                 }
                 addCommonErrors(customized);
+                wrapSuccessResponses(customized, handlerMethod);
                 return customized;
             }
         };
@@ -88,7 +95,45 @@ public class OpenApiConfig {
                     new ApiResponse()
                             .description(description)
                             .content(new Content()
-                                    .addMediaType(JSON, new MediaType().schema(new Schema<>().$ref(API_ERROR_REF)))));
+                                    .addMediaType(
+                                            JSON, new MediaType().schema(new Schema<>().$ref(API_RESPONSE_REF)))));
         }
+    }
+
+    private static void wrapSuccessResponses(Operation operation, HandlerMethod handlerMethod) {
+        if (handlerMethod.hasMethodAnnotation(RawResponse.class)
+                || handlerMethod.getBeanType().isAnnotationPresent(RawResponse.class)
+                || operation.getResponses() == null) {
+            return;
+        }
+        operation.getResponses().forEach((status, response) -> {
+            if (!status.startsWith("2") || response.getContent() == null) {
+                return;
+            }
+            response.getContent().forEach((mediaType, content) -> {
+                if (!isJson(mediaType) || content.getSchema() == null || isApiResponse(content.getSchema())) {
+                    return;
+                }
+                Schema<?> data = content.getSchema();
+                ObjectSchema envelope = new ObjectSchema();
+                envelope.addProperty(
+                        "code", new StringSchema().example(top.yealike.pep.observability.api.ApiResponse.SUCCESS_CODE));
+                envelope.addProperty(
+                        "msg",
+                        new StringSchema().example(top.yealike.pep.observability.api.ApiResponse.SUCCESS_MESSAGE));
+                envelope.addProperty("data", data);
+                envelope.setRequired(List.of("code", "msg", "data"));
+                content.setSchema(envelope);
+            });
+        });
+    }
+
+    private static boolean isJson(String mediaType) {
+        String normalized = mediaType.toLowerCase(Locale.ROOT);
+        return "application/json".equals(normalized) || normalized.endsWith("+json");
+    }
+
+    private static boolean isApiResponse(Schema<?> schema) {
+        return schema.get$ref() != null && schema.get$ref().endsWith("/ApiResponse");
     }
 }

@@ -30,7 +30,7 @@ spring:
       max-request-size: 21MB
   mvc:
     problemdetails:
-      enabled: true
+      enabled: false
     async:
       request-timeout: 600000
 

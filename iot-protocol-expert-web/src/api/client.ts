@@ -25,6 +25,7 @@ import type {
   AiModelProfile,
   AiModelTestResult,
   AiModelUpdate,
+  AiRunCancelResult,
   AiPublication,
   AiPublishReceipt,
   AiRegistryComponent,
@@ -44,9 +45,11 @@ import type {
   ManagedUser,
   ManagedRole,
   QuotaGrantRequest,
+  QuotaGrantResult,
   QuotaSnapshot,
   QuotaSubject,
-  UsageItem,
+  OperationResult,
+  UsageList,
   UserChange,
   DeviceDetail,
   DeviceSaveRequest,
@@ -67,7 +70,7 @@ import type {
 /**
  * 统一请求层。
  *
- * 约定：所有请求带 session cookie；非 2xx 一律抛 ApiError（携带后端 problem detail 的 message），
+ * 约定：所有请求带 session cookie；非 2xx 一律抛 ApiError（携带后端统一错误信封的 msg），
  * 页面层只负责展示，不做 try/catch 拍平。
  */
 export class ApiError extends Error {
@@ -82,6 +85,12 @@ export class ApiError extends Error {
 }
 
 type RequestClient = 'ops' | 'ai'
+
+const API_RESPONSE_PREFIXES = ['/api/ai/v1/', '/api/control/v1/', '/api/model-gateway/v1/']
+
+function usesApiResponseEnvelope(path: string): boolean {
+  return API_RESPONSE_PREFIXES.some((prefix) => path.startsWith(prefix))
+}
 
 async function request<T>(
   path: string,
@@ -113,14 +122,16 @@ async function request<T>(
     let traceId: string | undefined
     try {
       const errorBody = (await response.json()) as {
+        code?: string
+        msg?: string
         error?: string
         message?: string
         detail?: string
         title?: string
         traceId?: string
       }
-      message = errorBody.message ?? errorBody.detail ?? errorBody.title ?? message
-      code = errorBody.error
+      message = errorBody.msg ?? errorBody.message ?? errorBody.detail ?? errorBody.title ?? message
+      code = errorBody.code ?? errorBody.error
       traceId = errorBody.traceId
     } catch {
       /* 非 JSON 响应保持默认文案 */
@@ -131,7 +142,23 @@ async function request<T>(
     return undefined as T
   }
   const text = await response.text()
-  return (text ? JSON.parse(text) : undefined) as T
+  if (!text) return undefined as T
+  const responseBody = JSON.parse(text) as unknown
+  if (
+    usesApiResponseEnvelope(path) &&
+    responseBody &&
+    typeof responseBody === 'object' &&
+    'code' in responseBody &&
+    'msg' in responseBody &&
+    'data' in responseBody
+  ) {
+    const envelope = responseBody as { code: string; msg?: string; data: T }
+    if (envelope.code !== 'OK') {
+      throw new ApiError(response.status, envelope.msg ?? `请求失败 ${envelope.code}`, envelope.code)
+    }
+    return envelope.data
+  }
+  return responseBody as T
 }
 
 const json = (body: unknown): RequestInit => ({ method: 'POST', body: JSON.stringify(body) })
@@ -303,7 +330,7 @@ export const api = {
       aiJson({ publish: false })
     ),
   aiKnowledgeAction: (id: string, action: 'publish' | 'archive') =>
-    aiRequest<unknown>(`/knowledge/documents/${encodeURIComponent(id)}/${action}`, {
+    aiRequest<OperationResult>(`/knowledge/documents/${encodeURIComponent(id)}/${action}`, {
       method: 'POST'
     }),
 
@@ -337,7 +364,7 @@ export const api = {
   aiUpdateMcp: (id: string, body: AiMcpUpdate) =>
     aiRequest<AiMcpComponent>(`/mcps/${encodeURIComponent(id)}`, aiJson(body, 'PUT')),
   aiDeleteMcp: (id: string) =>
-    aiRequest<void>(`/mcps/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    aiRequest<OperationResult>(`/mcps/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   aiTestMcp: (id: string) =>
     aiRequest<AiMcpTestResult>(`/mcps/${encodeURIComponent(id)}/test`, { method: 'POST' }),
   aiMcpTools: (id: string) => aiRequest<AiMcpToolCatalog>(`/mcps/${encodeURIComponent(id)}/tools`),
@@ -370,7 +397,7 @@ export const api = {
   aiUpdateSkill: (id: string, body: AiSkillUpdate) =>
     aiRequest<AiSkillComponent>(`/skills/${encodeURIComponent(id)}`, aiJson(body, 'PUT')),
   aiDeleteSkill: (id: string) =>
-    aiRequest<void>(`/skills/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    aiRequest<OperationResult>(`/skills/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   aiSkillFiles: (id: string) =>
     aiRequest<AiSkillFileInfo[]>(`/skills/${encodeURIComponent(id)}/files`),
   aiSkillFile: (id: string, path: string) =>
@@ -383,7 +410,7 @@ export const api = {
       aiJson({ content, expectedRevision }, 'PUT')
     ),
   aiDeleteSkillFile: (id: string, path: string, expectedRevision: number) =>
-    aiRequest<void>(
+    aiRequest<OperationResult>(
       `/skills/${encodeURIComponent(id)}/file?path=${encodeURIComponent(
         path
       )}&expectedRevision=${expectedRevision}`,
@@ -412,7 +439,7 @@ export const api = {
   aiUpdateAgent: (id: string, body: AiAgentUpdate) =>
     aiRequest<AiAgentComponent>(`/agents/${encodeURIComponent(id)}`, aiJson(body, 'PUT')),
   aiDeleteAgent: (id: string) =>
-    aiRequest<void>(`/agents/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    aiRequest<OperationResult>(`/agents/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   aiValidateAgent: (id: string) =>
     aiRequest<AiAgentCompileResult>(`/agents/${encodeURIComponent(id)}/validate`, {
       method: 'POST'
@@ -466,14 +493,14 @@ export const api = {
     ),
 
   aiCancelRun: (runId: string) =>
-    aiRequest<{ ok?: boolean; status?: string; note?: string }>(
+    aiRequest<AiRunCancelResult>(
       `/runs/${encodeURIComponent(runId)}/cancel`,
       {
         method: 'POST'
       }
     ),
   myQuota: () => request<QuotaSnapshot>('/api/control/v1/me/quota'),
-  myUsage: (limit = 100) => request<UsageItem[]>(`/api/control/v1/me/usage?limit=${limit}`),
+  myUsage: (limit = 100) => request<UsageList>(`/api/control/v1/me/usage?limit=${limit}`),
   quotaSubjects: (scopeKind: QuotaGrantRequest['scopeKind'], query: string) =>
     request<QuotaSubject[]>(
       `/api/control/v1/admin/quota-subjects?${new URLSearchParams({ scopeKind, query })}`
@@ -485,7 +512,7 @@ export const api = {
       )}&subjectId=${encodeURIComponent(subjectId)}`
     ),
   grantQuota: (body: QuotaGrantRequest, idempotencyKey: string) =>
-    request<Record<string, unknown>>('/api/control/v1/admin/quota-grants', {
+    request<QuotaGrantResult>('/api/control/v1/admin/quota-grants', {
       method: 'POST',
       headers: { 'Idempotency-Key': idempotencyKey },
       body: JSON.stringify(body)

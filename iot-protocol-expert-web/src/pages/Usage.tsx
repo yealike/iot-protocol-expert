@@ -174,7 +174,7 @@ function UsageHistory() {
           hideOnSinglePage: true,
           showTotal: (total) => `共 ${total} 次调用`
         }}
-        dataSource={usage.data ?? []}
+        dataSource={usage.data?.items ?? []}
         locale={{ emptyText: usage.error ? '暂时无法载入调用明细' : '暂无模型调用' }}
         columns={[
           {

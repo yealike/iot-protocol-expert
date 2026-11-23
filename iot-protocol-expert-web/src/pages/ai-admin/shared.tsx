@@ -57,15 +57,6 @@ export function jsonText(value: unknown): string {
   return JSON.stringify(value ?? {}, null, 2)
 }
 
-export function parseJsonObject(value?: string): Record<string, unknown> {
-  if (!value || !value.trim()) return {}
-  const parsed = JSON.parse(value) as unknown
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('必须是 JSON 对象')
-  }
-  return parsed as Record<string, unknown>
-}
-
 export function rememberPublication(
   receipt: AiPublishReceipt,
   resourceType: string,

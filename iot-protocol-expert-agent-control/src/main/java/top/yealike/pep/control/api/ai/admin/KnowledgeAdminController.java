@@ -3,7 +3,7 @@ package top.yealike.pep.control.api.ai.admin;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
-import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -16,6 +16,10 @@ import top.yealike.pep.control.access.CurrentUser;
 import top.yealike.pep.control.api.ai.admin.dto.IndexRequest;
 import top.yealike.pep.control.audit.AiAuditLogMapper;
 import top.yealike.pep.control.knowledge.KnowledgeService;
+import top.yealike.pep.control.knowledge.domain.DocumentRow;
+import top.yealike.pep.control.knowledge.domain.IngestReport;
+import top.yealike.pep.control.knowledge.domain.KnowledgePreviewItem;
+import top.yealike.pep.runtime.contract.OperationResult;
 import top.yealike.pep.runtime.contract.UserIdentity;
 
 /** 协议知识文档的索引、预览、发布与归档。 */
@@ -35,7 +39,7 @@ public class KnowledgeAdminController {
     @GetMapping("/knowledge/documents")
     @Operation(summary = "查询已索引协议文档")
     @PreAuthorize("hasAuthority('ai:admin')")
-    public Object knowledgeDocuments() {
+    public List<DocumentRow> knowledgeDocuments() {
         CurrentUser.require();
         return knowledge.documents();
     }
@@ -43,7 +47,7 @@ public class KnowledgeAdminController {
     @PostMapping("/knowledge/index")
     @Operation(summary = "执行协议文档索引")
     @PreAuthorize("hasAuthority('ai:admin')")
-    public Object index(@RequestBody(required = false) IndexRequest request) {
+    public IngestReport index(@RequestBody(required = false) IndexRequest request) {
         UserIdentity identity = CurrentUser.require();
         boolean publish = request != null && Boolean.TRUE.equals(request.publish());
         var report = knowledge.ingestAll(identity, publish);
@@ -54,26 +58,26 @@ public class KnowledgeAdminController {
     @GetMapping("/knowledge/documents/{id}/preview")
     @Operation(summary = "预览知识文档")
     @PreAuthorize("hasAuthority('ai:admin')")
-    public Object preview(@Parameter(description = "知识文档 ID") @PathVariable UUID id) {
+    public List<KnowledgePreviewItem> preview(@Parameter(description = "知识文档 ID") @PathVariable UUID id) {
         return knowledge.preview(id);
     }
 
     @PostMapping("/knowledge/documents/{id}/publish")
     @Operation(summary = "发布知识文档")
     @PreAuthorize("hasAuthority('ai:admin')")
-    public Map<String, Object> publish(@Parameter(description = "知识文档 ID") @PathVariable UUID id) {
+    public OperationResult publish(@Parameter(description = "知识文档 ID") @PathVariable UUID id) {
         knowledge.publish(id);
         audit(CurrentUser.require(), "KNOWLEDGE_PUBLISH", id.toString(), "SUCCESS");
-        return Map.of("ok", true, "status", "PUBLISHED");
+        return new OperationResult(true, "PUBLISHED");
     }
 
     @PostMapping("/knowledge/documents/{id}/archive")
     @Operation(summary = "归档知识文档")
     @PreAuthorize("hasAuthority('ai:admin')")
-    public Map<String, Object> archive(@Parameter(description = "知识文档 ID") @PathVariable UUID id) {
+    public OperationResult archive(@Parameter(description = "知识文档 ID") @PathVariable UUID id) {
         knowledge.archive(id);
         audit(CurrentUser.require(), "KNOWLEDGE_ARCHIVE", id.toString(), "SUCCESS");
-        return Map.of("ok", true, "status", "ARCHIVED");
+        return new OperationResult(true, "ARCHIVED");
     }
 
     private void audit(UserIdentity identity, String action, String target, String result) {

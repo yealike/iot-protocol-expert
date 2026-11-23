@@ -7,6 +7,7 @@ import org.springframework.transaction.annotation.Transactional;
 import top.yealike.pep.control.agents.credential.domain.Encrypted;
 import top.yealike.pep.control.agents.domain.Credential;
 import top.yealike.pep.control.agents.domain.CredentialSecret;
+import top.yealike.pep.control.agents.domain.CredentialSummary;
 import top.yealike.pep.control.agents.store.CredentialStore;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.runtime.contract.ErrorCodes;
@@ -75,19 +76,8 @@ public class CredentialService {
         return cipher.keyId();
     }
 
-    public java.util.Map<String, Object> summary(Credential credential) {
-        java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
-        data.put("id", credential.id());
-        data.put("key", credential.key());
-        data.put("displayName", credential.displayName());
-        data.put("currentSecretRevision", credential.currentSecretRevision());
-        data.put("enabled", credential.enabled());
-        data.put("revision", credential.revision());
-        data.put("masked", "******");
-        data.put("keyId", keyId());
-        data.put("createdAt", credential.createdAt());
-        data.put("updatedAt", credential.updatedAt());
-        return data;
+    public CredentialSummary summary(Credential credential) {
+        return CredentialSummary.from(credential, keyId());
     }
 
     private void rotateInternal(Credential credential, String secret) {

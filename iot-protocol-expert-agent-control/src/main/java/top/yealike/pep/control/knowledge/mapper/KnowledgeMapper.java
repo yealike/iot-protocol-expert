@@ -1,11 +1,11 @@
 package top.yealike.pep.control.knowledge.mapper;
 
 import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import org.apache.ibatis.annotations.Param;
 import top.yealike.pep.control.knowledge.domain.ChunkRow;
 import top.yealike.pep.control.knowledge.domain.DocumentRow;
+import top.yealike.pep.control.knowledge.domain.KnowledgePreviewItem;
 
 public interface KnowledgeMapper {
 
@@ -39,7 +39,7 @@ public interface KnowledgeMapper {
 
     int deleteChunks(@Param("documentId") UUID documentId);
 
-    List<Map<String, Object>> preview(@Param("documentId") UUID documentId);
+    List<KnowledgePreviewItem> preview(@Param("documentId") UUID documentId);
 
     int insertChunk(
             @Param("id") UUID id,
