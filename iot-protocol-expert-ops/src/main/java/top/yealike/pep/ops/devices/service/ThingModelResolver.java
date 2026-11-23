@@ -1,9 +1,9 @@
 package top.yealike.pep.ops.devices.service;
 
 import org.springframework.stereotype.Component;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
-import top.yealike.pep.ops.devices.thingmodel.ThingModel;
+import top.yealike.pep.ops.devices.thingmodel.domain.ThingModel;
 
 /**
  * 物模型解析：设备只继承产品物模型。

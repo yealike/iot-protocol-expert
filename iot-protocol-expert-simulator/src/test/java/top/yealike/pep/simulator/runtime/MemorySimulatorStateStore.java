@@ -5,6 +5,7 @@ import java.util.Optional;
 import java.util.Properties;
 import java.util.concurrent.ConcurrentHashMap;
 import top.yealike.pep.codec.frames.OperationFrames.Transaction;
+import top.yealike.pep.simulator.domain.DeviceKey;
 
 final class MemorySimulatorStateStore implements SimulatorStateStore {
     private final ConcurrentHashMap<String, Properties> snapshots = new ConcurrentHashMap<>();

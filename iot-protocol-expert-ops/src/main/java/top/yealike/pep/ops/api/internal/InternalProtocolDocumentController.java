@@ -1,5 +1,9 @@
 package top.yealike.pep.ops.api.internal;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
 import java.nio.channels.Channels;
 import java.nio.file.Files;
@@ -21,6 +25,8 @@ import top.yealike.pep.ops.devices.mapper.ProtocolDocumentMapper;
 /** Control 知识索引使用的受服务令牌保护的协议文档读取入口。 */
 @RestController
 @RequestMapping(path = "/internal/protocol-documents", produces = "application/json")
+@Tag(name = "内部协议文档", description = "AI 知识索引使用的协议文档读取接口")
+@SecurityRequirement(name = "opsServiceToken")
 public class InternalProtocolDocumentController {
 
     private static final int CHUNK_BYTES = 128 * 1024;
@@ -37,12 +43,16 @@ public class InternalProtocolDocumentController {
     }
 
     @GetMapping
+    @Operation(operationId = "internalListProtocolDocuments", summary = "列出可索引的协议文档")
     public List<Map<String, Object>> list() {
         return documents.selectActiveForAi();
     }
 
     @GetMapping("/{id}/content")
-    public Map<String, Object> content(@PathVariable long id, @RequestParam(defaultValue = "0") long offset) {
+    @Operation(operationId = "internalReadProtocolDocument", summary = "分块读取协议文档内容")
+    public Map<String, Object> content(
+            @Parameter(description = "文档 ID") @PathVariable long id,
+            @Parameter(description = "字节偏移量") @RequestParam(defaultValue = "0") long offset) {
         if (id <= 0 || offset < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST);
         }

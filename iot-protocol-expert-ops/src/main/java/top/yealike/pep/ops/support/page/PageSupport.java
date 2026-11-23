@@ -27,8 +27,6 @@ public final class PageSupport {
         return new PageQuery(pageIndex, pageSize, (int) offset, orderBy(sort, allowedSortFields, defaultSort));
     }
 
-    public record PageQuery(int page, int size, int offset, String orderBy) {}
-
     /** 支持 {@code field,asc|desc} 与简写 {@code -field}。非法字段直接忽略。 */
     private static String orderBy(String raw, Set<String> allowedSortFields, String defaultSort) {
         String effective = raw == null || raw.isBlank() ? defaultSort : raw;

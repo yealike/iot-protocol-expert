@@ -7,18 +7,22 @@
 | 云快充 1.6 | Netty TCP | `127.0.0.1:8768` | 登录帧中的 14 位桩号 |
 | OCPP 1.6J | Netty WebSocket | `ws://127.0.0.1:8769/ocpp/{chargePointId}` | URL 路径中的桩号 |
 
-`GET /api/protocol/servers` 返回协议、端口、启用与运行状态，`GET /api/protocol/types` 返回协议类型。
 `GET /api/protocol/catalog` 与 `POST /api/protocol/decode` 是云快充帧目录和报文解码调试入口，不是 OCPP 动作接口。
+协议、端口和监听状态由 `ProtocolServerManager` 在启动时按配置装配，不再通过 HTTP 接口暴露。
 
 ## 协议无关内核
 
 ```
-core/
+protocol/
   ProtocolType            协议枚举（YKC16 / OCPP16J）
   ProtocolServer          协议服务端 SPI：protocol / enabled / port / start / stop
   ProtocolServerManager   统一生命周期，按配置启动各协议监听
+device/
   OnlineDeviceDirectory   在线会话抽象；YKC 与 OCPP 各自实现，聚合后供控制台查询
-  ChargingCommandRouter   按设备档案中的 protocol 路由启停命令
+  DeviceIdentityRegistry  设备档案与协议侧编号的本地缓存
+command/
+  CommandFacade           按设备档案中的 protocol 路由启停命令
+  ChannelCommandService   命令下发、超时与结果归一
 ```
 
 新增协议只需实现 `ProtocolServer`，把上行消息转换成对 `DeviceService`、`GunStateService`、`OrderService`、`RateModelService` 的调用，并在 `DeviceEntity.protocol` 中登记协议标识。云快充专用字段和帧编解码不会被其它协议引用。
@@ -49,14 +53,11 @@ core/
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/api/protocol/servers` | Gateway：协议监听状态 |
-| GET | `/api/protocol/types` | Gateway：支持的协议类型 |
 | GET | `/api/protocol/catalog` | Gateway：云快充帧目录 |
 | POST | `/api/protocol/decode` | Gateway：云快充线上报文或帧体解码 |
-| POST | `/api/ops/commands/start` | OPS：远程启动并创建订单 |
-| POST | `/api/ops/commands/stop` | OPS：远程停止 |
-| POST | `/api/ops/commands` | OPS：下发通用 OCPP/云快充命令 |
-| GET | `/api/ops/commands?deviceId={id}` | OPS：查询命令记录；`deviceId` 可省略 |
+| POST | `/api/ops/simulator/commands/start` | OPS：模拟器远程启动并创建订单 |
+| POST | `/api/ops/simulator/commands/stop` | OPS：模拟器远程停止 |
+| POST | `/api/ops/simulator/commands` | OPS：模拟器下发通用 OCPP/云快充命令 |
 | POST | `/internal/commands` | Gateway 内部接口，仅由 OPS 服务间调用 |
 
 平台启停使用设备 ID，不使用桩号路径：
@@ -65,7 +66,7 @@ core/
 {"deviceId":123,"gunNo":"01","idTag":"APP-USER","physicalCard":"","balance":"1000.00"}
 ```
 
-上例用于 `POST /api/ops/commands/start`；`POST /api/ops/commands/stop` 只需 `deviceId` 和 `gunNo`。服务端按设备档案中的 `protocol` 路由到云快充或 OCPP。OCPP 1.6J 不支持并充，`parallel-start` 会明确返回不支持。
+上例用于 `POST /api/ops/simulator/commands/start`；`POST /api/ops/simulator/commands/stop` 只需 `deviceId` 和 `gunNo`。服务端按设备档案中的 `protocol` 路由到云快充或 OCPP。OCPP 1.6J 不支持并充，`parallel-start` 会明确返回不支持。
 
 通用命令体为 `{deviceId,type,params}`。OCPP 支持以下 `type`：
 
@@ -113,8 +114,8 @@ OCPP `RemoteStopTransaction` 返回 `Accepted` 也只表示桩已受理，订单
 - `ocpp16j`：使用 JDK WebSocket 连接 `ws://平台:8769/ocpp/{桩号}`，完成 BootNotification、Heartbeat、StatusNotification、Authorize、StartTransaction、MeterValues、StopTransaction 闭环，并响应平台远程启动/停机、Reset、TriggerMessage、GetConfiguration 等命令。
 
 换桩前须先结束在充订单；换桩时保存当前设备检查点、断开旧连接，再加载目标设备档案和会话。实际操作使用
-`POST /api/device/select {"deviceId":123}`；旧客户端调用的 `POST /api/protocol {"protocol":"ocpp16j"}`
-现在返回 HTTP 400，提示从设备列表重新选桩。
+`POST /api/device/select {"deviceId":123}`；固定协议切换的兼容接口 `POST /api/protocol` 已删除，
+协议只能随设备档案变化。
 
 OCPP 停止交易采用持久化 outbox：模拟器在发送 `StopTransaction` 前保存交易号、枪号、`meterStop`、结束时间和原因；收到成功 `CALLRESULT` 后才移出队列。`CALLERROR`、超时、断线、非 `Accepted` 的 `idTagInfo.status` 都不会删除记录。WebSocket 重连且 BootNotification 被接受后会立即补传，模拟器进程重启后也会从设备检查点恢复。`GET /api/state` 的 `pendingOcppStops` 可观察待传记录和剩余重试次数。
 

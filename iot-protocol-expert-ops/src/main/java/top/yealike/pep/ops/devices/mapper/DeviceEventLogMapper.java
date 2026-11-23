@@ -3,7 +3,7 @@ package top.yealike.pep.ops.devices.mapper;
 import java.util.Collection;
 import java.util.List;
 import org.apache.ibatis.annotations.Param;
-import top.yealike.pep.ops.devices.entity.DeviceEventLog;
+import top.yealike.pep.ops.devices.domain.DeviceEventLog;
 
 public interface DeviceEventLogMapper {
 

@@ -16,7 +16,8 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import top.yealike.pep.observability.protocol.ProtocolTelemetry;
-import top.yealike.pep.simulator.config.SimulatorProperties;
+import top.yealike.pep.simulator.config.properties.SimulatorProperties;
+import top.yealike.pep.simulator.integration.ops.OpsDeviceClient;
 
 /** 为每台并发模拟的充电桩维护独立连接、状态和账单。 */
 @Component

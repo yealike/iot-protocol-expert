@@ -2,7 +2,7 @@ package top.yealike.pep.ops.diagnostic.mapper;
 
 import java.util.List;
 import org.apache.ibatis.annotations.Param;
-import top.yealike.pep.ops.diagnostic.TroubleCase;
+import top.yealike.pep.ops.diagnostic.domain.TroubleCase;
 
 public interface TroubleCaseMapper {
 

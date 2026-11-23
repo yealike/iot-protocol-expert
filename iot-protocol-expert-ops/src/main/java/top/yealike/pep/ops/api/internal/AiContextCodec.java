@@ -16,7 +16,7 @@ import javax.crypto.spec.SecretKeySpec;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import tools.jackson.databind.json.JsonMapper;
-import top.yealike.pep.ops.config.OpsProperties;
+import top.yealike.pep.ops.config.properties.OpsProperties;
 
 /** Validates the operation-bound AI context supplied by the MCP gateway. */
 @Component
@@ -45,7 +45,7 @@ public class AiContextCodec {
         this.maxConsumedContexts = maxConsumedContexts;
     }
 
-    public Context decode(String operation, Object encoded) throws GeneralSecurityException {
+    public AiContext decode(String operation, Object encoded) throws GeneralSecurityException {
         String secret = properties.getAiMcpToken();
         if (secret.isBlank() || !(encoded instanceof String value) || value.length() > MAX_CONTEXT_LENGTH) {
             throw new IllegalArgumentException("Invalid context");
@@ -68,7 +68,7 @@ public class AiContextCodec {
             throw new IllegalArgumentException("Expired context");
         }
         consume(value, expires.longValue(), now);
-        return new Context(
+        return new AiContext(
                 claims.get("actor") instanceof String actor ? actor : null,
                 claims.get("session") instanceof String session ? session : null);
     }
@@ -81,7 +81,7 @@ public class AiContextCodec {
         String digest = HexFormat.of()
                 .formatHex(MessageDigest.getInstance("SHA-256").digest(encoded.getBytes(StandardCharsets.UTF_8)));
         if (consumedContexts.putIfAbsent(digest, expiresAt) != null) {
-            throw new ContextAlreadyConsumedException();
+            throw new AiContextConsumedException();
         }
     }
 
@@ -96,12 +96,4 @@ public class AiContextCodec {
     int consumedContextCount() {
         return consumedContexts.size();
     }
-
-    public static final class ContextAlreadyConsumedException extends IllegalArgumentException {
-        public ContextAlreadyConsumedException() {
-            super("Context already consumed");
-        }
-    }
-
-    public record Context(String actor, String session) {}
 }

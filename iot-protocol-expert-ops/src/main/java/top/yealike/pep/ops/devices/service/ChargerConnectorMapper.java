@@ -3,7 +3,7 @@ package top.yealike.pep.ops.devices.service;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.Map;
-import top.yealike.pep.ops.api.dto.OpsDtos;
+import top.yealike.pep.ops.api.internal.dto.RealtimeRequest;
 
 /**
  * 充电枪实时值 → 通道型属性 的翻译层。
@@ -26,7 +26,7 @@ public final class ChargerConnectorMapper {
     }
 
     /** 云快充 0x13 实时数据帧。 */
-    public static Map<String, Object> fromRealtime(OpsDtos.RealtimeRequest request) {
+    public static Map<String, Object> fromRealtime(RealtimeRequest request) {
         Map<String, Object> values = new LinkedHashMap<>();
         values.put("gunState", stateOf(request.state()));
         values.put("plugged", request.plugged() != 0);

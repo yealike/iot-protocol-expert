@@ -10,7 +10,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.stereotype.Component;
-import top.yealike.pep.ops.access.IdentityService;
+import top.yealike.pep.ops.access.domain.Identity;
+import top.yealike.pep.ops.access.service.IdentityService;
 
 /**
  * Looks up the current browser session by the ID authenticated by the AI service.
@@ -57,7 +58,7 @@ public class OpsSessionLookup implements HttpSessionListener, HttpSessionIdListe
             if (auth == null || !auth.isAuthenticated()) return null;
             return identities
                     .byUsername(auth.getName())
-                    .filter(IdentityService.Identity::enabled)
+                    .filter(Identity::enabled)
                     .filter(identity -> Objects.equals(identity.authVersion(), session.getAttribute("iam.authVersion")))
                     .map(identity -> Map.<String, Object>of(
                             "authenticated",

@@ -6,6 +6,8 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
+import top.yealike.pep.ops.config.properties.OpsProperties;
+import top.yealike.pep.ops.config.security.ServiceTokenFilter;
 
 class InternalIdentityTokenTest {
     @ParameterizedTest
@@ -19,7 +21,7 @@ class InternalIdentityTokenTest {
     void allInternalRoutesRequireServiceToken(String path) throws Exception {
         var properties = new OpsProperties();
         properties.setServiceToken("test-only-service-token");
-        var filter = new SecurityConfig.ServiceTokenFilter(properties);
+        var filter = new ServiceTokenFilter(properties);
         var request = new MockHttpServletRequest("POST", path);
         var rejected = new MockHttpServletResponse();
         filter.doFilter(request, rejected, (req, res) -> fail("未授权请求不应进入身份查询"));

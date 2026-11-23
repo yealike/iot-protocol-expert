@@ -3,7 +3,7 @@ package top.yealike.pep.ops.devices.mapper;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.apache.ibatis.annotations.Param;
-import top.yealike.pep.ops.devices.entity.DevicePropertyTs;
+import top.yealike.pep.ops.devices.domain.DevicePropertyTs;
 
 public interface DevicePropertyTsMapper {
 

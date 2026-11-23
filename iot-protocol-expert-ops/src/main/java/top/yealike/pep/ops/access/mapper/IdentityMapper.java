@@ -3,13 +3,11 @@ package top.yealike.pep.ops.access.mapper;
 import java.util.List;
 import java.util.Optional;
 import org.apache.ibatis.annotations.Param;
+import top.yealike.pep.ops.access.domain.IdentityRow;
 import top.yealike.pep.ops.access.domain.OpsUser;
+import top.yealike.pep.ops.access.domain.RoleInfo;
 
 public interface IdentityMapper {
-
-    record IdentityRow(long id, String username, boolean enabled, long authVersion) {}
-
-    record RoleInfo(String code, String name) {}
 
     List<Long> selectAllUserIds();
 

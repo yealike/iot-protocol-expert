@@ -51,210 +51,21 @@ import top.yealike.pep.codec.frames.RegistrationFrames;
 import top.yealike.pep.codec.frames.SettingFrames;
 import top.yealike.pep.codec.ocpp16.OcppConstants;
 import top.yealike.pep.observability.protocol.ProtocolTelemetry;
-import top.yealike.pep.simulator.config.SimulatorProperties;
+import top.yealike.pep.simulator.config.properties.SimulatorProperties;
+import top.yealike.pep.simulator.domain.DeviceKey;
+import top.yealike.pep.simulator.domain.FrameLog;
+import top.yealike.pep.simulator.domain.GunState;
+import top.yealike.pep.simulator.domain.Protocol;
+import top.yealike.pep.simulator.integration.ops.OpsDeviceClient;
+import top.yealike.pep.simulator.integration.ops.dto.RateModel;
+import top.yealike.pep.simulator.integration.ops.dto.SimulatorConnector;
+import top.yealike.pep.simulator.integration.ops.dto.SimulatorDevice;
 
 /** 充电桩状态机与云快充 TCP 客户端。 */
 @Component
 public class SimulatorRuntime {
 
     private static final Logger log = LoggerFactory.getLogger(SimulatorRuntime.class);
-
-    /** 模拟器当前使用的充电协议。 */
-    public enum Protocol {
-        YKC16("ykc16", "云快充 1.6"),
-        OCPP16J("ocpp16j", "OCPP 1.6J");
-
-        private final String code;
-        private final String label;
-
-        Protocol(String code, String label) {
-            this.code = code;
-            this.label = label;
-        }
-
-        public String code() {
-            return code;
-        }
-
-        public String label() {
-            return label;
-        }
-
-        public static Protocol of(String value) {
-            if (value == null || value.isBlank()) {
-                return YKC16;
-            }
-            for (Protocol protocol : values()) {
-                if (protocol.code.equalsIgnoreCase(value.trim())
-                        || protocol.name().equalsIgnoreCase(value.trim())) {
-                    return protocol;
-                }
-            }
-            throw new IllegalArgumentException("未知协议: " + value);
-        }
-    }
-
-    public enum GunState {
-        OFFLINE(0, "离线"),
-        FAULT(1, "故障"),
-        IDLE(2, "空闲"),
-        CHARGING(3, "充电");
-
-        private final int code;
-        private final String label;
-
-        GunState(int code, String label) {
-            this.code = code;
-            this.label = label;
-        }
-
-        public int code() {
-            return code;
-        }
-
-        public String label() {
-            return label;
-        }
-    }
-
-    public static final class Gun {
-        private final String gunNo;
-        private final String platformGunNo;
-        private final String protocolConnectorNo;
-        private boolean plugged = false;
-        private String phase = "待机";
-        private ChargingLedger ledger;
-        private LocalDateTime lastAdvance;
-        private BigDecimal meter = new BigDecimal("1000.0000"), meterStart = meter;
-        private String physicalCard = "00000000D14B0A54";
-        private BigDecimal balance = new BigDecimal("1000");
-        private int startType = 1, initialSoc = 20;
-        private double capacityKwh = 60, socValue = 20;
-        private String vin = "LSVAA2A40NX000001";
-        private String parallelNo;
-        private int mainGun;
-        private long lastBmsAt;
-        private long lastLockAt;
-        private long authDeadline;
-        private double targetEnergy, targetAmount;
-        private int targetMinutes;
-        private int bmsErrorReason;
-        private int lockStatus = 255;
-        private OperationFrames.RemoteStart waitingStart;
-        private Integer ocppTransactionId;
-        private BigDecimal ocppMeterStartWh = BigDecimal.ZERO;
-        private int waitingSequence;
-        private long waitingUntil;
-        private boolean fault;
-        private int faultBits;
-        private String ocppFaultCode = "NoError";
-        private boolean allowWork = true;
-        private GunState state = GunState.IDLE;
-        private String transactionNo;
-        private LocalDateTime startTime;
-        private BigDecimal energy = BigDecimal.ZERO;
-        private BigDecimal amount = BigDecimal.ZERO;
-        private int soc = 20;
-        private BigDecimal voltage = BigDecimal.ZERO;
-        private BigDecimal current = BigDecimal.ZERO;
-        private int totalMinutes;
-        private int remainMinutes;
-        private long lastRealtimeAt;
-        private long lastHeartbeatAt;
-        private long heartbeatAckAt;
-
-        Gun(String gunNo, String platformGunNo, String protocolConnectorNo) {
-            this.gunNo = gunNo;
-            this.platformGunNo = platformGunNo;
-            this.protocolConnectorNo = protocolConnectorNo;
-        }
-
-        public String getGunNo() {
-            return gunNo;
-        }
-
-        public String getPlatformGunNo() {
-            return platformGunNo;
-        }
-
-        public String getProtocolConnectorNo() {
-            return protocolConnectorNo;
-        }
-
-        public boolean isPlugged() {
-            return plugged;
-        }
-
-        public boolean isFault() {
-            return fault;
-        }
-
-        public boolean isAllowWork() {
-            return allowWork;
-        }
-
-        public GunState getState() {
-            return state;
-        }
-
-        public String getTransactionNo() {
-            return transactionNo;
-        }
-
-        public LocalDateTime getStartTime() {
-            return startTime;
-        }
-
-        public BigDecimal getEnergy() {
-            return energy;
-        }
-
-        public BigDecimal getAmount() {
-            return amount;
-        }
-
-        public int getSoc() {
-            return soc;
-        }
-
-        public BigDecimal getVoltage() {
-            return voltage;
-        }
-
-        public BigDecimal getCurrent() {
-            return current;
-        }
-
-        public int getTotalMinutes() {
-            return totalMinutes;
-        }
-
-        public int getRemainMinutes() {
-            return remainMinutes;
-        }
-    }
-
-    public record FrameLog(
-            LocalDateTime time,
-            String direction,
-            String label,
-            String frameTypeHex,
-            int sequence,
-            String bodyHex,
-            String summary) {
-        public Object getDecoded() {
-            if (frameTypeHex != null && !frameTypeHex.startsWith("0x")) {
-                return Map.of(
-                        "protocol", "OCPP16J", "messageType", frameTypeHex, "payload", bodyHex == null ? "" : bodyHex);
-            }
-            try {
-                return top.yealike.pep.codec.FramePayloads.decode(
-                        FrameType.of(Integer.decode(frameTypeHex)), FrameCodec.parseHex(bodyHex));
-            } catch (RuntimeException e) {
-                return Map.of("error", e.getMessage());
-            }
-        }
-    }
 
     private final SimulatorProperties properties;
     private final ProtocolTelemetry telemetry;
@@ -355,7 +166,7 @@ public class SimulatorRuntime {
         }
     }
 
-    public List<OpsDeviceClient.SimulatorDevice> devices() {
+    public List<SimulatorDevice> devices() {
         if (opsDevices == null) {
             throw new IllegalStateException("未配置运维平台设备目录");
         }
@@ -371,7 +182,7 @@ public class SimulatorRuntime {
         if (opsDevices == null) {
             throw new IllegalStateException("未配置运维平台设备目录");
         }
-        OpsDeviceClient.SimulatorDevice device = opsDevices.get(deviceId);
+        SimulatorDevice device = opsDevices.get(deviceId);
         if (device == null) {
             throw new IllegalArgumentException("设备不存在: " + deviceId);
         }
@@ -436,8 +247,6 @@ public class SimulatorRuntime {
         return parent.resolve("simulator-state-" + deviceId + ".properties").toString();
     }
 
-    private record GunMapping(String channelNo, String platformGunNo, String protocolConnectorNo) {}
-
     private static void validatePlatformSn(String sn) {
         if (sn == null || !sn.matches("[1-9][0-9]{7}")) {
             throw new IllegalArgumentException("平台设备 SN 必须为 8 位数字且从 10000000 开始: " + sn);
@@ -465,10 +274,10 @@ public class SimulatorRuntime {
         return mappings;
     }
 
-    private List<GunMapping> deviceGunMappings(OpsDeviceClient.SimulatorDevice device, Protocol next) {
-        List<OpsDeviceClient.SimulatorConnector> connectors = device.connectors();
+    private List<GunMapping> deviceGunMappings(SimulatorDevice device, Protocol next) {
+        List<SimulatorConnector> connectors = device.connectors();
         Map<String, String> connectorByPlatformGunNo = new LinkedHashMap<>();
-        for (OpsDeviceClient.SimulatorConnector connector : connectors) {
+        for (SimulatorConnector connector : connectors) {
             String platformGunNo = connector.platformGunNo();
             if (platformGunNo == null
                     || !platformGunNo.matches("[1-9][0-9]{7}(0[1-9]|[1-9][0-9])")
@@ -2146,8 +1955,8 @@ public class SimulatorRuntime {
         if (opsDevices == null) {
             throw new IllegalStateException("未配置平台设备目录，无法同步活动费率");
         }
-        OpsDeviceClient.RateModel active = opsDevices.rates().stream()
-                .filter(OpsDeviceClient.RateModel::active)
+        RateModel active = opsDevices.rates().stream()
+                .filter(RateModel::active)
                 .findFirst()
                 .orElseThrow(() -> new IllegalStateException("平台没有启用的费率模型"));
         return new RegistrationFrames.RateModel(
@@ -2665,8 +2474,8 @@ public class SimulatorRuntime {
         }
     }
 
-    private SimulatorStateStore.DeviceKey deviceKey() {
-        return new SimulatorStateStore.DeviceKey(selectedDeviceId, protocol.code(), properties.getPileCode());
+    private DeviceKey deviceKey() {
+        return new DeviceKey(selectedDeviceId, protocol.code(), properties.getPileCode());
     }
 
     private void restore() {
@@ -2802,44 +2611,5 @@ public class SimulatorRuntime {
             restoringState = false;
         }
         if (checkpoint) persist();
-    }
-
-    private static final class PendingTransaction {
-        private final OperationFrames.Transaction transaction;
-        private int retriesLeft;
-        private long nextAt;
-
-        private PendingTransaction(OperationFrames.Transaction transaction, int retriesLeft, long nextAt) {
-            this.transaction = transaction;
-            this.retriesLeft = retriesLeft;
-            this.nextAt = nextAt;
-        }
-    }
-
-    private static final class PendingOcppStop {
-        private final String gunNo;
-        private final int transactionId;
-        private final BigDecimal meterStopWh;
-        private final String endedAt;
-        private final int reason;
-        private int retriesLeft;
-        private long nextAt;
-
-        private PendingOcppStop(
-                String gunNo,
-                int transactionId,
-                BigDecimal meterStopWh,
-                String endedAt,
-                int reason,
-                int retriesLeft,
-                long nextAt) {
-            this.gunNo = gunNo;
-            this.transactionId = transactionId;
-            this.meterStopWh = meterStopWh;
-            this.endedAt = endedAt;
-            this.reason = reason;
-            this.retriesLeft = retriesLeft;
-            this.nextAt = nextAt;
-        }
     }
 }

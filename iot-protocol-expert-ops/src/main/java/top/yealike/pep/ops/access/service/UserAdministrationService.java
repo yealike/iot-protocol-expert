@@ -1,0 +1,155 @@
+package top.yealike.pep.ops.access.service;
+
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Set;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
+import top.yealike.pep.ops.access.domain.Identity;
+import top.yealike.pep.ops.access.domain.OpsUser;
+import top.yealike.pep.ops.access.domain.Role;
+import top.yealike.pep.ops.access.domain.UserChange;
+import top.yealike.pep.ops.access.mapper.IdentityMapper;
+import top.yealike.pep.ops.audit.domain.AuditLog;
+import top.yealike.pep.ops.audit.mapper.AuditLogMapper;
+
+@Service
+public class UserAdministrationService {
+    private static final Set<String> ROLES = Set.of(
+            "PLATFORM_ADMIN",
+            "TENANT_OWNER",
+            "PROJECT_ADMIN",
+            "OPERATOR",
+            "ANALYST",
+            "VIEWER",
+            "QUOTA_ADMIN",
+            "AUDITOR");
+    private static final Set<String> PERMISSIONS = Set.of(
+            "iam:user:manage",
+            "platform:admin",
+            "tenant:manage",
+            "project:create",
+            "project:manage",
+            "member:manage",
+            "ops:read",
+            "ops:operate",
+            "ops:manage",
+            "ai:use",
+            "ai:admin",
+            "agent:publish",
+            "device:manage",
+            "device:command:start",
+            "simulation:run",
+            "quota:grant",
+            "usage:read",
+            "audit:read");
+
+    private final IdentityMapper iam;
+    private final PasswordEncoder passwords;
+    private final IdentityService identities;
+    private final AuditLogMapper audits;
+
+    public UserAdministrationService(
+            IdentityMapper iam, PasswordEncoder passwords, IdentityService identities, AuditLogMapper audits) {
+        this.iam = iam;
+        this.passwords = passwords;
+        this.identities = identities;
+        this.audits = audits;
+    }
+
+    public List<Identity> list() {
+        return iam.selectAllUserIds().stream()
+                .map(id -> identities.byId(id).orElseThrow())
+                .toList();
+    }
+
+    public List<Role> roles() {
+        return iam.selectRoles().stream()
+                .map(role -> new Role(role.code(), role.name(), iam.selectRolePermissions(role.code())))
+                .toList();
+    }
+
+    @Transactional
+    public Role updateRole(String code, List<String> permissions, String actor) {
+        if (!ROLES.contains(code) || permissions == null || !PERMISSIONS.containsAll(permissions)) throw bad("角色或权限无效");
+        if (code.equals("PLATFORM_ADMIN") && !permissions.contains("iam:user:manage")) throw bad("平台管理员角色必须保留用户管理权限");
+        if ((permissions.contains("ops:manage") || permissions.contains("ops:operate"))
+                && !permissions.contains("ops:read")) throw bad("运营操作和管理权限需要运营读取权限");
+        if (permissions.contains("ai:admin") && !permissions.contains("ai:use")) throw bad("AI 管理权限需要 AI 使用权限");
+        iam.deleteRolePermissions(code);
+        for (String permission : Set.copyOf(permissions)) iam.insertRolePermission(code, permission);
+        iam.incrementAuthVersionByRole(code);
+        audit(actor, "ROLE_UPDATE", "ROLE", code);
+        return roles().stream()
+                .filter(role -> role.code().equals(code))
+                .findFirst()
+                .orElseThrow();
+    }
+
+    @Transactional
+    public Identity create(UserChange change, String actor) {
+        validate(change, true);
+        if (iam.countUsername(change.username()) > 0) throw bad("用户名已存在");
+        OpsUser user = new OpsUser();
+        user.username = change.username();
+        user.passwordHash = passwords.encode(change.password());
+        user.enabled = change.enabled();
+        user.createdAt = LocalDateTime.now();
+        iam.insertUser(user);
+        long id = user.id;
+        iam.insertMemberships(id);
+        assign(id, change);
+        audit(actor, "USER_CREATE", "USER", String.valueOf(id));
+        return identities.byId(id).orElseThrow();
+    }
+
+    @Transactional
+    public Identity update(long id, UserChange change, String actor) {
+        validate(change, false);
+        var target = identities.byId(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "用户不存在"));
+        if (!target.username().equals(change.username())) throw bad("用户名不能修改");
+        if (target.username().equals(actor)
+                && target.roles().contains("PLATFORM_ADMIN")
+                && (!change.enabled() || !change.roles().contains("PLATFORM_ADMIN"))) throw bad("不能停用或移除自己的管理员权限");
+        iam.updateUserAccess(id, change.enabled());
+        if (change.password() != null && !change.password().isBlank())
+            iam.updatePassword(id, passwords.encode(change.password()));
+        iam.deleteUserRoles(id);
+        assign(id, change);
+        audit(actor, "USER_UPDATE", "USER", String.valueOf(id));
+        return identities.byId(id).orElseThrow();
+    }
+
+    private void assign(long id, UserChange change) {
+        for (String role : Set.copyOf(change.roles())) iam.insertUserRole(id, role);
+    }
+
+    private void validate(UserChange c, boolean creating) {
+        if (c == null || c.username() == null || !c.username().matches("[a-zA-Z0-9_.-]{3,64}"))
+            throw bad("用户名须为 3 至 64 位字母、数字、点、下划线或短横线");
+        if ((creating || (c.password() != null && !c.password().isBlank()))
+                && (c.password() == null
+                        || c.password().length() < 8
+                        || c.password().getBytes(java.nio.charset.StandardCharsets.UTF_8).length > 72))
+            throw bad("密码长度须为 8 至 72 位");
+        if (c.roles() == null || c.roles().isEmpty() || !ROLES.containsAll(c.roles())) throw bad("角色无效");
+    }
+
+    private void audit(String actor, String action, String targetType, String targetId) {
+        AuditLog log = new AuditLog();
+        log.actor = actor;
+        log.action = action;
+        log.targetType = targetType;
+        log.targetId = targetId;
+        log.result = "SUCCESS";
+        log.createdAt = LocalDateTime.now();
+        audits.save(log);
+    }
+
+    private static ResponseStatusException bad(String message) {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
+    }
+}

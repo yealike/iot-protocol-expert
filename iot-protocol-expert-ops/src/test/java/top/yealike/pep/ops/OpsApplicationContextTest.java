@@ -30,10 +30,10 @@ class OpsApplicationContextTest {
     private ApplicationContext context;
 
     @org.springframework.test.context.bean.override.mockito.MockitoBean
-    private top.yealike.pep.ops.telemetry.TdengineTelemetryStore tdengine;
+    private top.yealike.pep.ops.telemetry.service.TdengineTelemetryStore tdengine;
 
     @org.springframework.test.context.bean.override.mockito.MockitoBean
-    private top.yealike.pep.ops.telemetry.TelemetryOutboxPublisher outbox;
+    private top.yealike.pep.ops.telemetry.service.TelemetryOutboxPublisher outbox;
 
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     private top.yealike.pep.ops.devices.service.GatewayPresenceMonitor presence;

@@ -10,7 +10,10 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import top.yealike.pep.observability.protocol.ProtocolTelemetry;
-import top.yealike.pep.simulator.config.SimulatorProperties;
+import top.yealike.pep.simulator.config.properties.SimulatorProperties;
+import top.yealike.pep.simulator.integration.ops.OpsDeviceClient;
+import top.yealike.pep.simulator.integration.ops.dto.RateModel;
+import top.yealike.pep.simulator.integration.ops.dto.SimulatorDevice;
 
 class ChargerFleetTest {
     @TempDir
@@ -24,11 +27,11 @@ class ChargerFleetTest {
         config.setOcppPort(1);
         OpsDeviceClient directory = mock(OpsDeviceClient.class);
         when(directory.get(1L))
-                .thenReturn(new OpsDeviceClient.SimulatorDevice(
+                .thenReturn(new SimulatorDevice(
                         1L, "10000001", "A", "YKC16", "32010600000001", 1, false, "OFFLINE", true, true));
         when(directory.get(2L))
-                .thenReturn(new OpsDeviceClient.SimulatorDevice(
-                        2L, "10000002", "B", "OCPP16J", "OCPP-B", 2, false, "OFFLINE", true, true));
+                .thenReturn(
+                        new SimulatorDevice(2L, "10000002", "B", "OCPP16J", "OCPP-B", 2, false, "OFFLINE", true, true));
         when(directory.rates()).thenReturn(List.of(platformRate()));
         SimulatorRuntime interactive = mock(SimulatorRuntime.class);
         when(interactive.state()).thenReturn(Map.of());
@@ -140,10 +143,10 @@ class ChargerFleetTest {
             config.setPlatformPort(server.getLocalPort());
             OpsDeviceClient directory = mock(OpsDeviceClient.class);
             when(directory.get(11L))
-                    .thenReturn(new OpsDeviceClient.SimulatorDevice(
+                    .thenReturn(new SimulatorDevice(
                             11L, "10000011", "A", "YKC16", "32010600000011", 1, false, "OFFLINE", true, true));
             when(directory.get(12L))
-                    .thenReturn(new OpsDeviceClient.SimulatorDevice(
+                    .thenReturn(new SimulatorDevice(
                             12L, "10000012", "B", "YKC16", "32010600000012", 1, false, "OFFLINE", true, true));
             when(directory.rates()).thenReturn(List.of(platformRate()));
             SimulatorRuntime interactive = mock(SimulatorRuntime.class);
@@ -183,8 +186,8 @@ class ChargerFleetTest {
         }
     }
 
-    private static OpsDeviceClient.RateModel platformRate() {
-        return new OpsDeviceClient.RateModel(
+    private static RateModel platformRate() {
+        return new RateModel(
                 "0001",
                 new BigDecimal("1.20000"),
                 new BigDecimal("0.40000"),

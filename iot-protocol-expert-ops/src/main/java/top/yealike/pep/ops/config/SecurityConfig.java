@@ -1,12 +1,7 @@
 package top.yealike.pep.ops.config;
 
-import jakarta.servlet.FilterChain;
-import jakarta.servlet.ServletException;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -17,7 +12,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
-import org.springframework.web.filter.OncePerRequestFilter;
+import top.yealike.pep.ops.config.properties.OpsProperties;
+import top.yealike.pep.ops.config.security.CurrentIdentityFilter;
+import top.yealike.pep.ops.config.security.ServiceTokenFilter;
 
 @Configuration
 @EnableMethodSecurity
@@ -30,7 +27,7 @@ public class SecurityConfig {
 
     @Bean
     SecurityFilterChain securityFilterChain(
-            HttpSecurity http, OpsProperties properties, top.yealike.pep.ops.access.IdentityService identities)
+            HttpSecurity http, OpsProperties properties, top.yealike.pep.ops.access.service.IdentityService identities)
             throws Exception {
         http
                 // 前端用 fetch 提交登录表单，不带 CSRF token；登录本身是凭据校验，不依赖 token
@@ -94,99 +91,5 @@ public class SecurityConfig {
         response.setStatus(status.value());
         response.setContentType("application/json;charset=UTF-8");
         response.getWriter().write(body);
-    }
-
-    /** Refresh authorization on every request; disabled users lose their session immediately. */
-    static final class CurrentIdentityFilter extends OncePerRequestFilter {
-        private final top.yealike.pep.ops.access.IdentityService identities;
-
-        CurrentIdentityFilter(top.yealike.pep.ops.access.IdentityService identities) {
-            this.identities = identities;
-        }
-
-        @Override
-        protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
-                throws ServletException, IOException {
-            if (request.getRequestURI().startsWith("/api/ops/users")
-                    && !"GET".equals(request.getMethod())
-                    && !"HEAD".equals(request.getMethod())
-                    && !"1".equals(request.getHeader("X-OPS-Client"))) {
-                response.sendError(HttpStatus.FORBIDDEN.value());
-                return;
-            }
-            var context = org.springframework.security.core.context.SecurityContextHolder.getContext();
-            var auth = context.getAuthentication();
-            if (auth != null
-                    && auth.isAuthenticated()
-                    && !(auth instanceof org.springframework.security.authentication.AnonymousAuthenticationToken)) {
-                var identity = identities
-                        .byUsername(auth.getName())
-                        .filter(top.yealike.pep.ops.access.IdentityService.Identity::enabled);
-                var currentSession = request.getSession(false);
-                Object version = currentSession == null ? null : currentSession.getAttribute("iam.authVersion");
-                if (identity.isEmpty()
-                        || !java.util.Objects.equals(version, identity.get().authVersion())) {
-                    context.setAuthentication(null);
-                    var session = request.getSession(false);
-                    if (session != null) session.invalidate();
-                    response.sendError(HttpStatus.UNAUTHORIZED.value());
-                    return;
-                }
-                var current = identity.get();
-                var principal = new top.yealike.pep.runtime.contract.UserIdentity(
-                        String.valueOf(current.id()),
-                        current.username(),
-                        current.roles(),
-                        current.permissions(),
-                        current.authVersion());
-                var updated = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(
-                        principal, null, current.authorities());
-                updated.setDetails(auth.getDetails());
-                context.setAuthentication(updated);
-            }
-            chain.doFilter(request, response);
-        }
-    }
-
-    /** 内部调用与模拟器只读接口使用服务令牌，不建立用户会话。 */
-    static final class ServiceTokenFilter extends OncePerRequestFilter {
-
-        private final OpsProperties properties;
-
-        ServiceTokenFilter(OpsProperties properties) {
-            this.properties = properties;
-        }
-
-        @Override
-        protected boolean shouldNotFilter(HttpServletRequest request) {
-            String uri = request.getRequestURI();
-            boolean internal = "/internal".equals(uri) || uri.startsWith("/internal/");
-            return !internal && !uri.startsWith("/api/ops/simulator/");
-        }
-
-        @Override
-        protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
-                throws ServletException, IOException {
-            String uri = request.getRequestURI();
-            boolean internal = "/internal".equals(uri) || uri.startsWith("/internal/");
-            String expected = internal ? properties.getServiceToken() : properties.getSimulatorToken();
-            String header = internal ? "X-Ops-Service-Token" : "X-Ops-Simulator-Token";
-            String provided = request.getHeader(header);
-            if (expected == null || expected.isBlank() || !constantTimeEquals(expected, provided)) {
-                response.setStatus(HttpStatus.UNAUTHORIZED.value());
-                response.setContentType("application/json;charset=UTF-8");
-                response.getWriter().write("{\"error\":\"SERVICE_TOKEN_INVALID\",\"message\":\"服务身份校验失败\"}");
-                return;
-            }
-            chain.doFilter(request, response);
-        }
-
-        private static boolean constantTimeEquals(String expected, String provided) {
-            if (provided == null) {
-                return false;
-            }
-            return MessageDigest.isEqual(
-                    expected.getBytes(StandardCharsets.UTF_8), provided.getBytes(StandardCharsets.UTF_8));
-        }
     }
 }

@@ -17,19 +17,25 @@ import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import top.yealike.pep.ops.charging.mapper.CommandRecordMapper;
-import top.yealike.pep.ops.devices.dto.DeviceDtos;
-import top.yealike.pep.ops.devices.entity.DeviceChannel;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
-import top.yealike.pep.ops.devices.entity.DevicePropertyLatest;
-import top.yealike.pep.ops.devices.entity.DeviceProtocolMapping;
-import top.yealike.pep.ops.devices.entity.Product;
+import top.yealike.pep.ops.devices.domain.DeviceChannel;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
+import top.yealike.pep.ops.devices.domain.DevicePropertyLatest;
+import top.yealike.pep.ops.devices.domain.DeviceProtocolMapping;
+import top.yealike.pep.ops.devices.domain.Product;
+import top.yealike.pep.ops.devices.dto.DeviceRow;
+import top.yealike.pep.ops.devices.dto.DeviceSave;
+import top.yealike.pep.ops.devices.dto.ProtocolMappingInput;
 import top.yealike.pep.ops.devices.mapper.DeviceChannelMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceEventLogMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
 import top.yealike.pep.ops.devices.mapper.DevicePropertyLatestMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper;
-import top.yealike.pep.ops.devices.thingmodel.ThingModel;
-import top.yealike.pep.ops.devices.thingmodel.ValueType;
+import top.yealike.pep.ops.devices.thingmodel.domain.EnumElement;
+import top.yealike.pep.ops.devices.thingmodel.domain.EnumType;
+import top.yealike.pep.ops.devices.thingmodel.domain.FloatType;
+import top.yealike.pep.ops.devices.thingmodel.domain.IntType;
+import top.yealike.pep.ops.devices.thingmodel.domain.PropertyMetadata;
+import top.yealike.pep.ops.devices.thingmodel.domain.ThingModel;
 
 class DeviceInstanceServiceTest {
 
@@ -48,7 +54,7 @@ class DeviceInstanceServiceTest {
         when(fixture.channels.findByDeviceIdAndChannelNo(88L, "02")).thenReturn(Optional.empty());
         when(fixture.channels.save(any(DeviceChannel.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        DeviceInstance created = fixture.service.create(new DeviceDtos.DeviceSave("10000008", "测试桩", 1L, true, null));
+        DeviceInstance created = fixture.service.create(new DeviceSave("10000008", "测试桩", 1L, true, null));
 
         assertEquals("10000008", created.deviceCode);
         assertEquals("YKC16", created.protocol);
@@ -70,7 +76,7 @@ class DeviceInstanceServiceTest {
 
         IllegalArgumentException error = assertThrows(
                 IllegalArgumentException.class,
-                () -> fixture.service.create(new DeviceDtos.DeviceSave("10000008", "测试桩", 1L, true, null)));
+                () -> fixture.service.create(new DeviceSave("10000008", "测试桩", 1L, true, null)));
 
         assertEquals("设备 SN 已存在: 10000008", error.getMessage());
         verify(fixture.devices, never()).save(any(DeviceInstance.class));
@@ -95,8 +101,8 @@ class DeviceInstanceServiceTest {
                 device,
                 product,
                 List.of(
-                        new DeviceDtos.ProtocolMappingInput("1", "CP-001", null, true),
-                        new DeviceDtos.ProtocolMappingInput("02", "CP-001", "7", true)));
+                        new ProtocolMappingInput("1", "CP-001", null, true),
+                        new ProtocolMappingInput("02", "CP-001", "7", true)));
 
         ArgumentCaptor<DeviceProtocolMapping> mappingCaptor = ArgumentCaptor.forClass(DeviceProtocolMapping.class);
         verify(fixture.mappings).save(mappingCaptor.capture());
@@ -115,7 +121,7 @@ class DeviceInstanceServiceTest {
                 () -> fixture.service.replaceMappings(
                         device,
                         product(1L, "OCPP16J", 2),
-                        List.of(new DeviceDtos.ProtocolMappingInput("01", "CP-001", "1", true))));
+                        List.of(new ProtocolMappingInput("01", "CP-001", "1", true))));
 
         assertEquals("配置第三方设备号时必须完整映射全部 2 把充电枪", error.getMessage());
         verify(fixture.mappings, never()).save(any(DeviceProtocolMapping.class));
@@ -131,7 +137,7 @@ class DeviceInstanceServiceTest {
                 () -> fixture.service.replaceMappings(
                         device,
                         product(1L, "OCPP16J", 1),
-                        List.of(new DeviceDtos.ProtocolMappingInput("01", "CP-001", "100", true))));
+                        List.of(new ProtocolMappingInput("01", "CP-001", "100", true))));
 
         assertEquals("第三方枪号必须为 1 至 99: 100", error.getMessage());
         verify(fixture.mappings, never()).save(any(DeviceProtocolMapping.class));
@@ -148,8 +154,8 @@ class DeviceInstanceServiceTest {
                         device,
                         product(1L, "OCPP16J", 2),
                         List.of(
-                                new DeviceDtos.ProtocolMappingInput("01", "CP-001", "1", true),
-                                new DeviceDtos.ProtocolMappingInput("02", "CP-001", "2", false))));
+                                new ProtocolMappingInput("01", "CP-001", "1", true),
+                                new ProtocolMappingInput("02", "CP-001", "2", false))));
 
         assertEquals("同一台充电桩的映射启用状态必须一致", error.getMessage());
         verify(fixture.mappings, never()).save(any(DeviceProtocolMapping.class));
@@ -164,15 +170,13 @@ class DeviceInstanceServiceTest {
         DeviceChannel secondGun = channel(10L, "02");
         ThingModel model = new ThingModel(
                 List.of(
-                        ThingModel.PropertyMetadata.channel(
+                        PropertyMetadata.channel(
                                 "gunState",
                                 "枪状态",
-                                new ValueType.EnumType(List.of(
-                                        new ValueType.EnumElement("idle", "空闲"),
-                                        new ValueType.EnumElement("charging", "充电中")))),
-                        ThingModel.PropertyMetadata.channel("soc", "电池 SOC", new ValueType.IntType(0L, 100L, "%")),
-                        ThingModel.PropertyMetadata.channel(
-                                "chargeEnergy", "本次电量", new ValueType.FloatType(0D, null, "kWh", 2))),
+                                new EnumType(
+                                        List.of(new EnumElement("idle", "空闲"), new EnumElement("charging", "充电中")))),
+                        PropertyMetadata.channel("soc", "电池 SOC", new IntType(0L, 100L, "%")),
+                        PropertyMetadata.channel("chargeEnergy", "本次电量", new FloatType(0D, null, "kWh", 2))),
                 List.of(),
                 List.of(),
                 List.of());
@@ -190,7 +194,7 @@ class DeviceInstanceServiceTest {
         when(fixture.mappings.selectByDeviceIds(any())).thenReturn(List.of());
         when(fixture.models.of(device)).thenReturn(model);
 
-        DeviceDtos.DeviceRow row = fixture.service.view(device);
+        DeviceRow row = fixture.service.view(device);
 
         assertEquals(
                 Map.of(

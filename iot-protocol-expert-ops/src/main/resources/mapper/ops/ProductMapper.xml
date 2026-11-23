@@ -4,7 +4,7 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="top.yealike.pep.ops.devices.mapper.ProductMapper">
 
-    <resultMap id="ProductMap" type="top.yealike.pep.ops.devices.entity.Product">
+    <resultMap id="ProductMap" type="top.yealike.pep.ops.devices.domain.Product">
         <id property="id" column="id"/>
         <result property="productCode" column="product_code"/>
         <result property="name" column="name"/>

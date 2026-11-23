@@ -4,7 +4,7 @@ import java.math.BigDecimal;
 import java.sql.Timestamp;
 import java.util.List;
 import org.apache.ibatis.annotations.Param;
-import top.yealike.pep.ops.telemetry.TdengineTelemetryStore;
+import top.yealike.pep.ops.telemetry.domain.TelemetrySample;
 
 public interface OrderTelemetryMapper {
 
@@ -23,11 +23,11 @@ public interface OrderTelemetryMapper {
 
     Boolean tryAdvisoryLock();
 
-    List<TdengineTelemetryStore.Sample> selectPendingSamples(@Param("limit") int limit);
+    List<TelemetrySample> selectPendingSamples(@Param("limit") int limit);
 
     int deleteOutboxById(@Param("id") long id);
 
-    default List<TdengineTelemetryStore.Sample> lockPendingSamples() {
+    default List<TelemetrySample> lockPendingSamples() {
         return selectPendingSamples(100);
     }
 }

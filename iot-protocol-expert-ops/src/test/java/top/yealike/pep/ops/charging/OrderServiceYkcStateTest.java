@@ -17,7 +17,7 @@ import top.yealike.pep.ops.charging.mapper.ChargeOrderMapper;
 import top.yealike.pep.ops.charging.mapper.OrderExternalReferenceMapper;
 import top.yealike.pep.ops.charging.service.ChargeBillingService;
 import top.yealike.pep.ops.charging.service.OrderService;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
 import top.yealike.pep.ops.devices.service.DeviceService;
 
 class OrderServiceYkcStateTest {

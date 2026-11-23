@@ -2,57 +2,44 @@ package top.yealike.pep.ops.api.admin;
 
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.web.bind.annotation.*;
-import top.yealike.pep.ops.api.dto.OpsDtos;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
+import top.yealike.pep.ops.charging.dto.OrderView;
 import top.yealike.pep.ops.charging.service.BillService;
 import top.yealike.pep.ops.charging.service.ChargeBillingService;
 import top.yealike.pep.ops.charging.service.OrderService;
+import top.yealike.pep.ops.support.page.PageResult;
+import top.yealike.pep.ops.telemetry.domain.TelemetryResult;
+import top.yealike.pep.ops.telemetry.service.OrderTelemetryService;
 
 @RestController
-@RequestMapping("/api/ops")
+@RequestMapping(path = "/api/ops", produces = "application/json")
 @Tag(name = "订单与账单", description = "充电订单、订单时序数据和账单查询")
+@SecurityRequirement(name = "sessionCookie")
 public class OrderController {
 
-    private final top.yealike.pep.ops.telemetry.OrderTelemetryService telemetry;
+    private final OrderTelemetryService telemetry;
     private final OrderService orders;
     private final BillService bills;
     private final ChargeBillingService billing;
 
     public OrderController(
-            OrderService orders,
-            BillService bills,
-            ChargeBillingService billing,
-            top.yealike.pep.ops.telemetry.OrderTelemetryService telemetry) {
+            OrderService orders, BillService bills, ChargeBillingService billing, OrderTelemetryService telemetry) {
         this.telemetry = telemetry;
         this.orders = orders;
         this.bills = bills;
         this.billing = billing;
     }
 
-    @GetMapping("/orders")
-    @Operation(summary = "查询充电订单")
-    public java.util.List<top.yealike.pep.ops.api.dto.OpsDtos.OrderView> orders(
-            @RequestParam(required = false) Long deviceId,
-            @RequestParam(required = false) String gunNo,
-            @RequestParam(required = false) String protocol,
-            @RequestParam(required = false) String orderNo,
-            @RequestParam(required = false) LocalDateTime from,
-            @RequestParam(required = false) LocalDateTime to,
-            @RequestParam(required = false) List<ChargeOrder.Status> status) {
-        return orders.search(deviceId, gunNo, protocol, orderNo, from, to, status).stream()
-                .map(orders::view)
-                .toList();
-    }
-
     @GetMapping("/orders/page")
-    @Operation(summary = "分页查询充电订单")
-    public top.yealike.pep.ops.support.page.PageResult<OpsDtos.OrderView> orderPage(
+    @Operation(operationId = "pageOrders", summary = "分页查询充电订单")
+    public PageResult<OrderView> orderPage(
             @RequestParam(required = false) Long deviceId,
             @RequestParam(required = false) String gunNo,
             @RequestParam(required = false) String protocol,
@@ -63,12 +50,11 @@ public class OrderController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         var result = orders.searchPage(deviceId, gunNo, protocol, orderNo, from, to, status, page, size);
-        return top.yealike.pep.ops.support.page.PageResult.of(
-                result.content(), result.page(), result.size(), result.total(), orders::view);
+        return PageResult.of(result.content(), result.page(), result.size(), result.total(), orders::view);
     }
 
     @GetMapping("/orders/{orderNo}")
-    @Operation(summary = "查询订单详情和账单")
+    @Operation(operationId = "getOrderDetail", summary = "查询订单详情和账单")
     public Map<String, Object> detail(@Parameter(description = "平台订单号") @PathVariable String orderNo) {
         ChargeOrder order = orders.require(orderNo);
         Map<String, Object> detail = new LinkedHashMap<>();
@@ -79,23 +65,8 @@ public class OrderController {
     }
 
     @GetMapping("/orders/{orderNo}/telemetry")
-    @Operation(summary = "查询订单遥测曲线")
-    public top.yealike.pep.ops.telemetry.OrderTelemetryService.Result telemetry(
-            @Parameter(description = "平台订单号") @PathVariable String orderNo) {
+    @Operation(operationId = "getOrderTelemetry", summary = "查询订单遥测曲线")
+    public TelemetryResult telemetry(@Parameter(description = "平台订单号") @PathVariable String orderNo) {
         return telemetry.query(orderNo);
-    }
-
-    @GetMapping("/bills")
-    @Operation(summary = "查询充电账单")
-    public List<OpsDtos.BillView> bills(
-            @RequestParam(required = false) Long deviceId,
-            @RequestParam(required = false) String protocol,
-            @RequestParam(required = false) String sourceTransactionNo,
-            @RequestParam(required = false) LocalDateTime from,
-            @RequestParam(required = false) LocalDateTime to,
-            @RequestParam(required = false) Boolean accepted) {
-        return bills.search(deviceId, protocol, sourceTransactionNo, from, to, accepted).stream()
-                .map(bills::view)
-                .toList();
     }
 }

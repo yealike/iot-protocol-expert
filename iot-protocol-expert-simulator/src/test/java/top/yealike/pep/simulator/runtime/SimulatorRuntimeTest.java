@@ -12,7 +12,12 @@ import org.junit.jupiter.api.io.TempDir;
 import top.yealike.pep.codec.*;
 import top.yealike.pep.codec.frames.*;
 import top.yealike.pep.codec.ocpp16.OcppMessageCodec;
-import top.yealike.pep.simulator.config.SimulatorProperties;
+import top.yealike.pep.simulator.config.properties.SimulatorProperties;
+import top.yealike.pep.simulator.domain.DeviceKey;
+import top.yealike.pep.simulator.integration.ops.OpsDeviceClient;
+import top.yealike.pep.simulator.integration.ops.dto.RateModel;
+import top.yealike.pep.simulator.integration.ops.dto.SimulatorConnector;
+import top.yealike.pep.simulator.integration.ops.dto.SimulatorDevice;
 
 class SimulatorRuntimeTest {
     @TempDir
@@ -328,7 +333,7 @@ class SimulatorRuntimeTest {
         start("01");
         runtime.configureClock(null, null, 64);
         runtime.stopLocal("01");
-        var key = new SimulatorStateStore.DeviceKey(null, "ykc16", props.getPileCode());
+        var key = new DeviceKey(null, "ykc16", props.getPileCode());
         var legacy = store.load(key).orElseThrow();
         legacy.remove("history.json");
         var bill = (OperationFrames.Transaction) ((List<?>) runtime.state().get("history")).getFirst();
@@ -365,7 +370,7 @@ class SimulatorRuntimeTest {
         config.setGunCount(1);
         var directory = org.mockito.Mockito.mock(OpsDeviceClient.class);
         org.mockito.Mockito.when(directory.get(5L))
-                .thenReturn(new OpsDeviceClient.SimulatorDevice(
+                .thenReturn(new SimulatorDevice(
                         5L, "10000005", "OCPP-A", "OCPP16J", "OCPP-CHARGER-A", 1, false, "OFFLINE", true, true));
         org.mockito.Mockito.when(directory.rates()).thenReturn(List.of(platformRate()));
         config.setOcppPort(1);
@@ -379,12 +384,12 @@ class SimulatorRuntimeTest {
             ocpp.onOcppTransactionStarted("01", 123, 1, new BigDecimal("1000"));
             ocpp.configureClock(null, null, 64);
             ocpp.stopLocal("01");
-            assertTrue(store.load(new SimulatorStateStore.DeviceKey(5L, "ocpp16j", "OCPP-CHARGER-A"))
-                    .isPresent());
+            assertTrue(
+                    store.load(new DeviceKey(5L, "ocpp16j", "OCPP-CHARGER-A")).isPresent());
             assertTrue(store.bills.values().stream().anyMatch(t -> t.pileCode().equals("OCPP-CHARGER-A")));
             assertEquals(1, ((List<?>) ocpp.state().get("pendingOcppStops")).size());
-            var durable = store.load(new SimulatorStateStore.DeviceKey(5L, "ocpp16j", "OCPP-CHARGER-A"))
-                    .orElseThrow();
+            var durable =
+                    store.load(new DeviceKey(5L, "ocpp16j", "OCPP-CHARGER-A")).orElseThrow();
             assertEquals("01", durable.getProperty("ocpp.stop.123.gunNo"));
             ocpp.selectDevice(5L, false);
             assertEquals(1, ((List<?>) ocpp.state().get("history")).size());
@@ -393,8 +398,8 @@ class SimulatorRuntimeTest {
             assertEquals(1, ((List<?>) ocpp.state().get("pendingOcppStops")).size());
             ocpp.onOcppStopAcknowledged(123);
             assertEquals(0, ((List<?>) ocpp.state().get("pendingOcppStops")).size());
-            var acknowledged = store.load(new SimulatorStateStore.DeviceKey(5L, "ocpp16j", "OCPP-CHARGER-A"))
-                    .orElseThrow();
+            var acknowledged =
+                    store.load(new DeviceKey(5L, "ocpp16j", "OCPP-CHARGER-A")).orElseThrow();
             assertNull(acknowledged.getProperty("ocpp.stop.123.gunNo"));
         } finally {
             ocpp.shutdown();
@@ -432,7 +437,7 @@ class SimulatorRuntimeTest {
         config.setStateFile(temp.resolve("mapped-ykc.properties").toString());
         var directory = org.mockito.Mockito.mock(OpsDeviceClient.class);
         org.mockito.Mockito.when(directory.get(9L))
-                .thenReturn(new OpsDeviceClient.SimulatorDevice(
+                .thenReturn(new SimulatorDevice(
                         9L,
                         "10000009",
                         "映射测试桩",
@@ -443,9 +448,7 @@ class SimulatorRuntimeTest {
                         "OFFLINE",
                         true,
                         true,
-                        List.of(
-                                new OpsDeviceClient.SimulatorConnector("1000000901", "3"),
-                                new OpsDeviceClient.SimulatorConnector("1000000902", "7"))));
+                        List.of(new SimulatorConnector("1000000901", "3"), new SimulatorConnector("1000000902", "7"))));
         org.mockito.Mockito.when(directory.rates()).thenReturn(List.of(platformRate()));
         var mapped = new SimulatorRuntime(
                 config,
@@ -522,7 +525,7 @@ class SimulatorRuntimeTest {
         config.setStateFile(temp.resolve("mapped-parallel.properties").toString());
         var directory = org.mockito.Mockito.mock(OpsDeviceClient.class);
         org.mockito.Mockito.when(directory.get(10L))
-                .thenReturn(new OpsDeviceClient.SimulatorDevice(
+                .thenReturn(new SimulatorDevice(
                         10L,
                         "10000010",
                         "并充映射测试桩",
@@ -533,9 +536,7 @@ class SimulatorRuntimeTest {
                         "OFFLINE",
                         true,
                         true,
-                        List.of(
-                                new OpsDeviceClient.SimulatorConnector("1000001001", "3"),
-                                new OpsDeviceClient.SimulatorConnector("1000001002", "7"))));
+                        List.of(new SimulatorConnector("1000001001", "3"), new SimulatorConnector("1000001002", "7"))));
         org.mockito.Mockito.when(directory.rates()).thenReturn(List.of(platformRate()));
         var mapped = new SimulatorRuntime(
                 config,
@@ -652,8 +653,8 @@ class SimulatorRuntimeTest {
                         org.mockito.ArgumentMatchers.anyList());
     }
 
-    private static OpsDeviceClient.RateModel platformRate() {
-        return new OpsDeviceClient.RateModel(
+    private static RateModel platformRate() {
+        return new RateModel(
                 "0001",
                 new BigDecimal("1.20000"),
                 new BigDecimal("0.40000"),

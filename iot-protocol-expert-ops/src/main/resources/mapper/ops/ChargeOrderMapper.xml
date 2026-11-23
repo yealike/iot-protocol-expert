@@ -34,7 +34,7 @@
         <result property="updatedAt" column="updated_at"/>
     </resultMap>
 
-    <resultMap id="OrderSummaryMap" type="top.yealike.pep.ops.charging.mapper.ChargeOrderMapper$OrderSummary">
+    <resultMap id="OrderSummaryMap" type="top.yealike.pep.ops.charging.domain.OrderSummary">
         <constructor>
             <arg column="c" javaType="_long"/>
             <arg column="e" javaType="java.math.BigDecimal"/>

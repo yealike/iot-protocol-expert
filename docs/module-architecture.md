@@ -77,6 +77,60 @@ Spring 配置绑定放 `config.properties`；Controller、Service、Store、Mapp
 目录与额度服务不直接暴露 mapper 行结构；HTTP 请求体集中在 `dto`，Spring 配置绑定集中在
 `config.properties`。`QuotaService.BucketAndAccount` 只服务单次额度计算，保留为 private 内部 record。
 
+### OPS 内部包
+
+`iot-protocol-expert-ops` 按“HTTP 适配、业务功能、存储适配、基础设施”分层；业务功能包内部再按
+`domain / dto / mapper / service` 归置，Controller 不再内嵌请求或响应 record。
+
+| 包 / 目录 | 职责 |
+| --- | --- |
+| `api.admin`、`api.admin.dto`、`api.internal`、`api.internal.dto`、`api.simulator`、`api.simulator.dto`、`api.dto` | 运营后台、内部服务与模拟器 HTTP 契约；只做参数转换和响应封装 |
+| `access`、`access.domain`、`access.mapper`、`access.service` | 用户身份、角色权限、会话校验与账号管理 |
+| `devices`、`devices.domain`、`devices.dto`、`devices.mapper`、`devices.service` | 设备档案、枪口、产品、第三方映射、协议文档与物模型 |
+| `devices.thingmodel`、`devices.thingmodel.domain` | 物模型编解码与值类型转换；`domain` 只放模型和值类型契约 |
+| `charging`、`charging.domain`、`charging.dto`、`charging.mapper`、`charging.service` | 订单、账单、费率模型与设备命令记录 |
+| `telemetry`、`telemetry.domain`、`telemetry.mapper`、`telemetry.service` | 订单时序写入 TDengine、outbox 补写与查询 |
+| `diagnostic`、`diagnostic.domain`、`diagnostic.mapper`、`diagnostic.service` | 报文解码、模型摘要与排障记录 |
+| `audit`、`audit.domain`、`audit.mapper`、`audit.service` | 审计日志 |
+| `config`、`config.properties`、`config.security`、`support.page` | Spring 配置绑定、安全过滤链与分页排序工具 |
+
+依赖方向固定为 `api -> 功能服务 -> mapper`；`domain` 是叶子包，只被服务和 mapper 引用，不反向依赖
+Service、Controller 或编解码器。OPS 的 OpenAPI 配置注册 `sessionCookie`、`opsServiceToken` 和
+`simulatorToken` 三个安全方案，分别用于浏览器会话、`/internal/**` 与 `/api/ops/simulator/**`。
+
+### Protocol Gateway 内部包
+
+`iot-protocol-expert-protocol-gateway` 按“接入协议、设备身份、命令编排、外部集成”分层，协议实现之间不共享
+会话状态。
+
+| 包 / 目录 | 职责 |
+| --- | --- |
+| `api`、`api.dto` | 协议目录、报文解码和内部命令 HTTP 契约 |
+| `protocol`、`protocol.ykc`、`protocol.ocpp16` | 协议服务器抽象、云快充 TCP 与 OCPP 1.6J WebSocket 接入 |
+| `device` | 设备身份注册、在线目录与设备快照 |
+| `command`、`command.dto` | 通道命令编排、超时控制与结果归一 |
+| `integration.ops`、`integration.ops.dto` | OPS 内部接口客户端与传输记录 |
+| `config`、`config.properties`、`support.dto` | 帧留存、运行参数绑定、OpenAPI 与统一错误响应 |
+
+`protocol.*` 不直接访问 OPS，设备和订单事实统一通过 `integration.ops` 回传；`command` 只依赖协议抽象，
+不感知具体 Netty Channel 或 WebSocket Session。
+
+### Simulator 内部包
+
+`iot-protocol-expert-simulator` 按“HTTP 入口、仿真运行时、外部集成、状态持久化”分层；设备状态机与 OCPP
+客户端集中在 `runtime`。
+
+| 包 / 目录 | 职责 |
+| --- | --- |
+| `api`、`api.dto` | 交互模拟、并发模拟、平台代理 HTTP 契约 |
+| `runtime` | 枪状态机、并发车队、OCPP WebSocket 客户端与待处理交易 |
+| `domain` | 协议枚举、枪状态、报文日志与设备键等纯数据模型 |
+| `integration.ops`、`integration.ops.dto` | OPS 设备目录、费率与命令客户端 |
+| `mapper`、`mapper/dto` | 仿真状态持久化与数据库行记录 |
+| `config`、`config.properties`、`support.dto` | 运行参数绑定、OpenAPI 与统一错误响应 |
+
+`runtime` 不依赖 `api`，HTTP 层只负责把请求翻译成运行时命令；需要访问 OPS 时统一走 `integration.ops`。
+
 ```mermaid
 flowchart LR
     Web -->|登录与运营 API| OPS

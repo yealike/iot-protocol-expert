@@ -7,6 +7,27 @@ import java.util.Map;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
+import top.yealike.pep.ops.devices.thingmodel.domain.ArrayType;
+import top.yealike.pep.ops.devices.thingmodel.domain.BoolType;
+import top.yealike.pep.ops.devices.thingmodel.domain.DateTimeType;
+import top.yealike.pep.ops.devices.thingmodel.domain.DateType;
+import top.yealike.pep.ops.devices.thingmodel.domain.DecimalType;
+import top.yealike.pep.ops.devices.thingmodel.domain.DoubleType;
+import top.yealike.pep.ops.devices.thingmodel.domain.EnumElement;
+import top.yealike.pep.ops.devices.thingmodel.domain.EnumType;
+import top.yealike.pep.ops.devices.thingmodel.domain.EventMetadata;
+import top.yealike.pep.ops.devices.thingmodel.domain.FloatType;
+import top.yealike.pep.ops.devices.thingmodel.domain.FunctionMetadata;
+import top.yealike.pep.ops.devices.thingmodel.domain.GeoType;
+import top.yealike.pep.ops.devices.thingmodel.domain.IntType;
+import top.yealike.pep.ops.devices.thingmodel.domain.LongType;
+import top.yealike.pep.ops.devices.thingmodel.domain.ObjectType;
+import top.yealike.pep.ops.devices.thingmodel.domain.PropertyMetadata;
+import top.yealike.pep.ops.devices.thingmodel.domain.StringType;
+import top.yealike.pep.ops.devices.thingmodel.domain.TagMetadata;
+import top.yealike.pep.ops.devices.thingmodel.domain.ThingModel;
+import top.yealike.pep.ops.devices.thingmodel.domain.UnknownType;
+import top.yealike.pep.ops.devices.thingmodel.domain.ValueType;
 
 /**
  * 物模型与 JSON 的显式互转。
@@ -60,16 +81,16 @@ public final class ThingModelCodec {
         return model;
     }
 
-    private static List<ThingModel.PropertyMetadata> parsePropertyList(Object raw) {
-        List<ThingModel.PropertyMetadata> result = new ArrayList<>();
+    private static List<PropertyMetadata> parsePropertyList(Object raw) {
+        List<PropertyMetadata> result = new ArrayList<>();
         for (Map<String, Object> item : mapList(raw)) {
             result.add(parseProperty(item));
         }
         return result;
     }
 
-    private static ThingModel.PropertyMetadata parseProperty(Map<String, Object> item) {
-        return new ThingModel.PropertyMetadata(
+    private static PropertyMetadata parseProperty(Map<String, Object> item) {
+        return new PropertyMetadata(
                 str(item.get("id")),
                 str(item.get("name")),
                 parseValueType(item.get("valueType")),
@@ -79,10 +100,10 @@ public final class ThingModelCodec {
                 map(item.get("expands")));
     }
 
-    private static List<ThingModel.FunctionMetadata> parseFunctionList(Object raw) {
-        List<ThingModel.FunctionMetadata> result = new ArrayList<>();
+    private static List<FunctionMetadata> parseFunctionList(Object raw) {
+        List<FunctionMetadata> result = new ArrayList<>();
         for (Map<String, Object> item : mapList(raw)) {
-            result.add(new ThingModel.FunctionMetadata(
+            result.add(new FunctionMetadata(
                     str(item.get("id")),
                     str(item.get("name")),
                     bool(item.get("async"), true),
@@ -93,10 +114,10 @@ public final class ThingModelCodec {
         return result;
     }
 
-    private static List<ThingModel.EventMetadata> parseEventList(Object raw) {
-        List<ThingModel.EventMetadata> result = new ArrayList<>();
+    private static List<EventMetadata> parseEventList(Object raw) {
+        List<EventMetadata> result = new ArrayList<>();
         for (Map<String, Object> item : mapList(raw)) {
-            result.add(new ThingModel.EventMetadata(
+            result.add(new EventMetadata(
                     str(item.get("id")),
                     str(item.get("name")),
                     str(item.get("level")),
@@ -106,10 +127,10 @@ public final class ThingModelCodec {
         return result;
     }
 
-    private static List<ThingModel.TagMetadata> parseTagList(Object raw) {
-        List<ThingModel.TagMetadata> result = new ArrayList<>();
+    private static List<TagMetadata> parseTagList(Object raw) {
+        List<TagMetadata> result = new ArrayList<>();
         for (Map<String, Object> item : mapList(raw)) {
-            result.add(new ThingModel.TagMetadata(
+            result.add(new TagMetadata(
                     str(item.get("id")),
                     str(item.get("name")),
                     parseValueType(item.get("valueType")),
@@ -121,51 +142,49 @@ public final class ThingModelCodec {
     public static ValueType parseValueType(Object raw) {
         Map<String, Object> map = map(raw);
         if (map.isEmpty()) {
-            return new ValueType.UnknownType("unknown");
+            return new UnknownType("unknown");
         }
         String type = str(map.get("type"));
         if (type == null) {
-            return new ValueType.UnknownType("unknown");
+            return new UnknownType("unknown");
         }
         return switch (type) {
-            case "int" ->
-                new ValueType.IntType(longOrNull(map.get("min")), longOrNull(map.get("max")), str(map.get("unit")));
-            case "long" ->
-                new ValueType.LongType(longOrNull(map.get("min")), longOrNull(map.get("max")), str(map.get("unit")));
+            case "int" -> new IntType(longOrNull(map.get("min")), longOrNull(map.get("max")), str(map.get("unit")));
+            case "long" -> new LongType(longOrNull(map.get("min")), longOrNull(map.get("max")), str(map.get("unit")));
             case "float" ->
-                new ValueType.FloatType(
+                new FloatType(
                         doubleOrNull(map.get("min")),
                         doubleOrNull(map.get("max")),
                         str(map.get("unit")),
                         intOrNull(map.get("scale")));
             case "double" ->
-                new ValueType.DoubleType(
+                new DoubleType(
                         doubleOrNull(map.get("min")),
                         doubleOrNull(map.get("max")),
                         str(map.get("unit")),
                         intOrNull(map.get("scale")));
             case "decimal" ->
-                new ValueType.DecimalType(
+                new DecimalType(
                         doubleOrNull(map.get("min")),
                         doubleOrNull(map.get("max")),
                         str(map.get("unit")),
                         intOrNull(map.get("scale")));
-            case "string" -> new ValueType.StringType(intOrNull(map.get("maxLength")));
-            case "bool", "boolean" -> new ValueType.BoolType();
-            case "date" -> new ValueType.DateType(str(map.get("format")));
-            case "dateTime", "datetime" -> new ValueType.DateTimeType(str(map.get("format")));
-            case "enum" -> new ValueType.EnumType(parseEnumElements(map.get("elements")));
-            case "object" -> new ValueType.ObjectType(parsePropertyList(map.get("properties")));
-            case "array" -> new ValueType.ArrayType(parseValueType(map.get("elementType")));
-            case "geo" -> new ValueType.GeoType();
-            default -> new ValueType.UnknownType(type);
+            case "string" -> new StringType(intOrNull(map.get("maxLength")));
+            case "bool", "boolean" -> new BoolType();
+            case "date" -> new DateType(str(map.get("format")));
+            case "dateTime", "datetime" -> new DateTimeType(str(map.get("format")));
+            case "enum" -> new EnumType(parseEnumElements(map.get("elements")));
+            case "object" -> new ObjectType(parsePropertyList(map.get("properties")));
+            case "array" -> new ArrayType(parseValueType(map.get("elementType")));
+            case "geo" -> new GeoType();
+            default -> new UnknownType(type);
         };
     }
 
-    private static List<ValueType.EnumElement> parseEnumElements(Object raw) {
-        List<ValueType.EnumElement> elements = new ArrayList<>();
+    private static List<EnumElement> parseEnumElements(Object raw) {
+        List<EnumElement> elements = new ArrayList<>();
         for (Map<String, Object> item : mapList(raw)) {
-            elements.add(new ValueType.EnumElement(str(item.get("value")), str(item.get("text"))));
+            elements.add(new EnumElement(str(item.get("value")), str(item.get("text"))));
         }
         return elements;
     }
@@ -202,7 +221,7 @@ public final class ThingModelCodec {
         }
     }
 
-    private static Map<String, Object> propertyToMap(ThingModel.PropertyMetadata property) {
+    private static Map<String, Object> propertyToMap(PropertyMetadata property) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("id", property.id());
         map.put("name", property.name());
@@ -220,7 +239,7 @@ public final class ThingModelCodec {
         return map;
     }
 
-    private static Map<String, Object> functionToMap(ThingModel.FunctionMetadata function) {
+    private static Map<String, Object> functionToMap(FunctionMetadata function) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("id", function.id());
         map.put("name", function.name());
@@ -234,7 +253,7 @@ public final class ThingModelCodec {
         return map;
     }
 
-    private static Map<String, Object> eventToMap(ThingModel.EventMetadata event) {
+    private static Map<String, Object> eventToMap(EventMetadata event) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("id", event.id());
         map.put("name", event.name());
@@ -243,7 +262,7 @@ public final class ThingModelCodec {
         return map;
     }
 
-    private static Map<String, Object> tagToMap(ThingModel.TagMetadata tag) {
+    private static Map<String, Object> tagToMap(TagMetadata tag) {
         Map<String, Object> map = new LinkedHashMap<>();
         map.put("id", tag.id());
         map.put("name", tag.name());
@@ -259,55 +278,55 @@ public final class ThingModelCodec {
         }
         map.put("type", type.typeId());
         switch (type) {
-            case ValueType.IntType t -> {
+            case IntType t -> {
                 putIfPresent(map, "min", t.min());
                 putIfPresent(map, "max", t.max());
                 putIfPresent(map, "unit", t.unit());
             }
-            case ValueType.LongType t -> {
+            case LongType t -> {
                 putIfPresent(map, "min", t.min());
                 putIfPresent(map, "max", t.max());
                 putIfPresent(map, "unit", t.unit());
             }
-            case ValueType.FloatType t -> {
-                putIfPresent(map, "min", t.min());
-                putIfPresent(map, "max", t.max());
-                putIfPresent(map, "unit", t.unit());
-                putIfPresent(map, "scale", t.scale());
-            }
-            case ValueType.DoubleType t -> {
+            case FloatType t -> {
                 putIfPresent(map, "min", t.min());
                 putIfPresent(map, "max", t.max());
                 putIfPresent(map, "unit", t.unit());
                 putIfPresent(map, "scale", t.scale());
             }
-            case ValueType.DecimalType t -> {
+            case DoubleType t -> {
                 putIfPresent(map, "min", t.min());
                 putIfPresent(map, "max", t.max());
                 putIfPresent(map, "unit", t.unit());
                 putIfPresent(map, "scale", t.scale());
             }
-            case ValueType.StringType t -> putIfPresent(map, "maxLength", t.maxLength());
-            case ValueType.DateType t -> putIfPresent(map, "format", t.format());
-            case ValueType.DateTimeType t -> putIfPresent(map, "format", t.format());
-            case ValueType.EnumType t -> map.put("elements", enumElementsToMap(t));
-            case ValueType.ObjectType t ->
+            case DecimalType t -> {
+                putIfPresent(map, "min", t.min());
+                putIfPresent(map, "max", t.max());
+                putIfPresent(map, "unit", t.unit());
+                putIfPresent(map, "scale", t.scale());
+            }
+            case StringType t -> putIfPresent(map, "maxLength", t.maxLength());
+            case DateType t -> putIfPresent(map, "format", t.format());
+            case DateTimeType t -> putIfPresent(map, "format", t.format());
+            case EnumType t -> map.put("elements", enumElementsToMap(t));
+            case ObjectType t ->
                 map.put(
                         "properties",
                         t.properties().stream()
                                 .map(ThingModelCodec::propertyToMap)
                                 .toList());
-            case ValueType.ArrayType t -> map.put("elementType", valueTypeToMap(t.elementType()));
-            case ValueType.BoolType ignored -> {}
-            case ValueType.GeoType ignored -> {}
-            case ValueType.UnknownType ignored -> {}
+            case ArrayType t -> map.put("elementType", valueTypeToMap(t.elementType()));
+            case BoolType ignored -> {}
+            case GeoType ignored -> {}
+            case UnknownType ignored -> {}
         }
         return map;
     }
 
-    private static List<Map<String, Object>> enumElementsToMap(ValueType.EnumType type) {
+    private static List<Map<String, Object>> enumElementsToMap(EnumType type) {
         List<Map<String, Object>> elements = new ArrayList<>();
-        for (ValueType.EnumElement element : type.elements()) {
+        for (EnumElement element : type.elements()) {
             Map<String, Object> item = new LinkedHashMap<>();
             item.put("value", element.value());
             item.put("text", element.text());

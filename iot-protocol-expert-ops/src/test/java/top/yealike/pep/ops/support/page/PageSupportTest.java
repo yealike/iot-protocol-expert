@@ -9,7 +9,7 @@ class PageSupportTest {
 
     @Test
     void placesNullTimestampsAfterRowsThatHaveReported() {
-        PageSupport.PageQuery paging = PageSupport.pageable(0, 20, "-lastSeen", Set.of("id", "lastSeen"));
+        PageQuery paging = PageSupport.pageable(0, 20, "-lastSeen", Set.of("id", "lastSeen"));
 
         assertEquals("last_seen DESC NULLS LAST", paging.orderBy());
     }

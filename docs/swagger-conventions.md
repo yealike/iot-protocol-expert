@@ -7,7 +7,8 @@
 
 - 类级使用 `@Tag(name, description)` 表达业务分组，一个 Controller 对应一个业务域。
 - 方法级使用 `@Operation(operationId, summary)`；只有行为不明显时才补 `description`。
-- 路径变量、查询参数和普通请求头不逐一手写 `@Parameter`。参数名、必填性、默认值和类型由 Springdoc 自动推导。
+- 路径变量、查询参数和普通请求头默认由 Springdoc 从方法签名推导；仅当名称无法表达业务含义时补
+  `@Parameter(description)`，不重复声明必填性、默认值和类型。
 - 过滤器注入的 `@RequestAttribute` 使用 `@Parameter(hidden = true)`，避免把内部认证对象暴露成公开参数。
 - 标准 Bearer 和固定服务令牌使用 `SecurityScheme` + 类级 `@SecurityRequirement`，不在每个方法重复请求头。
 - Runtime 的四个 HMAC 请求头由 `OpenApiConfig` 统一注入，Controller 不重复声明。

@@ -21,8 +21,8 @@ import org.springframework.jdbc.datasource.DataSourceTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import tools.jackson.databind.json.JsonMapper;
 import top.yealike.pep.codec.frames.OperationFrames;
+import top.yealike.pep.simulator.domain.DeviceKey;
 import top.yealike.pep.simulator.mapper.SimulatorStateMapper;
-import top.yealike.pep.simulator.runtime.SimulatorStateStore.DeviceKey;
 
 /** 显式提供测试数据库连接后执行 PostgreSQL 实测，仅清理本次测试创建的记录。 */
 @EnabledIfEnvironmentVariable(named = "IPE_SIMULATOR_TEST_DB_URL", matches = ".+")

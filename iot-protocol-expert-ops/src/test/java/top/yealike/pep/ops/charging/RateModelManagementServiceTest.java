@@ -17,8 +17,8 @@ import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
-import top.yealike.pep.ops.api.dto.OpsDtos;
 import top.yealike.pep.ops.charging.domain.RateModel;
+import top.yealike.pep.ops.charging.dto.RateModelView;
 import top.yealike.pep.ops.charging.mapper.RateModelMapper;
 import top.yealike.pep.ops.charging.service.RateModelService;
 
@@ -91,8 +91,8 @@ class RateModelManagementServiceTest {
     void rejectsSegmentsThatDoNotCoverExactlyFortyEightHalfHours() {
         RateModelMapper mapper = mock(RateModelMapper.class);
         RateModelService service = new RateModelService(mapper);
-        OpsDtos.RateModelView shortSchedule = input("0002", false, BigDecimal.ONE, 0, 47);
-        OpsDtos.RateModelView invalidPeriod = input("0002", false, BigDecimal.ONE, 0, 48, 4);
+        RateModelView shortSchedule = input("0002", false, BigDecimal.ONE, 0, 47);
+        RateModelView invalidPeriod = input("0002", false, BigDecimal.ONE, 0, 48, 4);
 
         assertThrows(IllegalArgumentException.class, () -> service.save(shortSchedule));
         assertThrows(IllegalArgumentException.class, () -> service.save(invalidPeriod));
@@ -146,16 +146,16 @@ class RateModelManagementServiceTest {
         return model;
     }
 
-    private static OpsDtos.RateModelView input(String modelNo, boolean active, BigDecimal energyPrice) {
+    private static RateModelView input(String modelNo, boolean active, BigDecimal energyPrice) {
         return input(modelNo, active, energyPrice, 0, 48);
     }
 
-    private static OpsDtos.RateModelView input(
+    private static RateModelView input(
             String modelNo, boolean active, BigDecimal energyPrice, int lossRatio, int segmentCount) {
         return input(modelNo, active, energyPrice, lossRatio, segmentCount, 2);
     }
 
-    private static OpsDtos.RateModelView input(
+    private static RateModelView input(
             String modelNo,
             boolean active,
             BigDecimal energyPrice,
@@ -166,7 +166,7 @@ class RateModelManagementServiceTest {
         if (!segments.isEmpty()) {
             segments.set(segments.size() - 1, lastSegmentValue);
         }
-        return new OpsDtos.RateModelView(
+        return new RateModelView(
                 modelNo,
                 energyPrice,
                 new BigDecimal("0.10000"),

@@ -10,13 +10,18 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.pep.ops.devices.dto.DeviceDtos;
-import top.yealike.pep.ops.devices.entity.Product;
+import top.yealike.pep.ops.devices.domain.Product;
+import top.yealike.pep.ops.devices.domain.ProtocolDocumentPolicy;
+import top.yealike.pep.ops.devices.domain.ProtocolDocumentRef;
+import top.yealike.pep.ops.devices.dto.ProductDetail;
+import top.yealike.pep.ops.devices.dto.ProductRow;
+import top.yealike.pep.ops.devices.dto.ProductSave;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
 import top.yealike.pep.ops.devices.mapper.ProductMapper;
 import top.yealike.pep.ops.devices.mapper.ProtocolDocumentMapper;
-import top.yealike.pep.ops.devices.thingmodel.ThingModel;
 import top.yealike.pep.ops.devices.thingmodel.ThingModelCodec;
+import top.yealike.pep.ops.devices.thingmodel.domain.ThingModel;
+import top.yealike.pep.ops.support.page.PageQuery;
 import top.yealike.pep.ops.support.page.PageResult;
 import top.yealike.pep.ops.support.page.PageSupport;
 
@@ -41,11 +46,10 @@ public class ProductService {
 
     private record CachedModel(String raw, ThingModel model) {}
 
-    public PageResult<DeviceDtos.ProductRow> query(
-            String keyword, String categoryCode, Integer page, Integer size, String sort) {
+    public PageResult<ProductRow> query(String keyword, String categoryCode, Integer page, Integer size, String sort) {
         String effectiveKeyword = keyword == null || keyword.isBlank() ? null : keyword.trim();
         String effectiveCategory = categoryCode == null || categoryCode.isBlank() ? null : categoryCode.trim();
-        PageSupport.PageQuery paging = PageSupport.pageable(page, size, sort, SORTABLE);
+        PageQuery paging = PageSupport.pageable(page, size, sort, SORTABLE);
         List<Product> content =
                 products.search(effectiveKeyword, effectiveCategory, paging.orderBy(), paging.size(), paging.offset());
         long total = products.countSearch(effectiveKeyword, effectiveCategory);
@@ -56,12 +60,12 @@ public class ProductService {
         return products.findAllById(ids);
     }
 
-    public Map<Long, ProtocolDocumentMapper.Ref> protocolDocuments(java.util.Collection<Long> productIds) {
+    public Map<Long, ProtocolDocumentRef> protocolDocuments(java.util.Collection<Long> productIds) {
         if (productIds.isEmpty()) {
             return Map.of();
         }
-        Map<Long, ProtocolDocumentMapper.Ref> result = new LinkedHashMap<>();
-        for (ProtocolDocumentMapper.Ref ref : protocolDocuments.selectProductRefs(productIds)) {
+        Map<Long, ProtocolDocumentRef> result = new LinkedHashMap<>();
+        for (ProtocolDocumentRef ref : protocolDocuments.selectProductRefs(productIds)) {
             result.put(ref.id(), ref);
         }
         return result;
@@ -71,7 +75,7 @@ public class ProductService {
         return products.count();
     }
 
-    public List<DeviceDtos.ProductRow> listAll() {
+    public List<ProductRow> listAll() {
         return products.findAll().stream().map(this::row).toList();
     }
 
@@ -87,14 +91,14 @@ public class ProductService {
         return products.findByProductCode(code);
     }
 
-    public DeviceDtos.ProductDetail detail(Long id) {
+    public ProductDetail detail(Long id) {
         Product product = get(id);
-        return new DeviceDtos.ProductDetail(
+        return new ProductDetail(
                 row(product), ThingModelCodec.toMap(model(product.id)), parseObject(product.configuration));
     }
 
     @Transactional
-    public Product save(DeviceDtos.ProductSave input) {
+    public Product save(ProductSave input) {
         if (input.name() == null || input.name().isBlank()) {
             throw new IllegalArgumentException("产品名称不能为空");
         }
@@ -110,7 +114,7 @@ public class ProductService {
         if (documentId == null) {
             throw new IllegalArgumentException("请选择协议文档");
         }
-        ProtocolDocumentMapper.Policy doc = protocolDocuments.selectPolicyForUpdate(documentId);
+        ProtocolDocumentPolicy doc = protocolDocuments.selectPolicyForUpdate(documentId);
         if (doc == null) {
             throw new IllegalArgumentException("协议文档不存在");
         }
@@ -215,11 +219,11 @@ public class ProductService {
         modelCache.remove(id);
     }
 
-    public DeviceDtos.ProductRow row(Product product) {
+    public ProductRow row(Product product) {
         ThingModel model = model(product.id);
-        ProtocolDocumentMapper.Ref doc =
+        ProtocolDocumentRef doc =
                 product.protocolDocumentId == null ? null : protocolDocuments.selectRef(product.protocolDocumentId);
-        return new DeviceDtos.ProductRow(
+        return new ProductRow(
                 product.id,
                 product.productCode,
                 product.name,
@@ -240,7 +244,7 @@ public class ProductService {
                 model.events().size());
     }
 
-    private static String protocolOf(ProtocolDocumentMapper.Policy doc) {
+    private static String protocolOf(ProtocolDocumentPolicy doc) {
         String english =
                 doc.protocolNameEn() == null ? "" : doc.protocolNameEn().trim();
         String version =

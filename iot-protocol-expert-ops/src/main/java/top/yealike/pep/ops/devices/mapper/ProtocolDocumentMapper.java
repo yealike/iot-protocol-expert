@@ -4,14 +4,11 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import org.apache.ibatis.annotations.Param;
+import top.yealike.pep.ops.devices.domain.ProtocolDocumentFileInfo;
+import top.yealike.pep.ops.devices.domain.ProtocolDocumentPolicy;
+import top.yealike.pep.ops.devices.domain.ProtocolDocumentRef;
 
 public interface ProtocolDocumentMapper {
-
-    record FileInfo(String storageKey, String originalFilename, String contentType) {}
-
-    record Policy(String protocolNameEn, String documentVersion, String status) {}
-
-    record Ref(Long id, String protocolCode, String protocolNameEn, String documentVersion) {}
 
     List<Map<String, Object>> selectActive(@Param("protocol") String protocol);
 
@@ -32,7 +29,7 @@ public interface ProtocolDocumentMapper {
             @Param("protocolNameEn") String protocolNameEn,
             @Param("documentVersion") String documentVersion);
 
-    FileInfo selectFileInfo(@Param("id") long id);
+    ProtocolDocumentFileInfo selectFileInfo(@Param("id") long id);
 
     Long selectActiveIdForUpdate(@Param("id") long id);
 
@@ -44,9 +41,9 @@ public interface ProtocolDocumentMapper {
 
     String selectActiveStorageKey(@Param("id") long id);
 
-    List<Ref> selectProductRefs(@Param("productIds") Collection<Long> productIds);
+    List<ProtocolDocumentRef> selectProductRefs(@Param("productIds") Collection<Long> productIds);
 
-    Policy selectPolicyForUpdate(@Param("id") Long id);
+    ProtocolDocumentPolicy selectPolicyForUpdate(@Param("id") Long id);
 
-    Ref selectRef(@Param("id") Long id);
+    ProtocolDocumentRef selectRef(@Param("id") Long id);
 }

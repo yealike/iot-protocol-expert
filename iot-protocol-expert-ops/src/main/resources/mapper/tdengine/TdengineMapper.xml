@@ -2,9 +2,9 @@
 <!DOCTYPE mapper
         PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
-<mapper namespace="top.yealike.pep.ops.telemetry.TdengineMapper">
+<mapper namespace="top.yealike.pep.ops.telemetry.mapper.TdengineMapper">
 
-    <resultMap id="TelemetryRowMap" type="top.yealike.pep.ops.telemetry.TdengineMapper$TelemetryRow">
+    <resultMap id="TelemetryRowMap" type="top.yealike.pep.ops.telemetry.domain.TelemetryRow">
         <constructor>
             <arg column="ts" javaType="java.sql.Timestamp"/>
             <arg column="time_source" javaType="java.lang.String"/>

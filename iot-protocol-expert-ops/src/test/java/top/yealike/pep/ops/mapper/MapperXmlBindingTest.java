@@ -34,8 +34,8 @@ import top.yealike.pep.ops.devices.mapper.ProtocolDocMapper;
 import top.yealike.pep.ops.devices.mapper.ProtocolDocSectionMapper;
 import top.yealike.pep.ops.devices.mapper.ProtocolDocumentMapper;
 import top.yealike.pep.ops.diagnostic.mapper.TroubleCaseMapper;
-import top.yealike.pep.ops.telemetry.TdengineMapper;
 import top.yealike.pep.ops.telemetry.mapper.OrderTelemetryMapper;
+import top.yealike.pep.ops.telemetry.mapper.TdengineMapper;
 
 class MapperXmlBindingTest {
 

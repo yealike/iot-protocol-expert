@@ -1,5 +1,9 @@
 package top.yealike.pep.ops.api.admin;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -20,10 +24,13 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
+import top.yealike.pep.ops.devices.domain.ProtocolDocumentFileInfo;
 import top.yealike.pep.ops.devices.mapper.ProtocolDocumentMapper;
 
 @RestController
 @RequestMapping("/api/ops/protocol-documents")
+@Tag(name = "协议文档", description = "协议文档上传、检索、预览下载与归档")
+@SecurityRequirement(name = "sessionCookie")
 public class ProtocolDocumentController {
     private static final long MAX_BYTES = 20L * 1024 * 1024;
     private final ProtocolDocumentMapper documents;
@@ -36,20 +43,23 @@ public class ProtocolDocumentController {
         this.root = Path.of(directory).toAbsolutePath().normalize();
     }
 
-    @GetMapping
-    public List<Map<String, Object>> list(@RequestParam(required = false) String protocol) {
+    @GetMapping(produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(operationId = "listProtocolDocuments", summary = "查询协议文档")
+    public List<Map<String, Object>> list(
+            @Parameter(description = "协议编码，留空查询全部") @RequestParam(required = false) String protocol) {
         return documents.selectActive(protocol == null ? "" : protocol);
     }
 
-    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE, produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ops:manage')")
     @Transactional
+    @Operation(operationId = "uploadProtocolDocument", summary = "上传协议文档")
     public Map<String, Object> upload(
-            @RequestParam String protocolCode,
-            @RequestParam String protocolNameEn,
-            @RequestParam String documentVersion,
-            @RequestParam String title,
-            @RequestParam MultipartFile file,
+            @Parameter(description = "协议编码") @RequestParam String protocolCode,
+            @Parameter(description = "协议英文名称") @RequestParam String protocolNameEn,
+            @Parameter(description = "文档版本") @RequestParam String documentVersion,
+            @Parameter(description = "文档标题") @RequestParam String title,
+            @Parameter(description = "PDF、Markdown 或文本文件，最大 20 MB") @RequestParam MultipartFile file,
             Principal principal)
             throws Exception {
         if (protocolCode == null
@@ -120,17 +130,21 @@ public class ProtocolDocumentController {
     }
 
     @GetMapping("/{id}/download")
-    public ResponseEntity<FileSystemResource> download(@PathVariable long id) throws IOException {
+    @Operation(operationId = "downloadProtocolDocument", summary = "下载协议文档")
+    public ResponseEntity<FileSystemResource> download(@Parameter(description = "文档 ID") @PathVariable long id)
+            throws IOException {
         return fileResponse(id, false);
     }
 
     @GetMapping("/{id}/view")
-    public ResponseEntity<FileSystemResource> view(@PathVariable long id) throws IOException {
+    @Operation(operationId = "viewProtocolDocument", summary = "预览协议文档")
+    public ResponseEntity<FileSystemResource> view(@Parameter(description = "文档 ID") @PathVariable long id)
+            throws IOException {
         return fileResponse(id, true);
     }
 
     private ResponseEntity<FileSystemResource> fileResponse(long id, boolean inline) throws IOException {
-        ProtocolDocumentMapper.FileInfo row = documents.selectFileInfo(id);
+        ProtocolDocumentFileInfo row = documents.selectFileInfo(id);
         if (row == null) throw new IllegalArgumentException("文档不存在");
         String key = row.storageKey();
         if (!key.matches("[0-9a-f-]{36}")) throw new IllegalArgumentException("文件标识无效");
@@ -153,10 +167,11 @@ public class ProtocolDocumentController {
                 .body(new FileSystemResource(path));
     }
 
-    @PostMapping("/{id}/archive")
+    @PostMapping(path = "/{id}/archive", produces = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ops:manage')")
     @Transactional
-    public void archive(@PathVariable long id) {
+    @Operation(operationId = "archiveProtocolDocument", summary = "归档协议文档")
+    public void archive(@Parameter(description = "文档 ID") @PathVariable long id) {
         if (documents.selectActiveIdForUpdate(id) == null) throw new IllegalArgumentException("文档不存在");
         long references = documents.countProductReferences(id);
         if (references > 0) throw new IllegalArgumentException("该文档已被产品引用，不能归档");

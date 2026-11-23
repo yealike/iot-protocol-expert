@@ -10,10 +10,15 @@ import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
-import top.yealike.pep.ops.api.dto.OpsDtos;
+import top.yealike.pep.ops.api.internal.dto.BillRequest;
+import top.yealike.pep.ops.api.internal.dto.YkcEnergySegment;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
 import top.yealike.pep.ops.charging.domain.ChargeOrderSegment;
+import top.yealike.pep.ops.charging.domain.FeeTotal;
 import top.yealike.pep.ops.charging.domain.RateModel;
+import top.yealike.pep.ops.charging.domain.RateSnapshot;
+import top.yealike.pep.ops.charging.domain.SegmentRate;
+import top.yealike.pep.ops.charging.domain.YkcBillCalculation;
 import top.yealike.pep.ops.charging.mapper.ChargeOrderMapper;
 import top.yealike.pep.ops.charging.mapper.ChargeOrderSegmentMapper;
 
@@ -41,21 +46,6 @@ public class ChargeBillingService {
         this.segments = segments;
         this.json = json;
     }
-
-    public record SegmentRate(int period, BigDecimal electricityPrice, BigDecimal servicePrice) {}
-
-    public record RateSnapshot(String modelNo, int lossRatio, List<Integer> timeSegments, List<SegmentRate> rates) {}
-
-    public record FeeTotal(
-            BigDecimal energy,
-            BigDecimal electricityFee,
-            BigDecimal serviceFee,
-            BigDecimal amount,
-            BigDecimal lossEnergy,
-            boolean partial,
-            String breakdown) {}
-
-    public record YkcBillCalculation(FeeTotal total, List<ChargeOrderSegment> segments) {}
 
     @Transactional
     public RateSnapshot currentSnapshot() {
@@ -132,7 +122,7 @@ public class ChargeBillingService {
     }
 
     @Transactional
-    public FeeTotal applyYkcBill(ChargeOrder order, OpsDtos.BillRequest request) {
+    public FeeTotal applyYkcBill(ChargeOrder order, BillRequest request) {
         RateSnapshot snapshot = parse(order.rateSnapshot);
         YkcBillCalculation calculation = calculateYkcBill(snapshot, request);
         List<ChargeOrderSegment> rows = calculation.segments();
@@ -146,14 +136,14 @@ public class ChargeBillingService {
     }
 
     /** 按给定费率快照计算 YKC 四段账单；不要求已存在平台订单，也不写入分段表。 */
-    public YkcBillCalculation calculateYkcBill(RateSnapshot snapshot, OpsDtos.BillRequest request) {
-        List<OpsDtos.YkcEnergySegment> incoming = request.segments() == null ? List.of() : request.segments();
+    public YkcBillCalculation calculateYkcBill(RateSnapshot snapshot, BillRequest request) {
+        List<YkcEnergySegment> incoming = request.segments() == null ? List.of() : request.segments();
         List<ChargeOrderSegment> rows = new ArrayList<>(PERIOD_COUNT);
         BigDecimal deviceTotal = zero(request.totalAmount());
         BigDecimal segmentLossTotal = BigDecimal.ZERO;
         for (int period = 0; period < PERIOD_COUNT; period++) {
             SegmentRate rate = rateAt(snapshot, period);
-            OpsDtos.YkcEnergySegment source = period < incoming.size() ? incoming.get(period) : null;
+            YkcEnergySegment source = period < incoming.size() ? incoming.get(period) : null;
             BigDecimal energy =
                     source == null ? BigDecimal.ZERO : zero(source.energy()).max(BigDecimal.ZERO);
             BigDecimal loss =
@@ -177,7 +167,7 @@ public class ChargeBillingService {
 
         BigDecimal estimatedTotal = BigDecimal.ZERO;
         for (int period = 0; period < PERIOD_COUNT; period++) {
-            OpsDtos.YkcEnergySegment source = period < incoming.size() ? incoming.get(period) : null;
+            YkcEnergySegment source = period < incoming.size() ? incoming.get(period) : null;
             ChargeOrderSegment row = rows.get(period);
             BigDecimal pricedEnergy = row.energy.add(row.lossEnergy);
             row.electricityFee = pricedEnergy.multiply(row.electricityPrice).setScale(4, ROUNDING);

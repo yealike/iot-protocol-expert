@@ -5,7 +5,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.apache.ibatis.annotations.Param;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
 
 public interface DeviceInstanceMapper {
 

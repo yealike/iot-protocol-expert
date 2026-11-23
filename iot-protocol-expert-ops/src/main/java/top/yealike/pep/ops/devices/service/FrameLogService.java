@@ -5,9 +5,9 @@ import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.pep.ops.api.dto.OpsDtos;
+import top.yealike.pep.ops.api.internal.dto.FrameRequest;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
 import top.yealike.pep.ops.devices.domain.FrameLog;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper;
 import top.yealike.pep.ops.devices.mapper.FrameLogMapper;
@@ -27,7 +27,7 @@ public class FrameLogService {
 
     /** 协议通道转交的原始报文与解析摘要。平台事务内留存，未知设备也保留协议侧编号。 */
     @Transactional
-    public FrameLog record(OpsDtos.FrameRequest request) {
+    public FrameLog record(FrameRequest request) {
         FrameLog frame = new FrameLog();
         frame.protocol = DeviceService.normalizeProtocol(request.protocol());
         frame.protocolDeviceId = request.protocolDeviceId();

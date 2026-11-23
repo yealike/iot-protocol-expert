@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import top.yealike.pep.ops.api.dto.OpsDtos;
+import top.yealike.pep.ops.charging.dto.RateModelView;
 import top.yealike.pep.ops.charging.mapper.RateModelMapper;
 import top.yealike.pep.ops.charging.service.RateModelService;
 
@@ -31,8 +31,8 @@ class RateModelServiceTest {
         verifyNoInteractions(mapper);
     }
 
-    private OpsDtos.RateModelView input(BigDecimal price, int loss, List<Integer> segments) {
-        return new OpsDtos.RateModelView(
+    private RateModelView input(BigDecimal price, int loss, List<Integer> segments) {
+        return new RateModelView(
                 "0001",
                 price,
                 BigDecimal.ONE,

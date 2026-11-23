@@ -8,15 +8,15 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
-import top.yealike.pep.ops.api.dto.OpsDtos;
-import top.yealike.pep.ops.audit.AuditService;
+import top.yealike.pep.ops.api.internal.dto.CommandResult;
+import top.yealike.pep.ops.audit.service.AuditService;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
 import top.yealike.pep.ops.charging.mapper.CommandRecordMapper;
 import top.yealike.pep.ops.charging.service.CommandService;
 import top.yealike.pep.ops.charging.service.OrderService;
-import top.yealike.pep.ops.config.OpsProperties;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
-import top.yealike.pep.ops.devices.entity.DeviceProtocolMapping;
+import top.yealike.pep.ops.config.properties.OpsProperties;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
+import top.yealike.pep.ops.devices.domain.DeviceProtocolMapping;
 import top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper;
 import top.yealike.pep.ops.devices.service.DeviceService;
 import top.yealike.pep.ops.devices.service.ProtocolClient;
@@ -30,7 +30,7 @@ class CommandServiceOcppStateTest {
         when(fixture.orders.create(eq(1L), eq("01"), eq(1), eq("card"), eq("tag"), eq("OCPP16J"), eq(true)))
                 .thenReturn(order);
         when(fixture.protocol.execute(any(), any()))
-                .thenReturn(new OpsDtos.CommandResult(true, "OCPP 远程启动已受理", Map.of("status", "Accepted")));
+                .thenReturn(new CommandResult(true, "OCPP 远程启动已受理", Map.of("status", "Accepted")));
 
         Map<String, Object> result = fixture.service.remoteStart(1L, "01", "tag", "card", "100", "test");
 
@@ -47,7 +47,7 @@ class CommandServiceOcppStateTest {
         when(fixture.orders.active(1L, "01")).thenReturn(order);
         when(fixture.orders.transactionNo(order)).thenReturn("7");
         when(fixture.protocol.execute(any(), any()))
-                .thenReturn(new OpsDtos.CommandResult(true, "OCPP 远程停机已受理", Map.of("status", "Accepted")));
+                .thenReturn(new CommandResult(true, "OCPP 远程停机已受理", Map.of("status", "Accepted")));
 
         Map<String, Object> result = fixture.service.remoteStop(1L, "01", "test");
 
@@ -75,8 +75,8 @@ class CommandServiceOcppStateTest {
         when(fixture.orders.create(eq(1L), eq("01"), eq(1), eq("card"), eq("IPE-APP"), eq("OCPP16J"), eq(true)))
                 .thenReturn(fixture.order);
         when(fixture.protocol.execute(any(), any()))
-                .thenReturn(new OpsDtos.CommandResult(
-                        true, "OCPP 远程启动已受理", Map.of("status", "Accepted", "outcome", "ACCEPTED")));
+                .thenReturn(
+                        new CommandResult(true, "OCPP 远程启动已受理", Map.of("status", "Accepted", "outcome", "ACCEPTED")));
 
         fixture.service.remoteStart(1L, "01", null, "card", "100", "test");
 
@@ -89,7 +89,7 @@ class CommandServiceOcppStateTest {
         when(fixture.orders.create(any(), any(), anyInt(), any(), any(), any(), anyBoolean()))
                 .thenReturn(fixture.order);
         when(fixture.protocol.execute(any(), any()))
-                .thenReturn(new OpsDtos.CommandResult(
+                .thenReturn(new CommandResult(
                         false, "设备拒绝远程启动: Rejected", Map.of("status", "Rejected", "outcome", "REJECTED")));
 
         Map<String, Object> result = fixture.service.remoteStart(1L, "01", "tag", "card", "100", "test");

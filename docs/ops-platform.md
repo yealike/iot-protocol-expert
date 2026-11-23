@@ -49,7 +49,6 @@
 | POST | `/internal/gun-states` | 枪状态 + 订单实时计量 |
 | GET | `/internal/rate-models/active` | 当前费率模型 |
 | GET | `/internal/rate-models/verify` | 费率模型一致性 |
-| GET | `/internal/rate-models/price` | 指定时刻单价（OCPP 估算） |
 | POST | `/internal/ocpp/boot` | BootNotification |
 | POST | `/internal/ocpp/heartbeat` | OCPP 心跳 |
 | POST | `/internal/ocpp/status` | StatusNotification |

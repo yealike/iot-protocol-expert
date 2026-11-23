@@ -14,19 +14,24 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.pep.ops.devices.dto.DeviceDtos;
-import top.yealike.pep.ops.devices.entity.DeviceChannel;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
-import top.yealike.pep.ops.devices.entity.DevicePropertyLatest;
-import top.yealike.pep.ops.devices.entity.DevicePropertyTs;
-import top.yealike.pep.ops.devices.entity.DeviceProtocolMapping;
+import top.yealike.pep.ops.devices.domain.DeviceChannel;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
+import top.yealike.pep.ops.devices.domain.DevicePropertyLatest;
+import top.yealike.pep.ops.devices.domain.DevicePropertyTs;
+import top.yealike.pep.ops.devices.domain.DeviceProtocolMapping;
+import top.yealike.pep.ops.devices.dto.ChannelView;
+import top.yealike.pep.ops.devices.dto.PropertyValue;
+import top.yealike.pep.ops.devices.dto.SeriesPoint;
+import top.yealike.pep.ops.devices.dto.SeriesView;
 import top.yealike.pep.ops.devices.mapper.DeviceChannelMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
 import top.yealike.pep.ops.devices.mapper.DevicePropertyLatestMapper;
 import top.yealike.pep.ops.devices.mapper.DevicePropertyTsMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper;
-import top.yealike.pep.ops.devices.thingmodel.ThingModel;
 import top.yealike.pep.ops.devices.thingmodel.ThingValues;
+import top.yealike.pep.ops.devices.thingmodel.domain.PropertyMetadata;
+import top.yealike.pep.ops.devices.thingmodel.domain.StoredValue;
+import top.yealike.pep.ops.devices.thingmodel.domain.ThingModel;
 
 /**
  * 属性服务：把协议通道送来的原始值翻译成「属性最新值 + 时序」。
@@ -178,12 +183,12 @@ public class DevicePropertyService {
         if (key.isEmpty()) {
             throw new IllegalArgumentException("属性 id 不能为空");
         }
-        ThingModel.PropertyMetadata metadata = model.property(key).orElse(null);
+        PropertyMetadata metadata = model.property(key).orElse(null);
         var type = metadata == null ? null : metadata.valueType();
         boolean channelScoped = channelNo != null && !channelNo.isBlank() && metadata != null && metadata.channel();
         String effectiveChannel = channelScoped ? channelNo : "";
 
-        ThingValues.StoredValue value = ThingValues.coerce(type, raw);
+        StoredValue value = ThingValues.coerce(type, raw);
 
         if (channelScoped) {
             ensureChannel(device, channelNo, metadata);
@@ -203,7 +208,7 @@ public class DevicePropertyService {
         return row;
     }
 
-    private void ensureChannel(DeviceInstance device, String channelNo, ThingModel.PropertyMetadata metadata) {
+    private void ensureChannel(DeviceInstance device, String channelNo, PropertyMetadata metadata) {
         if (channels.findByDeviceIdAndChannelNo(device.id, channelNo).isPresent()) {
             return;
         }
@@ -211,11 +216,7 @@ public class DevicePropertyService {
     }
 
     private void appendSeries(
-            Long deviceId,
-            String channelNo,
-            String propertyId,
-            ThingValues.StoredValue value,
-            LocalDateTime collectedAt) {
+            Long deviceId, String channelNo, String propertyId, StoredValue value, LocalDateTime collectedAt) {
         if (value.isNull()) {
             return;
         }
@@ -253,10 +254,10 @@ public class DevicePropertyService {
     }
 
     /** 平铺的属性视图，供详情页与 3D 标签使用。 */
-    public List<DeviceDtos.PropertyValue> propertyViews(DeviceInstance device, ThingModel model) {
+    public List<PropertyValue> propertyViews(DeviceInstance device, ThingModel model) {
         Map<String, DevicePropertyLatest> stored = latestMap(device.id);
-        List<DeviceDtos.PropertyValue> result = new ArrayList<>();
-        for (ThingModel.PropertyMetadata property : model.properties()) {
+        List<PropertyValue> result = new ArrayList<>();
+        for (PropertyMetadata property : model.properties()) {
             if (property.channel()) {
                 continue;
             }
@@ -275,17 +276,17 @@ public class DevicePropertyService {
     }
 
     /** 按通道分组的属性视图。通道来自 device_channel，属性来自物模型 + 已存值。 */
-    public List<DeviceDtos.ChannelView> channelViews(DeviceInstance device, ThingModel model) {
+    public List<ChannelView> channelViews(DeviceInstance device, ThingModel model) {
         Map<String, DevicePropertyLatest> stored = latestMap(device.id);
-        List<DeviceDtos.ChannelView> result = new ArrayList<>();
-        List<ThingModel.PropertyMetadata> channelProperties = model.channelProperties();
+        List<ChannelView> result = new ArrayList<>();
+        List<PropertyMetadata> channelProperties = model.channelProperties();
 
         for (DeviceChannel channel : channels.findByDeviceIdOrderByChannelNoAsc(device.id)) {
-            List<DeviceDtos.PropertyValue> values = new ArrayList<>();
-            for (ThingModel.PropertyMetadata property : channelProperties) {
+            List<PropertyValue> values = new ArrayList<>();
+            for (PropertyMetadata property : channelProperties) {
                 values.add(toView(property, stored.get(channel.channelNo + "|" + property.id())));
             }
-            result.add(new DeviceDtos.ChannelView(
+            result.add(new ChannelView(
                     channel.channelNo,
                     channel.platformGunNo,
                     channel.protocolConnectorNo,
@@ -301,18 +302,18 @@ public class DevicePropertyService {
             if (row.channelNo.isEmpty() || registered.contains(row.channelNo)) {
                 continue;
             }
-            List<DeviceDtos.PropertyValue> values = new ArrayList<>();
-            for (ThingModel.PropertyMetadata property : channelProperties) {
+            List<PropertyValue> values = new ArrayList<>();
+            for (PropertyMetadata property : channelProperties) {
                 values.add(toView(property, stored.get(row.channelNo + "|" + property.id())));
             }
-            result.add(new DeviceDtos.ChannelView(
+            result.add(new ChannelView(
                     row.channelNo, device.deviceCode + row.channelNo, null, row.channelNo, true, values));
             registered.add(row.channelNo);
         }
         return result;
     }
 
-    private DeviceDtos.PropertyValue toView(ThingModel.PropertyMetadata metadata, DevicePropertyLatest row) {
+    private PropertyValue toView(PropertyMetadata metadata, DevicePropertyLatest row) {
         String propertyId = metadata != null ? metadata.id() : (row == null ? "" : row.propertyId);
         String name = metadata != null && metadata.name() != null ? metadata.name() : propertyId;
         String valueType = metadata != null && metadata.valueType() != null
@@ -325,9 +326,9 @@ public class DevicePropertyService {
         boolean channelScoped = metadata != null && metadata.channel();
         String channelNo = row == null ? "" : row.channelNo;
 
-        ThingValues.StoredValue value = row == null
+        StoredValue value = row == null
                 ? null
-                : new ThingValues.StoredValue(row.valueType, row.valueNum, row.valueText, row.valueJson, row.valueTime);
+                : new StoredValue(row.valueType, row.valueNum, row.valueText, row.valueJson, row.valueTime);
         Object raw = null;
         if (row != null) {
             raw = row.valueNum != null ? row.valueNum : row.valueText != null ? row.valueText : row.valueJson;
@@ -335,31 +336,30 @@ public class DevicePropertyService {
         String display = ThingValues.format(metadata == null ? null : metadata.valueType(), value);
         String updatedAt = row == null || row.updatedAt == null ? null : row.updatedAt.format(TIME);
 
-        return new DeviceDtos.PropertyValue(
+        return new PropertyValue(
                 propertyId, name, channelNo, valueType, raw, display, unit, updatedAt, writable, channelScoped);
     }
 
-    public DeviceDtos.SeriesView series(
-            Long deviceId, String channelNo, String propertyId, LocalDateTime from, LocalDateTime to) {
+    public SeriesView series(Long deviceId, String channelNo, String propertyId, LocalDateTime from, LocalDateTime to) {
         DeviceInstance device =
                 devices.findById(deviceId).orElseThrow(() -> new IllegalArgumentException("设备不存在: " + deviceId));
         ThingModel model = models.of(device);
-        ThingModel.PropertyMetadata metadata = model.property(propertyId).orElse(null);
+        PropertyMetadata metadata = model.property(propertyId).orElse(null);
         LocalDateTime start = from == null ? LocalDateTime.now().minusHours(24) : from;
         LocalDateTime end = to == null ? LocalDateTime.now() : to;
 
-        List<DeviceDtos.SeriesPoint> points = new ArrayList<>();
+        List<SeriesPoint> points = new ArrayList<>();
         for (DevicePropertyTs row : series.findByDeviceIdAndPropertyIdAndCollectedAtBetweenOrderByCollectedAtAsc(
                 deviceId, propertyId, start, end)) {
             if (channelNo != null && !channelNo.isBlank() && !channelNo.equals(row.channelNo)) {
                 continue;
             }
-            points.add(new DeviceDtos.SeriesPoint(
+            points.add(new SeriesPoint(
                     row.collectedAt.format(TIME),
                     row.valueNum == null ? null : row.valueNum.doubleValue(),
                     row.valueText));
         }
-        return new DeviceDtos.SeriesView(
+        return new SeriesView(
                 deviceId,
                 propertyId,
                 channelNo,

@@ -16,9 +16,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import tools.jackson.databind.ObjectMapper;
-import top.yealike.pep.ops.api.dto.OpsDtos;
+import top.yealike.pep.ops.api.internal.dto.BillRequest;
+import top.yealike.pep.ops.api.internal.dto.YkcEnergySegment;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
 import top.yealike.pep.ops.charging.domain.ChargeOrderSegment;
+import top.yealike.pep.ops.charging.domain.FeeTotal;
 import top.yealike.pep.ops.charging.domain.RateModel;
 import top.yealike.pep.ops.charging.mapper.ChargeOrderMapper;
 import top.yealike.pep.ops.charging.mapper.ChargeOrderSegmentMapper;
@@ -38,7 +40,7 @@ class ChargeBillingServiceTest {
         ChargeOrderSegmentMapper segmentMapper = mock(ChargeOrderSegmentMapper.class);
         ChargeBillingService service = service(model, segmentMapper);
 
-        ChargeBillingService.FeeTotal total =
+        FeeTotal total =
                 service.applyOcppMeter(order, new BigDecimal("2.0000"), LocalDateTime.parse("2026-11-22T00:31:00"));
 
         ArgumentCaptor<List<ChargeOrderSegment>> captor = listCaptor();
@@ -84,9 +86,8 @@ class ChargeBillingServiceTest {
         ChargeBillingService service = service(model, segmentMapper);
 
         LocalDateTime firstSample = LocalDateTime.parse("2026-11-22T10:01:00");
-        ChargeBillingService.FeeTotal first = service.applyOcppMeter(order, new BigDecimal("2.0000"), firstSample);
-        ChargeBillingService.FeeTotal repeated =
-                service.applyOcppMeter(order, new BigDecimal("2.0000"), firstSample.plusMinutes(1));
+        FeeTotal first = service.applyOcppMeter(order, new BigDecimal("2.0000"), firstSample);
+        FeeTotal repeated = service.applyOcppMeter(order, new BigDecimal("2.0000"), firstSample.plusMinutes(1));
 
         assertEquals(0, first.lossEnergy().compareTo(new BigDecimal("0.2000")));
         assertEquals(0, repeated.lossEnergy().compareTo(new BigDecimal("0.2000")));
@@ -124,12 +125,12 @@ class ChargeBillingServiceTest {
         ChargeOrder order = order(model);
         ChargeOrderSegmentMapper segmentMapper = mock(ChargeOrderSegmentMapper.class);
         ChargeBillingService service = service(model, segmentMapper);
-        List<OpsDtos.YkcEnergySegment> input = new ArrayList<>();
+        List<YkcEnergySegment> input = new ArrayList<>();
         for (int period = 0; period < 4; period++) {
-            input.add(new OpsDtos.YkcEnergySegment(
+            input.add(new YkcEnergySegment(
                     new BigDecimal("1.00000"), BigDecimal.ONE, new BigDecimal("0.1000"), new BigDecimal("1.1000")));
         }
-        OpsDtos.BillRequest request = new OpsDtos.BillRequest(
+        BillRequest request = new BillRequest(
                 "YKC16",
                 "12345678",
                 "transaction",
@@ -147,7 +148,7 @@ class ChargeBillingServiceTest {
                 null,
                 null);
 
-        ChargeBillingService.FeeTotal total = service.applyYkcBill(order, request);
+        FeeTotal total = service.applyYkcBill(order, request);
 
         assertEquals(0, total.lossEnergy().compareTo(new BigDecimal("0.4000")));
         assertEquals(0, total.energy().compareTo(new BigDecimal("4.0000")));

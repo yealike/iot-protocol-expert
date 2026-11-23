@@ -4,8 +4,9 @@ import java.time.Duration;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
-import top.yealike.pep.ops.api.dto.OpsDtos;
-import top.yealike.pep.ops.config.OpsProperties;
+import top.yealike.pep.ops.api.internal.dto.CommandRequest;
+import top.yealike.pep.ops.api.internal.dto.CommandResult;
+import top.yealike.pep.ops.config.properties.OpsProperties;
 
 /** 运维平台到协议通道的内部调用。有限超时，失败时命令记录保留未知状态。 */
 @Component
@@ -19,15 +20,15 @@ public class ProtocolClient {
                 .build();
     }
 
-    public OpsDtos.CommandResult execute(OpsDtos.CommandRequest request, String serviceToken) {
-        OpsDtos.CommandResult result = client.post()
+    public CommandResult execute(CommandRequest request, String serviceToken) {
+        CommandResult result = client.post()
                 .uri("/internal/commands")
                 .header("X-Ops-Service-Token", serviceToken)
                 .contentType(MediaType.APPLICATION_JSON)
                 .body(request)
                 .retrieve()
-                .body(OpsDtos.CommandResult.class);
-        return result == null ? new OpsDtos.CommandResult(false, "协议通道未返回结果", java.util.Map.of()) : result;
+                .body(CommandResult.class);
+        return result == null ? new CommandResult(false, "协议通道未返回结果", java.util.Map.of()) : result;
     }
 
     private static org.springframework.http.client.ClientHttpRequestFactory requestFactory(int timeoutMs) {

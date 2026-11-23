@@ -1,5 +1,9 @@
 package top.yealike.pep.ops.api.internal;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import org.springframework.http.HttpStatus;
@@ -10,13 +14,16 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-import top.yealike.pep.ops.access.IdentityService;
+import top.yealike.pep.ops.access.domain.Identity;
+import top.yealike.pep.ops.access.service.IdentityService;
 
 /**
  * AI Control 专用的基础身份通道。只允许持有服务令牌的内部调用，不进入模型工具目录。
  */
 @RestController
 @RequestMapping(path = "/internal/ai/v1/identity", produces = "application/json")
+@Tag(name = "内部身份", description = "AI Control 校验 OPS 会话与账号主体")
+@SecurityRequirement(name = "opsServiceToken")
 public class OpsIdentityController {
 
     private final OpsSessionLookup sessions;
@@ -28,6 +35,7 @@ public class OpsIdentityController {
     }
 
     @PostMapping(path = "/session", consumes = "application/json")
+    @Operation(operationId = "internalResolveSession", summary = "校验会话 Cookie")
     public Map<String, Object> session(@RequestBody Map<String, Object> body) {
         String cookie = body == null ? null : String.valueOf(body.getOrDefault("cookie", ""));
         String sessionId = sessionId(cookie);
@@ -42,10 +50,11 @@ public class OpsIdentityController {
     }
 
     @GetMapping("/actors/{id}")
-    public Map<String, Object> actor(@PathVariable long id) {
-        IdentityService.Identity identity = identities
+    @Operation(operationId = "internalGetActor", summary = "查询账号主体")
+    public Map<String, Object> actor(@Parameter(description = "用户 ID") @PathVariable long id) {
+        Identity identity = identities
                 .byId(id)
-                .filter(IdentityService.Identity::enabled)
+                .filter(Identity::enabled)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "账号不可用"));
         return describe(identity);
     }
@@ -55,14 +64,14 @@ public class OpsIdentityController {
         if (!(id instanceof Number number)) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "身份信息不完整");
         }
-        IdentityService.Identity identity = identities
+        Identity identity = identities
                 .byId(number.longValue())
-                .filter(IdentityService.Identity::enabled)
+                .filter(Identity::enabled)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED, "账号不可用"));
         return describe(identity);
     }
 
-    private Map<String, Object> describe(IdentityService.Identity identity) {
+    private Map<String, Object> describe(Identity identity) {
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("authenticated", true);
         data.put("id", identity.id());

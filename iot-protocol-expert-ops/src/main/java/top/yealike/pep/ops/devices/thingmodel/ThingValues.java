@@ -5,6 +5,22 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import top.yealike.pep.ops.devices.thingmodel.domain.ArrayType;
+import top.yealike.pep.ops.devices.thingmodel.domain.BoolType;
+import top.yealike.pep.ops.devices.thingmodel.domain.DateTimeType;
+import top.yealike.pep.ops.devices.thingmodel.domain.DateType;
+import top.yealike.pep.ops.devices.thingmodel.domain.DecimalType;
+import top.yealike.pep.ops.devices.thingmodel.domain.DoubleType;
+import top.yealike.pep.ops.devices.thingmodel.domain.EnumType;
+import top.yealike.pep.ops.devices.thingmodel.domain.FloatType;
+import top.yealike.pep.ops.devices.thingmodel.domain.GeoType;
+import top.yealike.pep.ops.devices.thingmodel.domain.IntType;
+import top.yealike.pep.ops.devices.thingmodel.domain.LongType;
+import top.yealike.pep.ops.devices.thingmodel.domain.ObjectType;
+import top.yealike.pep.ops.devices.thingmodel.domain.StoredValue;
+import top.yealike.pep.ops.devices.thingmodel.domain.StringType;
+import top.yealike.pep.ops.devices.thingmodel.domain.UnknownType;
+import top.yealike.pep.ops.devices.thingmodel.domain.ValueType;
 
 /**
  * 属性值的强制转换、范围校验与比较。
@@ -16,22 +32,6 @@ public final class ThingValues {
 
     private ThingValues() {}
 
-    /** 归一化后的属性值。四个列互斥，只有与类型对应的一列有值。 */
-    public record StoredValue(String valueType, BigDecimal num, String text, String json, LocalDateTime time) {
-
-        public boolean isNull() {
-            return num == null && text == null && json == null && time == null;
-        }
-
-        public static StoredValue ofText(String type, String text) {
-            return new StoredValue(type, null, text, null, null);
-        }
-
-        public static StoredValue ofNum(String type, BigDecimal value) {
-            return new StoredValue(type, value, null, null, null);
-        }
-    }
-
     /**
      * 把原始值转成可入库的列值。
      *
@@ -42,48 +42,43 @@ public final class ThingValues {
             return new StoredValue(type == null ? "unknown" : type.typeId(), null, null, null, null);
         }
         if (type == null) {
-            type = new ValueType.UnknownType("unknown");
+            type = new UnknownType("unknown");
         }
         String typeId = type.typeId();
 
         return switch (type) {
-            case ValueType.IntType t -> StoredValue.ofNum(typeId, checkRange(t.min(), t.max(), toDecimal(raw, typeId)));
-            case ValueType.LongType t ->
-                StoredValue.ofNum(typeId, checkRange(t.min(), t.max(), toDecimal(raw, typeId)));
-            case ValueType.FloatType t ->
-                StoredValue.ofNum(typeId, checkRange(t.min(), t.max(), toDecimal(raw, typeId)));
-            case ValueType.DoubleType t ->
-                StoredValue.ofNum(typeId, checkRange(t.min(), t.max(), toDecimal(raw, typeId)));
-            case ValueType.DecimalType t ->
-                StoredValue.ofNum(typeId, checkRange(t.min(), t.max(), toDecimal(raw, typeId)));
-            case ValueType.BoolType ignored ->
-                StoredValue.ofNum(typeId, toBool(raw) ? BigDecimal.ONE : BigDecimal.ZERO);
-            case ValueType.StringType t -> {
+            case IntType t -> StoredValue.ofNum(typeId, checkRange(t.min(), t.max(), toDecimal(raw, typeId)));
+            case LongType t -> StoredValue.ofNum(typeId, checkRange(t.min(), t.max(), toDecimal(raw, typeId)));
+            case FloatType t -> StoredValue.ofNum(typeId, checkRange(t.min(), t.max(), toDecimal(raw, typeId)));
+            case DoubleType t -> StoredValue.ofNum(typeId, checkRange(t.min(), t.max(), toDecimal(raw, typeId)));
+            case DecimalType t -> StoredValue.ofNum(typeId, checkRange(t.min(), t.max(), toDecimal(raw, typeId)));
+            case BoolType ignored -> StoredValue.ofNum(typeId, toBool(raw) ? BigDecimal.ONE : BigDecimal.ZERO);
+            case StringType t -> {
                 String text = String.valueOf(raw);
                 if (t.maxLength() != null && text.length() > t.maxLength()) {
                     throw new IllegalArgumentException("字符串超出最大长度 " + t.maxLength() + ": " + text);
                 }
                 yield StoredValue.ofText(typeId, text);
             }
-            case ValueType.EnumType t -> {
+            case EnumType t -> {
                 String text = String.valueOf(raw);
                 if (!t.elements().isEmpty() && !t.accepts(text)) {
                     throw new IllegalArgumentException("枚举值不在定义范围: " + text);
                 }
                 yield StoredValue.ofText(typeId, text);
             }
-            case ValueType.DateType t ->
+            case DateType t ->
                 new StoredValue(
                         typeId,
                         null,
                         null,
                         null,
                         toDateTime(raw, t.format()).toLocalDate().atStartOfDay());
-            case ValueType.DateTimeType t -> new StoredValue(typeId, null, null, null, toDateTime(raw, t.format()));
-            case ValueType.ObjectType ignored -> new StoredValue(typeId, null, null, toJson(raw), null);
-            case ValueType.ArrayType ignored -> new StoredValue(typeId, null, null, toJson(raw), null);
-            case ValueType.GeoType ignored -> new StoredValue(typeId, null, null, toJson(raw), null);
-            case ValueType.UnknownType ignored -> StoredValue.ofText(typeId, String.valueOf(raw));
+            case DateTimeType t -> new StoredValue(typeId, null, null, null, toDateTime(raw, t.format()));
+            case ObjectType ignored -> new StoredValue(typeId, null, null, toJson(raw), null);
+            case ArrayType ignored -> new StoredValue(typeId, null, null, toJson(raw), null);
+            case GeoType ignored -> new StoredValue(typeId, null, null, toJson(raw), null);
+            case UnknownType ignored -> StoredValue.ofText(typeId, String.valueOf(raw));
         };
     }
 
@@ -196,24 +191,24 @@ public final class ThingValues {
                     : value.text() != null ? value.text() : value.json();
         }
         return switch (type) {
-            case ValueType.IntType ignored ->
+            case IntType ignored ->
                 value.num() == null ? null : value.num().stripTrailingZeros().toPlainString();
-            case ValueType.LongType ignored ->
+            case LongType ignored ->
                 value.num() == null ? null : value.num().stripTrailingZeros().toPlainString();
-            case ValueType.FloatType t -> scaleOf(value.num(), t.scale());
-            case ValueType.DoubleType t -> scaleOf(value.num(), t.scale());
-            case ValueType.DecimalType t -> scaleOf(value.num(), t.scale());
-            case ValueType.BoolType ignored -> Boolean.TRUE.equals(toBool(value.num())) ? "是" : "否";
-            case ValueType.EnumType t -> value.text() == null ? null : t.textOf(value.text());
-            case ValueType.DateType ignored ->
+            case FloatType t -> scaleOf(value.num(), t.scale());
+            case DoubleType t -> scaleOf(value.num(), t.scale());
+            case DecimalType t -> scaleOf(value.num(), t.scale());
+            case BoolType ignored -> Boolean.TRUE.equals(toBool(value.num())) ? "是" : "否";
+            case EnumType t -> value.text() == null ? null : t.textOf(value.text());
+            case DateType ignored ->
                 value.time() == null ? null : value.time().toLocalDate().toString();
-            case ValueType.DateTimeType ignored ->
+            case DateTimeType ignored ->
                 value.time() == null ? null : value.time().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-            case ValueType.StringType ignored -> value.text();
-            case ValueType.ObjectType ignored -> value.json();
-            case ValueType.ArrayType ignored -> value.json();
-            case ValueType.GeoType ignored -> value.json();
-            case ValueType.UnknownType ignored -> value.text() != null ? value.text() : value.json();
+            case StringType ignored -> value.text();
+            case ObjectType ignored -> value.json();
+            case ArrayType ignored -> value.json();
+            case GeoType ignored -> value.json();
+            case UnknownType ignored -> value.text() != null ? value.text() : value.json();
         };
     }
 

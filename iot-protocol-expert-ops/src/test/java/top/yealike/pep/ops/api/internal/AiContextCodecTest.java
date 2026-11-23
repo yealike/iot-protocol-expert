@@ -18,7 +18,7 @@ import javax.crypto.spec.GCMParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.json.JsonMapper;
-import top.yealike.pep.ops.config.OpsProperties;
+import top.yealike.pep.ops.config.properties.OpsProperties;
 
 class AiContextCodecTest {
 
@@ -33,8 +33,7 @@ class AiContextCodecTest {
         String encoded = seal(OPERATION, BASE.getEpochSecond() + 30);
 
         assertThat(codec.decode(OPERATION, encoded).actor()).isEqualTo("42");
-        assertThatThrownBy(() -> codec.decode(OPERATION, encoded))
-                .isInstanceOf(AiContextCodec.ContextAlreadyConsumedException.class);
+        assertThatThrownBy(() -> codec.decode(OPERATION, encoded)).isInstanceOf(AiContextConsumedException.class);
     }
 
     @Test

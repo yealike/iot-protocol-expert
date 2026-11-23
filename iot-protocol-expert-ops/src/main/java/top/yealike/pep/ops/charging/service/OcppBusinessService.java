@@ -8,9 +8,18 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.pep.ops.api.dto.OpsDtos;
+import top.yealike.pep.ops.api.internal.dto.AuthorizeResult;
+import top.yealike.pep.ops.api.internal.dto.DeviceView;
+import top.yealike.pep.ops.api.internal.dto.LoginRequest;
+import top.yealike.pep.ops.api.internal.dto.MeterValuesRequest;
+import top.yealike.pep.ops.api.internal.dto.StartTransactionRequest;
+import top.yealike.pep.ops.api.internal.dto.StartTransactionResult;
+import top.yealike.pep.ops.api.internal.dto.StatusRequest;
+import top.yealike.pep.ops.api.internal.dto.StopTransactionRequest;
+import top.yealike.pep.ops.api.internal.dto.StopTransactionResult;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
+import top.yealike.pep.ops.charging.domain.FeeTotal;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
 import top.yealike.pep.ops.devices.service.ChargerConnectorMapper;
 import top.yealike.pep.ops.devices.service.DevicePropertyService;
 import top.yealike.pep.ops.devices.service.DeviceService;
@@ -22,7 +31,7 @@ public class OcppBusinessService {
     private static final Logger log = LoggerFactory.getLogger(OcppBusinessService.class);
     private static final BigDecimal THOUSAND = new BigDecimal("1000");
 
-    private final top.yealike.pep.ops.telemetry.OrderTelemetryService telemetry;
+    private final top.yealike.pep.ops.telemetry.service.OrderTelemetryService telemetry;
     private final DeviceService devices;
     private final OrderService orders;
     private final DevicePropertyService properties;
@@ -30,7 +39,7 @@ public class OcppBusinessService {
     private final ChargeBillingService billing;
 
     public OcppBusinessService(
-            top.yealike.pep.ops.telemetry.OrderTelemetryService telemetry,
+            top.yealike.pep.ops.telemetry.service.OrderTelemetryService telemetry,
             DeviceService devices,
             OrderService orders,
             DevicePropertyService properties,
@@ -45,7 +54,7 @@ public class OcppBusinessService {
     }
 
     @Transactional
-    public OpsDtos.DeviceView boot(OpsDtos.LoginRequest request) {
+    public DeviceView boot(LoginRequest request) {
         DeviceInstance device = devices.bootOcpp(request);
         // OCPP 连接建立后由设备 Load/StatusNotification 报告枪状态，这里只初始化枪行。
         return devices.view(device);
@@ -57,7 +66,7 @@ public class OcppBusinessService {
     }
 
     @Transactional
-    public void status(OpsDtos.StatusRequest request) {
+    public void status(StatusRequest request) {
         DeviceInstance device = devices.resolve("OCPP16J", request.protocolDeviceId());
         devices.touch("OCPP16J", request.protocolDeviceId());
         if (request.connectorId() <= 0) {
@@ -95,18 +104,18 @@ public class OcppBusinessService {
         }
     }
 
-    public OpsDtos.AuthorizeResult authorize(String idTag) {
+    public AuthorizeResult authorize(String idTag) {
         if (idTag == null || idTag.isBlank()) {
             throw new IllegalArgumentException("idTag 不能为空");
         }
-        return new OpsDtos.AuthorizeResult("Accepted");
+        return new AuthorizeResult("Accepted");
     }
 
     @Transactional
-    public OpsDtos.StartTransactionResult startTransaction(OpsDtos.StartTransactionRequest request) {
+    public StartTransactionResult startTransaction(StartTransactionRequest request) {
         DeviceInstance device = devices.resolve("OCPP16J", request.protocolDeviceId());
         if (request.idTag() == null || request.idTag().isBlank()) {
-            return new OpsDtos.StartTransactionResult(false, null, null, "PropertyConstraintViolation", "idTag 不能为空");
+            return new StartTransactionResult(false, null, null, "PropertyConstraintViolation", "idTag 不能为空");
         }
         validateConnector(device, request.connectorId());
         String gunNo = String.format("%02d", request.connectorId());
@@ -116,21 +125,19 @@ public class OcppBusinessService {
         } else {
             order = orders.lockByOrderNo(order.orderNo);
             if (order == null) {
-                return new OpsDtos.StartTransactionResult(
-                        false, null, null, "OccurrenceConstraintViolation", "待启动订单已不存在");
+                return new StartTransactionResult(false, null, null, "OccurrenceConstraintViolation", "待启动订单已不存在");
             }
             if (!"OCPP16J".equals(order.protocol)) {
-                return new OpsDtos.StartTransactionResult(
+                return new StartTransactionResult(
                         false, null, null, "OccurrenceConstraintViolation", "枪 " + gunNo + " 存在其它协议的进行中订单");
             }
             if (order.status != ChargeOrder.Status.PENDING && order.status != ChargeOrder.Status.CHARGING) {
-                return new OpsDtos.StartTransactionResult(
+                return new StartTransactionResult(
                         false, null, null, "OccurrenceConstraintViolation", "订单状态不允许启动: " + order.status);
             }
         }
         if (!matchesIdTag(order, request.idTag())) {
-            return new OpsDtos.StartTransactionResult(
-                    false, null, null, "OccurrenceConstraintViolation", "idTag 与待启动订单不一致");
+            return new StartTransactionResult(false, null, null, "OccurrenceConstraintViolation", "idTag 与待启动订单不一致");
         }
         int transactionId = orders.bindOcppTransactionId(order.orderNo, request.meterStart());
         orders.markCharging(order.orderNo, request.startedAt());
@@ -141,11 +148,11 @@ public class OcppBusinessService {
                         3, 1, null, null, null, BigDecimal.ZERO, BigDecimal.ZERO, order.orderNo),
                 null);
         log.info("OCPP 设备 {} 枪 {} 开始交易 {}（整数交易号 {}）", device.deviceCode, gunNo, order.orderNo, transactionId);
-        return new OpsDtos.StartTransactionResult(true, order.orderNo, transactionId, null, null);
+        return new StartTransactionResult(true, order.orderNo, transactionId, null, null);
     }
 
     @Transactional
-    public void meterValues(OpsDtos.MeterValuesRequest request) {
+    public void meterValues(MeterValuesRequest request) {
         DeviceInstance device = devices.resolve("OCPP16J", request.protocolDeviceId());
         if (request.connectorId() <= 0) return;
         String gunNo = String.format("%02d", request.connectorId());
@@ -186,7 +193,7 @@ public class OcppBusinessService {
                         .subtract(meterStart)
                         .max(BigDecimal.ZERO)
                         .divide(THOUSAND, 4, RoundingMode.HALF_UP);
-        ChargeBillingService.FeeTotal fee =
+        FeeTotal fee =
                 billing.applyOcppMeter(order, energyKwh, LocalDateTime.ofInstant(sampleTime, ZoneId.systemDefault()));
         properties.writeBatch(
                 device.id,
@@ -209,7 +216,7 @@ public class OcppBusinessService {
     }
 
     @Transactional
-    public OpsDtos.StopTransactionResult stopTransaction(OpsDtos.StopTransactionRequest request) {
+    public StopTransactionResult stopTransaction(StopTransactionRequest request) {
         DeviceInstance device = devices.resolve("OCPP16J", request.protocolDeviceId());
         ChargeOrder order = orders.lockOcppTransactionId(device.id, request.transactionId());
         if (order == null) {
@@ -227,7 +234,7 @@ public class OcppBusinessService {
         if (order.status == ChargeOrder.Status.SETTLED) {
             // StopTransaction retries are expected after a lost CALLRESULT. Re-ack the same
             // transaction without creating another bill.
-            return new OpsDtos.StopTransactionResult(
+            return new StopTransactionResult(
                     true,
                     order.orderNo,
                     order.energy == null ? BigDecimal.ZERO : order.energy,
@@ -249,7 +256,7 @@ public class OcppBusinessService {
         }
         LocalDateTime endedAt = request.endedAt() == null ? LocalDateTime.now() : request.endedAt();
         int stopReason = mapStopReason(request.reason());
-        ChargeBillingService.FeeTotal fee = billing.applyOcppMeter(order, energy, endedAt);
+        FeeTotal fee = billing.applyOcppMeter(order, energy, endedAt);
         orders.settle(
                 order.orderNo,
                 fee.energy(),
@@ -283,12 +290,12 @@ public class OcppBusinessService {
                 settled.energy,
                 settled.amount,
                 request.reason());
-        return new OpsDtos.StopTransactionResult(
+        return new StopTransactionResult(
                 true, order.orderNo, settled.energy, settled.electricityFee, settled.serviceFee, settled.amount, "已结算");
     }
 
-    private static OpsDtos.StopTransactionResult rejectedStop(String message) {
-        return new OpsDtos.StopTransactionResult(
+    private static StopTransactionResult rejectedStop(String message) {
+        return new StopTransactionResult(
                 false, null, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, message);
     }
 

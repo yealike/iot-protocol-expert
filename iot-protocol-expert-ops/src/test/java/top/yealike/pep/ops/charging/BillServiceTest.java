@@ -17,7 +17,8 @@ import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
-import top.yealike.pep.ops.api.dto.OpsDtos;
+import top.yealike.pep.ops.api.internal.dto.BillRequest;
+import top.yealike.pep.ops.api.internal.dto.YkcEnergySegment;
 import top.yealike.pep.ops.charging.domain.Bill;
 import top.yealike.pep.ops.charging.domain.RateModel;
 import top.yealike.pep.ops.charging.mapper.BillMapper;
@@ -27,7 +28,7 @@ import top.yealike.pep.ops.charging.service.BillService;
 import top.yealike.pep.ops.charging.service.ChargeBillingService;
 import top.yealike.pep.ops.charging.service.OrderService;
 import top.yealike.pep.ops.charging.service.RateModelService;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
 import top.yealike.pep.ops.devices.service.DeviceService;
 
 class BillServiceTest {
@@ -35,7 +36,7 @@ class BillServiceTest {
     @Test
     void offlineYkcBillContainsCompleteFeesAtActiveRateSnapshot() {
         OfflineFixture fixture = offlineFixture();
-        OpsDtos.BillRequest request = offlineRequest(new BigDecimal("4.7500"));
+        BillRequest request = offlineRequest(new BigDecimal("4.7500"));
 
         Bill bill = fixture.service().acceptYkc(request);
 
@@ -63,7 +64,7 @@ class BillServiceTest {
     @Test
     void offlineYkcBillDerivesAmountFromSegmentsWhenDeviceTotalIsMissing() {
         OfflineFixture fixture = offlineFixture();
-        OpsDtos.BillRequest request = offlineRequest(null);
+        BillRequest request = offlineRequest(null);
 
         Bill bill = fixture.service().acceptYkc(request);
 
@@ -79,7 +80,7 @@ class BillServiceTest {
     @Test
     void offlineYkcBillKeepsReportedZeroAmount() {
         OfflineFixture fixture = offlineFixture();
-        OpsDtos.BillRequest request = offlineRequest(BigDecimal.ZERO);
+        BillRequest request = offlineRequest(BigDecimal.ZERO);
 
         Bill bill = fixture.service().acceptYkc(request);
 
@@ -117,17 +118,17 @@ class BillServiceTest {
         return new OfflineFixture(service, orderMapper, segmentMapper);
     }
 
-    private static OpsDtos.BillRequest offlineRequest(BigDecimal totalAmount) {
-        List<OpsDtos.YkcEnergySegment> segments = List.of(
-                new OpsDtos.YkcEnergySegment(
+    private static BillRequest offlineRequest(BigDecimal totalAmount) {
+        List<YkcEnergySegment> segments = List.of(
+                new YkcEnergySegment(
                         new BigDecimal("1.10000"), BigDecimal.ONE, new BigDecimal("0.1000"), new BigDecimal("1.1000")),
-                new OpsDtos.YkcEnergySegment(
+                new YkcEnergySegment(
                         new BigDecimal("1.10000"), BigDecimal.ONE, new BigDecimal("0.1000"), new BigDecimal("1.1000")),
-                new OpsDtos.YkcEnergySegment(
+                new YkcEnergySegment(
                         new BigDecimal("1.10000"), BigDecimal.ONE, new BigDecimal("0.1000"), new BigDecimal("1.1000")),
-                new OpsDtos.YkcEnergySegment(
+                new YkcEnergySegment(
                         new BigDecimal("1.10000"), BigDecimal.ONE, new BigDecimal("0.1000"), new BigDecimal("1.1000")));
-        return new OpsDtos.BillRequest(
+        return new BillRequest(
                 "YKC16",
                 "32010600000001",
                 "transaction",

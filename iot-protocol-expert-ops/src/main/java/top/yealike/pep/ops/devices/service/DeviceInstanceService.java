@@ -19,22 +19,35 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.pep.ops.charging.domain.CommandRecord;
 import top.yealike.pep.ops.charging.mapper.CommandRecordMapper;
-import top.yealike.pep.ops.devices.dto.DeviceDtos;
-import top.yealike.pep.ops.devices.entity.DeviceChannel;
-import top.yealike.pep.ops.devices.entity.DeviceEventLog;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
-import top.yealike.pep.ops.devices.entity.DevicePropertyLatest;
-import top.yealike.pep.ops.devices.entity.DeviceProtocolMapping;
-import top.yealike.pep.ops.devices.entity.Product;
+import top.yealike.pep.ops.devices.domain.DeviceChannel;
+import top.yealike.pep.ops.devices.domain.DeviceEventLog;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
+import top.yealike.pep.ops.devices.domain.DevicePropertyLatest;
+import top.yealike.pep.ops.devices.domain.DeviceProtocolMapping;
+import top.yealike.pep.ops.devices.domain.DeviceRejectedException;
+import top.yealike.pep.ops.devices.domain.Product;
+import top.yealike.pep.ops.devices.domain.ProtocolDocumentRef;
+import top.yealike.pep.ops.devices.dto.CommandView;
+import top.yealike.pep.ops.devices.dto.DeviceDetail;
+import top.yealike.pep.ops.devices.dto.DeviceQuery;
+import top.yealike.pep.ops.devices.dto.DeviceRow;
+import top.yealike.pep.ops.devices.dto.DeviceSave;
+import top.yealike.pep.ops.devices.dto.EventView;
+import top.yealike.pep.ops.devices.dto.Overview;
+import top.yealike.pep.ops.devices.dto.ProtocolMappingInput;
+import top.yealike.pep.ops.devices.dto.ProtocolMappingView;
 import top.yealike.pep.ops.devices.mapper.DeviceChannelMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceEventLogMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
 import top.yealike.pep.ops.devices.mapper.DevicePropertyLatestMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper;
-import top.yealike.pep.ops.devices.mapper.ProtocolDocumentMapper;
-import top.yealike.pep.ops.devices.thingmodel.ThingModel;
 import top.yealike.pep.ops.devices.thingmodel.ThingModelCodec;
 import top.yealike.pep.ops.devices.thingmodel.ThingValues;
+import top.yealike.pep.ops.devices.thingmodel.domain.EventMetadata;
+import top.yealike.pep.ops.devices.thingmodel.domain.PropertyMetadata;
+import top.yealike.pep.ops.devices.thingmodel.domain.StoredValue;
+import top.yealike.pep.ops.devices.thingmodel.domain.ThingModel;
+import top.yealike.pep.ops.support.page.PageQuery;
 import top.yealike.pep.ops.support.page.PageResult;
 import top.yealike.pep.ops.support.page.PageSupport;
 
@@ -82,12 +95,12 @@ public class DeviceInstanceService {
 
     // ------------------------------------------------------------------ 查询
 
-    public PageResult<DeviceDtos.DeviceRow> query(DeviceDtos.DeviceQuery query) {
+    public PageResult<DeviceRow> query(DeviceQuery query) {
         SearchSpec search = SearchSpec.of(query.keyword());
         List<String> states = query.states() == null
                 ? null
                 : query.states().stream().map(DeviceInstance::normalizeState).toList();
-        PageSupport.PageQuery paging = PageSupport.pageable(query.page(), query.size(), query.sort(), SORTABLE);
+        PageQuery paging = PageSupport.pageable(query.page(), query.size(), query.sort(), SORTABLE);
         List<DeviceInstance> content = devices.search(
                 search.keyword(),
                 search.deviceSn(),
@@ -151,11 +164,11 @@ public class DeviceInstanceService {
                 .toList();
     }
 
-    public DeviceDtos.DeviceDetail detail(Long id) {
+    public DeviceDetail detail(Long id) {
         DeviceInstance device = get(id);
         ThingModel model = models.of(device);
         ViewContext context = context(List.of(device));
-        return new DeviceDtos.DeviceDetail(
+        return new DeviceDetail(
                 row(device, context, null),
                 properties.channelViews(device, model),
                 properties.propertyViews(device, model),
@@ -164,12 +177,12 @@ public class DeviceInstanceService {
                 mappingViews(device, context.mappings().get(device.id)));
     }
 
-    private List<DeviceDtos.EventView> eventViews(Long deviceId) {
+    private List<EventView> eventViews(Long deviceId) {
         ThingModel model = models.of(deviceId);
-        List<DeviceDtos.EventView> views = new ArrayList<>();
+        List<EventView> views = new ArrayList<>();
         for (DeviceEventLog event : events.findTop50ByDeviceIdOrderByOccurredAtDesc(deviceId)) {
-            ThingModel.EventMetadata metadata = model.event(event.eventId).orElse(null);
-            views.add(new DeviceDtos.EventView(
+            EventMetadata metadata = model.event(event.eventId).orElse(null);
+            views.add(new EventView(
                     event.id,
                     event.eventId,
                     metadata == null ? event.eventId : metadata.name(),
@@ -181,10 +194,10 @@ public class DeviceInstanceService {
         return views;
     }
 
-    private List<DeviceDtos.CommandView> commandViews(Long deviceId) {
-        List<DeviceDtos.CommandView> views = new ArrayList<>();
+    private List<CommandView> commandViews(Long deviceId) {
+        List<CommandView> views = new ArrayList<>();
         for (CommandRecord record : commands.findTop100ByDeviceIdOrderByIdDesc(deviceId)) {
-            views.add(new DeviceDtos.CommandView(
+            views.add(new CommandView(
                     record.id,
                     record.commandType,
                     record.status == null ? null : record.status.name(),
@@ -205,7 +218,7 @@ public class DeviceInstanceService {
 
     private record ViewContext(
             Map<Long, Product> productById,
-            Map<Long, ProtocolDocumentMapper.Ref> protocolDocuments,
+            Map<Long, ProtocolDocumentRef> protocolDocuments,
             Map<Long, Map<String, DevicePropertyLatest>> properties,
             Map<Long, List<DeviceChannel>> channels,
             Map<Long, DeviceProtocolMapping> mappings) {}
@@ -245,11 +258,11 @@ public class DeviceInstanceService {
                 productById, products.protocolDocuments(productIds), propertyMap, channelMap, mappingMap);
     }
 
-    public DeviceDtos.DeviceRow view(DeviceInstance device) {
+    public DeviceRow view(DeviceInstance device) {
         return row(device, context(List.of(device)), null);
     }
 
-    public List<DeviceDtos.DeviceRow> rows(List<DeviceInstance> devices) {
+    public List<DeviceRow> rows(List<DeviceInstance> devices) {
         if (devices.isEmpty()) {
             return List.of();
         }
@@ -257,9 +270,9 @@ public class DeviceInstanceService {
         return devices.stream().map(device -> row(device, context, null)).toList();
     }
 
-    private DeviceDtos.DeviceRow row(DeviceInstance device, ViewContext context, String matchedGunNo) {
+    private DeviceRow row(DeviceInstance device, ViewContext context, String matchedGunNo) {
         Product product = context.productById().get(device.productId);
-        ProtocolDocumentMapper.Ref document = context.protocolDocuments().get(device.productId);
+        ProtocolDocumentRef document = context.protocolDocuments().get(device.productId);
         ThingModel model = models.of(device);
         Map<String, DevicePropertyLatest> stored = context.properties().get(device.id);
         if (stored == null) {
@@ -267,7 +280,7 @@ public class DeviceInstanceService {
         }
         List<DeviceChannel> deviceChannels = context.channels().getOrDefault(device.id, List.of());
 
-        return new DeviceDtos.DeviceRow(
+        return new DeviceRow(
                 device.id,
                 device.deviceCode,
                 device.name,
@@ -291,7 +304,7 @@ public class DeviceInstanceService {
             return result;
         }
 
-        Map<String, ThingModel.PropertyMetadata> propertiesById = model.propertyIndex();
+        Map<String, PropertyMetadata> propertiesById = model.propertyIndex();
         if (!deviceChannels.isEmpty()) {
             DeviceChannel focus = focusChannel(stored, deviceChannels);
             for (DeviceChannel channel : deviceChannels) {
@@ -310,7 +323,7 @@ public class DeviceInstanceService {
             }
         }
 
-        for (ThingModel.PropertyMetadata property : model.deviceProperties()) {
+        for (PropertyMetadata property : model.deviceProperties()) {
             DevicePropertyLatest row = stored.get("|" + property.id());
             if (row == null) {
                 continue;
@@ -351,7 +364,7 @@ public class DeviceInstanceService {
 
     private void addMetric(
             Map<String, Object> result,
-            ThingModel.PropertyMetadata property,
+            PropertyMetadata property,
             Map<String, DevicePropertyLatest> stored,
             DeviceChannel channel) {
         if (property == null || result.size() >= 4) {
@@ -364,12 +377,8 @@ public class DeviceInstanceService {
     }
 
     private void putMetric(
-            Map<String, Object> result,
-            ThingModel.PropertyMetadata property,
-            DevicePropertyLatest row,
-            String channelNo) {
-        ThingValues.StoredValue value =
-                new ThingValues.StoredValue(row.valueType, row.valueNum, row.valueText, row.valueJson, row.valueTime);
+            Map<String, Object> result, PropertyMetadata property, DevicePropertyLatest row, String channelNo) {
+        StoredValue value = new StoredValue(row.valueType, row.valueNum, row.valueText, row.valueJson, row.valueTime);
         String display = ThingValues.format(property.valueType(), value);
         if (display == null) {
             return;
@@ -381,10 +390,10 @@ public class DeviceInstanceService {
         result.put(channelNo == null ? property.id() : channelNo + "|" + property.id(), prefix + display + unit);
     }
 
-    private List<DeviceDtos.ProtocolMappingView> mappingViews(DeviceInstance device, DeviceProtocolMapping mapping) {
-        List<DeviceDtos.ProtocolMappingView> result = new ArrayList<>();
+    private List<ProtocolMappingView> mappingViews(DeviceInstance device, DeviceProtocolMapping mapping) {
+        List<ProtocolMappingView> result = new ArrayList<>();
         for (DeviceChannel channel : channels.findByDeviceIdOrderByChannelNoAsc(device.id)) {
-            result.add(new DeviceDtos.ProtocolMappingView(
+            result.add(new ProtocolMappingView(
                     channel.channelNo,
                     channel.platformGunNo,
                     mapping == null ? null : mapping.thirdPartyDeviceId,
@@ -397,7 +406,7 @@ public class DeviceInstanceService {
     // ------------------------------------------------------------------ 写入
 
     @Transactional
-    public DeviceInstance create(DeviceDtos.DeviceSave input) {
+    public DeviceInstance create(DeviceSave input) {
         validateSave(input, true);
         Product product = requirePublishedProduct(input.productId());
         String sn = input.sn() == null || input.sn().isBlank() ? allocateDeviceSn() : validateDeviceSn(input.sn());
@@ -429,7 +438,7 @@ public class DeviceInstanceService {
     }
 
     @Transactional
-    public DeviceInstance update(Long id, DeviceDtos.DeviceSave input) {
+    public DeviceInstance update(Long id, DeviceSave input) {
         validateSave(input, false);
         DeviceInstance device = get(id);
         if (input.sn() != null
@@ -455,7 +464,7 @@ public class DeviceInstanceService {
         return saved;
     }
 
-    private static void validateSave(DeviceDtos.DeviceSave input, boolean creating) {
+    private static void validateSave(DeviceSave input, boolean creating) {
         if (input == null) {
             throw new IllegalArgumentException("设备请求不能为空");
         }
@@ -518,15 +527,14 @@ public class DeviceInstanceService {
     }
 
     @Transactional
-    public DeviceInstance replaceMappings(
-            DeviceInstance device, Product product, List<DeviceDtos.ProtocolMappingInput> inputs) {
+    public DeviceInstance replaceMappings(DeviceInstance device, Product product, List<ProtocolMappingInput> inputs) {
         if (inputs == null) {
             return device;
         }
-        List<DeviceDtos.ProtocolMappingInput> values =
+        List<ProtocolMappingInput> values =
                 inputs.stream().filter(Objects::nonNull).toList();
-        Map<String, DeviceDtos.ProtocolMappingInput> byGun = new LinkedHashMap<>();
-        for (DeviceDtos.ProtocolMappingInput value : values) {
+        Map<String, ProtocolMappingInput> byGun = new LinkedHashMap<>();
+        for (ProtocolMappingInput value : values) {
             String gunNo = normalizeGunNo(value.gunNo(), product.connectorCount);
             if (byGun.putIfAbsent(gunNo, value) != null) {
                 throw new IllegalArgumentException("枪号重复: " + gunNo);
@@ -536,7 +544,7 @@ public class DeviceInstanceService {
         Set<String> externalIds = new LinkedHashSet<>();
         Set<String> connectorIds = new LinkedHashSet<>();
         Set<Boolean> enabledValues = new LinkedHashSet<>();
-        for (DeviceDtos.ProtocolMappingInput value : values) {
+        for (ProtocolMappingInput value : values) {
             String thirdParty = trimToNull(value.thirdPartyDeviceId());
             String connector = trimToNull(value.protocolConnectorNo());
             if (thirdParty == null) {
@@ -603,7 +611,7 @@ public class DeviceInstanceService {
         }
 
         for (DeviceChannel channel : channels.findByDeviceIdOrderByChannelNoAsc(device.id)) {
-            DeviceDtos.ProtocolMappingInput value = byGun.get(channel.channelNo);
+            ProtocolMappingInput value = byGun.get(channel.channelNo);
             String connector = null;
             if (value != null && trimToNull(value.thirdPartyDeviceId()) != null) {
                 connector = normalizeProtocolConnectorNo(
@@ -621,7 +629,7 @@ public class DeviceInstanceService {
     }
 
     @Transactional
-    public DeviceInstance saveMappings(Long id, List<DeviceDtos.ProtocolMappingInput> inputs) {
+    public DeviceInstance saveMappings(Long id, List<ProtocolMappingInput> inputs) {
         DeviceInstance device = get(id);
         return replaceMappings(device, products.get(device.productId), inputs);
     }
@@ -746,13 +754,13 @@ public class DeviceInstanceService {
 
     // ------------------------------------------------------------------ 总览及工具
 
-    public DeviceDtos.Overview overview() {
+    public Overview overview() {
         List<DeviceInstance> all = devices.findAll();
         long online = all.stream().filter(DeviceInstance::isOnline).count();
         long fault = all.stream()
                 .filter(device -> DeviceInstance.STATE_FAULT.equals(device.state))
                 .count();
-        return new DeviceDtos.Overview(all.size(), online, fault, products.count());
+        return new Overview(all.size(), online, fault, products.count());
     }
 
     public int gunCount(Long deviceId) {
@@ -853,12 +861,6 @@ public class DeviceInstanceService {
                 return new SearchSpec(null, value.substring(0, 8), value, value.substring(8));
             }
             return new SearchSpec(value.isBlank() ? null : value, null, null, null);
-        }
-    }
-
-    public static class DeviceRejectedException extends RuntimeException {
-        public DeviceRejectedException(String message) {
-            super(message);
         }
     }
 }

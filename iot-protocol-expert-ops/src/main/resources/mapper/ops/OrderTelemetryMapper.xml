@@ -4,7 +4,7 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="top.yealike.pep.ops.telemetry.mapper.OrderTelemetryMapper">
 
-    <resultMap id="SampleMap" type="top.yealike.pep.ops.telemetry.TdengineTelemetryStore$Sample">
+    <resultMap id="SampleMap" type="top.yealike.pep.ops.telemetry.domain.TelemetrySample">
         <constructor>
             <arg column="id" javaType="_long"/>
             <arg column="order_no" javaType="java.lang.String"/>

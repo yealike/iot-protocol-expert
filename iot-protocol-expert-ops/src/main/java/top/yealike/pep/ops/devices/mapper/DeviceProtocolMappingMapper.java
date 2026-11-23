@@ -4,7 +4,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import org.apache.ibatis.annotations.Param;
-import top.yealike.pep.ops.devices.entity.DeviceProtocolMapping;
+import top.yealike.pep.ops.devices.domain.DeviceProtocolMapping;
 
 public interface DeviceProtocolMappingMapper {
 

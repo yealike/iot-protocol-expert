@@ -7,8 +7,8 @@ import java.util.Arrays;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.pep.ops.api.dto.OpsDtos;
 import top.yealike.pep.ops.charging.domain.RateModel;
+import top.yealike.pep.ops.charging.dto.RateModelView;
 import top.yealike.pep.ops.charging.mapper.RateModelMapper;
 
 @Service
@@ -81,8 +81,8 @@ public class RateModelService {
                 .toList();
     }
 
-    public OpsDtos.RateModelView view(RateModel model) {
-        return new OpsDtos.RateModelView(
+    public RateModelView view(RateModel model) {
+        return new RateModelView(
                 model.modelNo,
                 model.sharpEnergy,
                 model.sharpService,
@@ -103,7 +103,7 @@ public class RateModelService {
     }
 
     @Transactional
-    public RateModel save(OpsDtos.RateModelView input) {
+    public RateModel save(RateModelView input) {
         ValidatedRate validated = validate(input);
         List<RateModel> locked = models.findAllForUpdate();
         RateModel model = locked.stream()
@@ -146,7 +146,7 @@ public class RateModelService {
         return models.save(model);
     }
 
-    private static ValidatedRate validate(OpsDtos.RateModelView input) {
+    private static ValidatedRate validate(RateModelView input) {
         if (input == null) {
             throw new IllegalArgumentException("费率模型不能为空");
         }

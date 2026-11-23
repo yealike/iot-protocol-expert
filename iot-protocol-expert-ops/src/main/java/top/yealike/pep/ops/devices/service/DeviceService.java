@@ -9,9 +9,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.pep.ops.api.dto.OpsDtos;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
-import top.yealike.pep.ops.devices.entity.DeviceTag;
+import top.yealike.pep.ops.api.internal.dto.DevicePatch;
+import top.yealike.pep.ops.api.internal.dto.DeviceView;
+import top.yealike.pep.ops.api.internal.dto.LoginRequest;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
+import top.yealike.pep.ops.devices.domain.DeviceRejectedException;
+import top.yealike.pep.ops.devices.domain.DeviceTag;
 import top.yealike.pep.ops.devices.mapper.DeviceChannelMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceTagMapper;
@@ -48,7 +51,7 @@ public class DeviceService {
     public DeviceInstance resolve(String protocol, String identifier) {
         try {
             return instances.resolve(protocol, identifier);
-        } catch (DeviceInstanceService.DeviceRejectedException e) {
+        } catch (DeviceRejectedException e) {
             throw new DeviceRejectedException(e.getMessage());
         }
     }
@@ -70,7 +73,7 @@ public class DeviceService {
 
     /** 协议登录：已有映射或平台 SN 才能进入，绝不自动建档。 */
     @Transactional
-    public DeviceInstance login(OpsDtos.LoginRequest request) {
+    public DeviceInstance login(LoginRequest request) {
         String protocol = DeviceInstanceService.normalizeProtocol(request.protocol());
         String identifier =
                 request.protocolDeviceId() == null || request.protocolDeviceId().isBlank()
@@ -93,7 +96,7 @@ public class DeviceService {
     }
 
     @Transactional
-    public DeviceInstance bootOcpp(OpsDtos.LoginRequest request) {
+    public DeviceInstance bootOcpp(LoginRequest request) {
         DeviceInstance device = login(request);
         Map<String, String> extra = new LinkedHashMap<>();
         put(extra, "chargePointVendor", request.vendor());
@@ -104,7 +107,7 @@ public class DeviceService {
         return devices.findById(device.id).orElse(device);
     }
 
-    private void applyProtocolTags(DeviceInstance device, OpsDtos.LoginRequest request) {
+    private void applyProtocolTags(DeviceInstance device, LoginRequest request) {
         Map<String, String> values = new LinkedHashMap<>();
         if (request.pileType() > 0) {
             values.put("pileType", String.valueOf(request.pileType()));
@@ -148,7 +151,7 @@ public class DeviceService {
     }
 
     @Transactional
-    public DeviceInstance patch(String protocol, String identifier, OpsDtos.DevicePatch patch) {
+    public DeviceInstance patch(String protocol, String identifier, DevicePatch patch) {
         DeviceInstance device = resolve(protocol, identifier);
         return instances.setAllowWork(device.id, patch.allowWork(), patch.maxPowerPercent());
     }
@@ -157,12 +160,12 @@ public class DeviceService {
         return (int) channels.countByDeviceId(deviceId);
     }
 
-    public OpsDtos.DeviceView view(DeviceInstance device) {
+    public DeviceView view(DeviceInstance device) {
         Map<String, String> tagValues = new LinkedHashMap<>();
         for (DeviceTag tag : tags.findByDeviceIdOrderByTagKeyAsc(device.id)) {
             tagValues.put(tag.tagKey, tag.tagValue);
         }
-        return new OpsDtos.DeviceView(
+        return new DeviceView(
                 device.id,
                 device.deviceCode,
                 device.protocol,
@@ -203,11 +206,5 @@ public class DeviceService {
 
     public Optional<DeviceInstance> find(Long id) {
         return devices.findById(id);
-    }
-
-    public static class DeviceRejectedException extends RuntimeException {
-        public DeviceRejectedException(String message) {
-            super(message);
-        }
     }
 }

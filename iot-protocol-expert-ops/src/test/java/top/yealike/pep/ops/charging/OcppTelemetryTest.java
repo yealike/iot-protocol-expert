@@ -4,16 +4,17 @@ import static org.mockito.Mockito.*;
 
 import java.math.BigDecimal;
 import org.junit.jupiter.api.Test;
-import top.yealike.pep.ops.api.dto.OpsDtos;
+import top.yealike.pep.ops.api.internal.dto.MeterValuesRequest;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
+import top.yealike.pep.ops.charging.domain.FeeTotal;
 import top.yealike.pep.ops.charging.service.BillService;
 import top.yealike.pep.ops.charging.service.ChargeBillingService;
 import top.yealike.pep.ops.charging.service.OcppBusinessService;
 import top.yealike.pep.ops.charging.service.OrderService;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
 import top.yealike.pep.ops.devices.service.DevicePropertyService;
 import top.yealike.pep.ops.devices.service.DeviceService;
-import top.yealike.pep.ops.telemetry.OrderTelemetryService;
+import top.yealike.pep.ops.telemetry.service.OrderTelemetryService;
 
 class OcppTelemetryTest {
     @Test
@@ -32,8 +33,7 @@ class OcppTelemetryTest {
         order.status = ChargeOrder.Status.CHARGING;
         when(devices.resolve("OCPP16J", "pile")).thenReturn(device);
         when(orders.lockOcppTransactionId(1L, 3)).thenReturn(order);
-        service.meterValues(
-                new OpsDtos.MeterValuesRequest("pile", 1, 3, null, BigDecimal.TEN, null, null, null, null, null));
+        service.meterValues(new MeterValuesRequest("pile", 1, 3, null, BigDecimal.TEN, null, null, null, null, null));
         verifyNoInteractions(telemetry, properties);
         verify(orders, never()).applyMeter(anyString(), any(), any());
     }
@@ -57,7 +57,7 @@ class OcppTelemetryTest {
         when(devices.resolve("OCPP16J", "pile")).thenReturn(device);
         when(orders.lockOcppTransactionId(1L, 3)).thenReturn(order);
         when(billing.applyOcppMeter(eq(order), any(), any()))
-                .thenReturn(new ChargeBillingService.FeeTotal(
+                .thenReturn(new FeeTotal(
                         new BigDecimal("0.0100"),
                         BigDecimal.ONE,
                         BigDecimal.ONE,
@@ -65,7 +65,7 @@ class OcppTelemetryTest {
                         BigDecimal.ZERO,
                         false,
                         "[]"));
-        service.meterValues(new OpsDtos.MeterValuesRequest(
+        service.meterValues(new MeterValuesRequest(
                 "pile",
                 1,
                 3,

@@ -14,12 +14,14 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import top.yealike.pep.ops.api.dto.OpsDtos;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
+import top.yealike.pep.ops.charging.domain.OrderConflictException;
 import top.yealike.pep.ops.charging.domain.OrderExternalReference;
+import top.yealike.pep.ops.charging.domain.RateSnapshot;
+import top.yealike.pep.ops.charging.dto.OrderView;
 import top.yealike.pep.ops.charging.mapper.ChargeOrderMapper;
 import top.yealike.pep.ops.charging.mapper.OrderExternalReferenceMapper;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
 import top.yealike.pep.ops.devices.service.DeviceService;
 import top.yealike.pep.ops.support.page.PageResult;
 
@@ -96,7 +98,7 @@ public class OrderService {
         order.logicalCard = logicalCard;
         order.status = ChargeOrder.Status.PENDING;
         order.amountSource = ChargeOrder.AMOUNT_SOURCE_ESTIMATE;
-        ChargeBillingService.RateSnapshot snapshot = billing.currentSnapshot();
+        RateSnapshot snapshot = billing.currentSnapshot();
         order.rateModelNo = snapshot.modelNo();
         order.rateSnapshot = billing.json(snapshot);
         order.createdAt = LocalDateTime.now();
@@ -432,7 +434,7 @@ public class OrderService {
         return PageResult.of(content, pageIndex, pageSize, total);
     }
 
-    public OpsDtos.OrderView view(ChargeOrder order) {
+    public OrderView view(ChargeOrder order) {
         DeviceInstance device = null;
         try {
             device = devices.get(order.deviceId);
@@ -442,7 +444,7 @@ public class OrderService {
         String deviceSn = order.deviceSn != null ? order.deviceSn : device == null ? null : device.deviceCode;
         String platformGunNo =
                 order.platformGunNo != null ? order.platformGunNo : deviceSn == null ? null : deviceSn + order.gunNo;
-        return new OpsDtos.OrderView(
+        return new OrderView(
                 order.id,
                 order.orderNo,
                 transactionNo(order),
@@ -498,11 +500,5 @@ public class OrderService {
         reference.externalReference = externalReference;
         reference.createdAt = LocalDateTime.now();
         references.save(reference);
-    }
-
-    public static class OrderConflictException extends RuntimeException {
-        public OrderConflictException(String message) {
-            super(message);
-        }
     }
 }

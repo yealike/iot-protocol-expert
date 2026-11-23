@@ -1,5 +1,8 @@
 package top.yealike.pep.simulator.api;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
@@ -14,11 +17,12 @@ import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
-import top.yealike.pep.simulator.config.SimulatorProperties;
+import top.yealike.pep.simulator.config.properties.SimulatorProperties;
 import top.yealike.pep.simulator.runtime.SimulatorRuntime;
 
 /** 模拟器同源桥接：协议目录/解码转发协议通道，设备命令与费率转发运维平台。 浏览器只访问模拟器，不直接持有平台会话或服务令牌。 */
 @RestController
+@Tag(name = "模拟器-平台代理", description = "浏览器同源访问协议通道与运维平台的只读/命令代理")
 public class PlatformProxyController {
 
     private final SimulatorProperties properties;
@@ -39,9 +43,14 @@ public class PlatformProxyController {
 
     @RequestMapping(
             value = "/api/platform/{*path}",
-            method = {RequestMethod.GET, RequestMethod.POST})
+            method = {RequestMethod.GET, RequestMethod.POST},
+            produces = MediaType.APPLICATION_JSON_VALUE)
+    @Operation(
+            operationId = "proxyPlatformRequest",
+            summary = "转发平台请求",
+            description = "按路径转发到协议通道或运维平台；设备命令只允许操作当前选中设备")
     public ResponseEntity<String> proxy(
-            @PathVariable String path,
+            @Parameter(description = "平台相对路径", example = "/protocol/catalog") @PathVariable String path,
             @RequestBody(required = false) String body,
             jakarta.servlet.http.HttpServletRequest request) {
         String p = path.startsWith("/") ? path : "/" + path;

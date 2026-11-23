@@ -1,38 +1,54 @@
 package top.yealike.pep.ops.api.internal;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.web.bind.annotation.*;
-import top.yealike.pep.ops.api.dto.OpsDtos;
+import top.yealike.pep.ops.api.internal.dto.BillRequest;
+import top.yealike.pep.ops.api.internal.dto.BillResult;
+import top.yealike.pep.ops.api.internal.dto.FrameRequest;
+import top.yealike.pep.ops.api.internal.dto.RealtimeRequest;
+import top.yealike.pep.ops.api.internal.dto.TelemetryRequest;
 import top.yealike.pep.ops.charging.domain.Bill;
+import top.yealike.pep.ops.charging.dto.RateModelView;
 import top.yealike.pep.ops.charging.service.BillService;
+import top.yealike.pep.ops.charging.service.OrderService;
+import top.yealike.pep.ops.charging.service.RateModelService;
 import top.yealike.pep.ops.devices.service.ChargerConnectorMapper;
 import top.yealike.pep.ops.devices.service.DevicePropertyService;
+import top.yealike.pep.ops.devices.service.DeviceService;
+import top.yealike.pep.ops.devices.service.FrameLogService;
+import top.yealike.pep.ops.telemetry.service.OrderTelemetryService;
 
 /**
  * 协议通道 → 平台 的遥测入口。
  *
- * <p>契约不变：仍然收 {@link OpsDtos.RealtimeRequest}。枪位实时值不再写 {@code gun_state}，
+ * <p>契约不变：仍然收 {@link RealtimeRequest}。枪位实时值不再写 {@code gun_state}，
  * 而是翻译成通道型属性写进属性表。
  */
 @RestController
-@RequestMapping("/internal")
+@RequestMapping(path = "/internal", produces = "application/json")
+@Tag(name = "内部遥测", description = "协议通道上报的账单、报文、枪口状态与属性数据")
+@SecurityRequirement(name = "opsServiceToken")
 public class InternalTelemetryController {
 
-    private final top.yealike.pep.ops.telemetry.OrderTelemetryService telemetry;
-    private final top.yealike.pep.ops.devices.service.DeviceService devices;
+    private final OrderTelemetryService telemetry;
+    private final DeviceService devices;
     private final BillService bills;
-    private final top.yealike.pep.ops.devices.service.FrameLogService frames;
+    private final FrameLogService frames;
     private final DevicePropertyService properties;
-    private final top.yealike.pep.ops.charging.service.RateModelService rates;
-    private final top.yealike.pep.ops.charging.service.OrderService orders;
+    private final RateModelService rates;
+    private final OrderService orders;
 
     public InternalTelemetryController(
-            top.yealike.pep.ops.telemetry.OrderTelemetryService telemetry,
-            top.yealike.pep.ops.devices.service.DeviceService devices,
+            OrderTelemetryService telemetry,
+            DeviceService devices,
             BillService bills,
-            top.yealike.pep.ops.devices.service.FrameLogService frames,
+            FrameLogService frames,
             DevicePropertyService properties,
-            top.yealike.pep.ops.charging.service.RateModelService rates,
-            top.yealike.pep.ops.charging.service.OrderService orders) {
+            RateModelService rates,
+            OrderService orders) {
         this.telemetry = telemetry;
         this.devices = devices;
         this.bills = bills;
@@ -43,19 +59,22 @@ public class InternalTelemetryController {
     }
 
     @PostMapping("/bills/ykc")
-    public OpsDtos.BillResult acceptYkc(@RequestBody OpsDtos.BillRequest request) {
+    @Operation(operationId = "internalAcceptYkcBill", summary = "接收云快充账单")
+    public BillResult acceptYkc(@RequestBody BillRequest request) {
         Bill bill = bills.acceptYkc(request);
-        return new OpsDtos.BillResult(bill.accepted, bill.rejectReason, bill.id, bill.orderNo);
+        return new BillResult(bill.accepted, bill.rejectReason, bill.id, bill.orderNo);
     }
 
     @PostMapping("/frames")
-    public void frame(@RequestBody OpsDtos.FrameRequest request) {
+    @Operation(operationId = "internalRecordFrame", summary = "记录协议报文")
+    public void frame(@RequestBody FrameRequest request) {
         frames.record(request);
     }
 
     @PostMapping("/gun-states")
     @org.springframework.transaction.annotation.Transactional
-    public void gunState(@RequestBody OpsDtos.RealtimeRequest request) {
+    @Operation(operationId = "internalReportGunState", summary = "上报枪口实时状态")
+    public void gunState(@RequestBody RealtimeRequest request) {
         properties.writeBatchByProtocol(
                 request.protocol(),
                 request.protocolDeviceId(),
@@ -72,14 +91,11 @@ public class InternalTelemetryController {
                 request.transactionNo());
         if (request.state() == 3) {
             var device = devices.resolve(request.protocol(), request.protocolDeviceId());
-            var order =
-                    request.transactionNo() == null || request.transactionNo().isBlank()
-                            ? orders.active(device.id, request.gunNo())
-                            : orders.findByExternal(
-                                    device.id,
-                                    request.protocol(),
-                                    top.yealike.pep.ops.charging.service.OrderService.YKC_TRANSACTION,
-                                    request.transactionNo());
+            var order = request.transactionNo() == null
+                            || request.transactionNo().isBlank()
+                    ? orders.active(device.id, request.gunNo())
+                    : orders.findByExternal(
+                            device.id, request.protocol(), OrderService.YKC_TRANSACTION, request.transactionNo());
             if (order != null
                     && java.util.Objects.equals(order.deviceId, device.id)
                     && java.util.Objects.equals(order.gunNo, request.gunNo())
@@ -100,6 +116,7 @@ public class InternalTelemetryController {
 
     /** 通用遥测入口：任意设备类型的属性批量上报。 */
     @PostMapping("/properties")
+    @Operation(operationId = "internalReportProperties", summary = "批量上报设备属性")
     public int properties(@RequestBody TelemetryRequest request) {
         return properties.writeGatewayBatch(
                 request.protocol(),
@@ -109,25 +126,15 @@ public class InternalTelemetryController {
                 request.collectedAt());
     }
 
-    public record TelemetryRequest(
-            String protocol,
-            String protocolDeviceId,
-            String channelNo,
-            java.util.Map<String, Object> values,
-            java.time.LocalDateTime collectedAt) {}
-
     @GetMapping("/rate-models/active")
-    public OpsDtos.RateModelView activeRateModel() {
+    @Operation(operationId = "internalActiveRateModel", summary = "查询当前生效费率")
+    public RateModelView activeRateModel() {
         return rates.view(rates.active());
     }
 
     @GetMapping("/rate-models/verify")
-    public boolean verifyRateModel(@RequestParam String modelNo) {
+    @Operation(operationId = "internalVerifyRateModel", summary = "校验费率模型")
+    public boolean verifyRateModel(@Parameter(description = "费率模型编号") @RequestParam String modelNo) {
         return rates.verify(modelNo);
-    }
-
-    @GetMapping("/rate-models/price")
-    public java.math.BigDecimal price(@RequestParam String at) {
-        return rates.pricePerKwh(java.time.LocalDateTime.parse(at));
     }
 }

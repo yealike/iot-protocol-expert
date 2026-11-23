@@ -7,22 +7,9 @@ import java.util.List;
 import java.util.Optional;
 import org.apache.ibatis.annotations.Param;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
+import top.yealike.pep.ops.charging.domain.OrderSummary;
 
 public interface ChargeOrderMapper {
-
-    record OrderSummary(long c, BigDecimal e, BigDecimal a) {
-        public Long getC() {
-            return c;
-        }
-
-        public BigDecimal getE() {
-            return e;
-        }
-
-        public BigDecimal getA() {
-            return a;
-        }
-    }
 
     ChargeOrder selectById(@Param("id") Long id);
 

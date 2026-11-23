@@ -5,7 +5,7 @@
 <mapper namespace="top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper">
 
     <resultMap id="DeviceProtocolMappingMap"
-               type="top.yealike.pep.ops.devices.entity.DeviceProtocolMapping">
+               type="top.yealike.pep.ops.devices.domain.DeviceProtocolMapping">
         <id property="id" column="id"/>
         <result property="deviceId" column="device_id"/>
         <result property="protocol" column="protocol"/>

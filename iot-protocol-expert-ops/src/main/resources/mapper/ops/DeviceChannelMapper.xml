@@ -4,7 +4,7 @@
         "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="top.yealike.pep.ops.devices.mapper.DeviceChannelMapper">
 
-    <resultMap id="DeviceChannelMap" type="top.yealike.pep.ops.devices.entity.DeviceChannel">
+    <resultMap id="DeviceChannelMap" type="top.yealike.pep.ops.devices.domain.DeviceChannel">
         <id property="id" column="id"/>
         <result property="deviceId" column="device_id"/>
         <result property="channelNo" column="channel_no"/>

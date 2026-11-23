@@ -12,7 +12,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 import top.yealike.pep.codec.frames.OperationFrames.Transaction;
+import top.yealike.pep.simulator.domain.DeviceKey;
 import top.yealike.pep.simulator.mapper.SimulatorStateMapper;
+import top.yealike.pep.simulator.mapper.dto.ChargeRecordRow;
 
 @Repository
 @DependsOnDatabaseInitialization
@@ -51,7 +53,7 @@ public class MyBatisSimulatorStateStore implements SimulatorStateStore {
         } catch (IOException e) {
             throw new IllegalStateException("模拟器快照序列化失败", e);
         }
-        List<SimulatorStateMapper.ChargeRecordRow> rows =
+        List<ChargeRecordRow> rows =
                 history.stream().map(bill -> row(key, bill)).toList();
         transactions.executeWithoutResult(status -> {
             states.upsertState(key.value(), key.deviceId(), key.protocol(), key.pileCode(), writer.toString());
@@ -61,8 +63,8 @@ public class MyBatisSimulatorStateStore implements SimulatorStateStore {
         });
     }
 
-    private SimulatorStateMapper.ChargeRecordRow row(DeviceKey key, Transaction bill) {
-        SimulatorStateMapper.ChargeRecordRow row = new SimulatorStateMapper.ChargeRecordRow();
+    private ChargeRecordRow row(DeviceKey key, Transaction bill) {
+        ChargeRecordRow row = new ChargeRecordRow();
         row.stateKey = key.value();
         row.transactionNo = bill.transactionNo();
         row.deviceId = key.deviceId();

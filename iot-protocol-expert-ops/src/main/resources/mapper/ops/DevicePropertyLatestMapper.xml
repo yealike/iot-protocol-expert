@@ -5,7 +5,7 @@
 <mapper namespace="top.yealike.pep.ops.devices.mapper.DevicePropertyLatestMapper">
 
     <resultMap id="DevicePropertyLatestMap"
-               type="top.yealike.pep.ops.devices.entity.DevicePropertyLatest">
+               type="top.yealike.pep.ops.devices.domain.DevicePropertyLatest">
         <id property="id" column="id"/>
         <result property="deviceId" column="device_id"/>
         <result property="channelNo" column="channel_no"/>

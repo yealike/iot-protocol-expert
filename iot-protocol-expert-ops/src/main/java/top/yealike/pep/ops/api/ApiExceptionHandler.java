@@ -44,8 +44,8 @@ public class ApiExceptionHandler {
     }
 
     @ExceptionHandler({
-        top.yealike.pep.ops.devices.service.DeviceService.DeviceRejectedException.class,
-        top.yealike.pep.ops.charging.service.OrderService.OrderConflictException.class
+        top.yealike.pep.ops.devices.domain.DeviceRejectedException.class,
+        top.yealike.pep.ops.charging.domain.OrderConflictException.class
     })
     public ResponseEntity<Map<String, Object>> conflict(RuntimeException e) {
         return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", "CONFLICT", "message", message(e)));

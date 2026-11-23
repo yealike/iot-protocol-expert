@@ -13,18 +13,18 @@ import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 import top.yealike.pep.ops.api.admin.OrderController;
-import top.yealike.pep.ops.api.dto.OpsDtos;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
 import top.yealike.pep.ops.charging.domain.ChargeOrderSegment;
 import top.yealike.pep.ops.charging.domain.OrderExternalReference;
+import top.yealike.pep.ops.charging.dto.OrderView;
 import top.yealike.pep.ops.charging.mapper.ChargeOrderMapper;
 import top.yealike.pep.ops.charging.mapper.OrderExternalReferenceMapper;
 import top.yealike.pep.ops.charging.service.BillService;
 import top.yealike.pep.ops.charging.service.ChargeBillingService;
 import top.yealike.pep.ops.charging.service.OrderService;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
 import top.yealike.pep.ops.devices.service.DeviceService;
-import top.yealike.pep.ops.telemetry.OrderTelemetryService;
+import top.yealike.pep.ops.telemetry.service.OrderTelemetryService;
 
 class OrderViewContractTest {
 
@@ -61,7 +61,7 @@ class OrderViewContractTest {
         when(references.findByOrder(1L, "OCPP16J", OrderService.OCPP_TRANSACTION))
                 .thenReturn(Optional.of(reference));
 
-        OpsDtos.OrderView view = service.view(order);
+        OrderView view = service.view(order);
 
         assertEquals(order.orderNo, view.orderNo());
         assertEquals(3723L, view.durationSeconds());

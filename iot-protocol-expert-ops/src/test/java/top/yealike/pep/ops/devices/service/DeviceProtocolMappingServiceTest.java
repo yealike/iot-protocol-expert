@@ -12,10 +12,11 @@ import static org.mockito.Mockito.when;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
-import top.yealike.pep.ops.devices.dto.DeviceDtos;
-import top.yealike.pep.ops.devices.entity.DeviceChannel;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
-import top.yealike.pep.ops.devices.entity.DeviceProtocolMapping;
+import top.yealike.pep.ops.devices.domain.DeviceChannel;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
+import top.yealike.pep.ops.devices.domain.DeviceProtocolMapping;
+import top.yealike.pep.ops.devices.dto.DeviceMappingPage;
+import top.yealike.pep.ops.devices.dto.DeviceMappingRow;
 import top.yealike.pep.ops.devices.mapper.DeviceChannelMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper;
@@ -37,12 +38,12 @@ class DeviceProtocolMappingServiceTest {
         DeviceChannel ocppGun = channel(20, "02", "1000000102", "2");
         when(channels.findByDeviceIdIn(List.of(10L, 20L))).thenReturn(List.of(ykcGun, ocppGun));
 
-        DeviceDtos.DeviceMappingPage page = new DeviceProtocolMappingService(mappings, devices, channels).page(0L, 2);
+        DeviceMappingPage page = new DeviceProtocolMappingService(mappings, devices, channels).page(0L, 2);
 
         assertEquals(2, page.content().size());
         assertTrue(page.hasMore());
         assertEquals(2L, page.nextAfterId());
-        DeviceDtos.DeviceMappingRow firstRow = page.content().get(0);
+        DeviceMappingRow firstRow = page.content().get(0);
         assertEquals("10000000", firstRow.deviceSn());
         assertEquals("YKC16", firstRow.protocol());
         assertEquals("32010600000001", firstRow.thirdPartyDeviceId());
@@ -58,8 +59,7 @@ class DeviceProtocolMappingServiceTest {
         DeviceChannelMapper channels = mock(DeviceChannelMapper.class);
         when(mappings.selectPage(0L, 201)).thenReturn(List.of());
 
-        DeviceDtos.DeviceMappingPage page =
-                new DeviceProtocolMappingService(mappings, devices, channels).page(-1L, 200);
+        DeviceMappingPage page = new DeviceProtocolMappingService(mappings, devices, channels).page(-1L, 200);
 
         assertTrue(page.content().isEmpty());
         assertFalse(page.hasMore());

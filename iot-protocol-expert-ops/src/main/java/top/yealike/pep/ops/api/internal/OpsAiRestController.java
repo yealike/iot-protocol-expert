@@ -1,5 +1,8 @@
 package top.yealike.pep.ops.api.internal;
 
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
@@ -26,17 +29,20 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
-import top.yealike.pep.ops.access.IdentityService;
-import top.yealike.pep.ops.api.dto.OpsDtos;
+import top.yealike.pep.ops.access.domain.Identity;
+import top.yealike.pep.ops.access.service.IdentityService;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
+import top.yealike.pep.ops.charging.dto.BillView;
 import top.yealike.pep.ops.charging.service.BillService;
 import top.yealike.pep.ops.charging.service.OrderService;
+import top.yealike.pep.ops.devices.domain.DeviceChannel;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
+import top.yealike.pep.ops.devices.domain.DeviceProtocolMapping;
 import top.yealike.pep.ops.devices.domain.FrameLog;
-import top.yealike.pep.ops.devices.dto.DeviceDtos;
-import top.yealike.pep.ops.devices.entity.DeviceChannel;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
-import top.yealike.pep.ops.devices.entity.DeviceProtocolMapping;
-import top.yealike.pep.ops.devices.entity.Product;
+import top.yealike.pep.ops.devices.domain.Product;
+import top.yealike.pep.ops.devices.domain.ProtocolDocumentRef;
+import top.yealike.pep.ops.devices.dto.DeviceDetail;
+import top.yealike.pep.ops.devices.dto.DeviceRow;
 import top.yealike.pep.ops.devices.mapper.DeviceChannelMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceInstanceMapper;
 import top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper;
@@ -44,14 +50,18 @@ import top.yealike.pep.ops.devices.mapper.ProtocolDocumentMapper;
 import top.yealike.pep.ops.devices.service.DeviceInstanceService;
 import top.yealike.pep.ops.devices.service.FrameLogService;
 import top.yealike.pep.ops.devices.service.ProductService;
-import top.yealike.pep.ops.diagnostic.FrameDecodeService;
-import top.yealike.pep.ops.telemetry.OrderTelemetryService;
+import top.yealike.pep.ops.diagnostic.service.FrameDecodeService;
+import top.yealike.pep.ops.telemetry.domain.TelemetryPoint;
+import top.yealike.pep.ops.telemetry.domain.TelemetryResult;
+import top.yealike.pep.ops.telemetry.service.OrderTelemetryService;
 
 /**
  * Read-only internal HTTP endpoints mapped to tools by the gateway.
  */
 @RestController
 @RequestMapping(path = "/internal/ai/rest", consumes = "application/json", produces = "application/json")
+@Tag(name = "AI 工具接口", description = "Higress REST-to-MCP 映射的只读业务工具")
+@SecurityRequirement(name = "opsServiceToken")
 public class OpsAiRestController {
 
     private static final int DOCUMENT_CHUNK_BYTES = 128 * 1024;
@@ -107,6 +117,7 @@ public class OpsAiRestController {
     }
 
     @PostMapping("/resolve_session")
+    @Operation(operationId = "aiResolveSession", summary = "解析会话主体")
     public Map<String, Object> session(@RequestBody Map<String, Object> args) {
         var identity = sessions.resolve(context("resolve_session", args).session());
         if (identity == null) throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
@@ -117,21 +128,23 @@ public class OpsAiRestController {
      * Resolve an immutable user ID for queued runs and authorization checks.
      */
     @PostMapping("/resolve_actor")
-    public IdentityService.Identity userIdentity(@RequestBody Map<String, Object> args) {
+    @Operation(operationId = "aiResolveActor", summary = "解析操作账号")
+    public Identity userIdentity(@RequestBody Map<String, Object> args) {
         context("resolve_actor", args);
         return identities
                 .byId(number(args, "id"))
-                .filter(IdentityService.Identity::enabled)
+                .filter(Identity::enabled)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
     }
 
     @PostMapping("/get_order_detail")
+    @Operation(operationId = "aiGetOrderDetail", summary = "查询订单详情")
     public Map<String, Object> order(@RequestBody Map<String, Object> args) {
         var context = context("get_order_detail", args);
         requireActor(context);
         String orderNo = string(args, "order_no");
         ChargeOrder order = orders.require(orderNo);
-        DeviceDtos.DeviceDetail device = devices.detail(order.deviceId);
+        DeviceDetail device = devices.detail(order.deviceId);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("order", orders.view(order));
         data.put("bills", bills.byOrder(order.id).stream().map(bills::view).toList());
@@ -140,6 +153,7 @@ public class OpsAiRestController {
     }
 
     @PostMapping("/get_order_bills")
+    @Operation(operationId = "aiGetOrderBills", summary = "查询订单账单")
     public Map<String, Object> orderBills(@RequestBody Map<String, Object> args) {
         var context = context("get_order_bills", args);
         requireActor(context);
@@ -153,11 +167,12 @@ public class OpsAiRestController {
     }
 
     @PostMapping("/get_device_detail")
+    @Operation(operationId = "aiGetDeviceDetail", summary = "查询设备详情")
     public Map<String, Object> device(@RequestBody Map<String, Object> args) {
         var context = context("get_device_detail", args);
         requireActor(context);
         long id = number(args, "device_id");
-        DeviceDtos.DeviceDetail detail = devices.detail(id);
+        DeviceDetail detail = devices.detail(id);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("device", deviceSummary(detail.device()));
         data.put(
@@ -181,6 +196,7 @@ public class OpsAiRestController {
      * 不允许把协议侧编号模糊回退成平台 SN。
      */
     @PostMapping("/resolve_device")
+    @Operation(operationId = "aiResolveDevice", summary = "解析设备")
     public Map<String, Object> resolveDevice(@RequestBody Map<String, Object> args) {
         var context = context("resolve_device", args);
         requireActor(context);
@@ -210,6 +226,7 @@ public class OpsAiRestController {
      * 最近/指定时间窗报文列表。该工具只接受平台 SN，只返回短摘要；完整 HEX 必须通过单帧解码工具获取。
      */
     @PostMapping("/list_device_frames")
+    @Operation(operationId = "aiListDeviceFrames", summary = "查询设备协议报文")
     public Map<String, Object> listDeviceFrames(@RequestBody Map<String, Object> args) {
         var context = context("list_device_frames", args);
         requireActor(context);
@@ -248,6 +265,7 @@ public class OpsAiRestController {
      * 解码单个持久化帧或用户贴入的原始帧。协议由设备所属产品决定，模型不能指定其他协议解码器。
      */
     @PostMapping("/decode_device_frame")
+    @Operation(operationId = "aiDecodeDeviceFrame", summary = "解码协议报文")
     public Map<String, Object> decodeDeviceFrame(@RequestBody Map<String, Object> args) {
         var context = context("decode_device_frame", args);
         requireActor(context);
@@ -311,13 +329,14 @@ public class OpsAiRestController {
     }
 
     @PostMapping("/get_order_telemetry_summary")
+    @Operation(operationId = "aiGetOrderTelemetrySummary", summary = "汇总订单遥测")
     public Map<String, Object> telemetrySummary(@RequestBody Map<String, Object> args) {
         var context = context("get_order_telemetry_summary", args);
         requireActor(context);
         String orderNo = string(args, "order_no");
         Integer windowHours = args.containsKey("window_hours") ? Math.toIntExact(number(args, "window_hours")) : null;
         ChargeOrder order = orders.require(orderNo);
-        OrderTelemetryService.Result result;
+        TelemetryResult result;
         try {
             result = telemetry.query(orderNo);
         } catch (IllegalStateException exception) {
@@ -326,15 +345,15 @@ public class OpsAiRestController {
             data.put("available", false);
             return envelope(data, true, List.of("订单时序数据正在同步，请稍后重试"));
         }
-        List<OrderTelemetryService.Point> points = result.points();
+        List<TelemetryPoint> points = result.points();
         if (windowHours != null && windowHours > 0 && !points.isEmpty()) {
             Instant threshold = Instant.now().minusSeconds(windowHours * 3600L);
             points = points.stream()
                     .filter(point -> point.time() != null && point.time().isAfter(threshold))
                     .toList();
         }
-        OrderTelemetryService.Point first = firstWithSoc(points);
-        OrderTelemetryService.Point last = lastWithSoc(points);
+        TelemetryPoint first = firstWithSoc(points);
+        TelemetryPoint last = lastWithSoc(points);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("order_no", orderNo);
         data.put("available", true);
@@ -359,12 +378,14 @@ public class OpsAiRestController {
     }
 
     @PostMapping("/list_documents")
+    @Operation(operationId = "aiListDocuments", summary = "列出协议文档")
     public Map<String, Object> documents(@RequestBody Map<String, Object> args) {
         requireAiAdmin(context("list_documents", args));
         return envelope(documents.selectActiveForAi(), false, List.of());
     }
 
     @PostMapping("/read_document")
+    @Operation(operationId = "aiReadDocument", summary = "读取协议文档")
     public Map<String, Object> readDocument(@RequestBody Map<String, Object> args) {
         requireAiAdmin(context("read_document", args));
         long id = number(args, "id");
@@ -493,7 +514,7 @@ public class OpsAiRestController {
     private Map<String, Object> deviceContext(DeviceTarget target) {
         DeviceInstance device = target.device();
         Product product = null;
-        ProtocolDocumentMapper.Ref protocolDocument = null;
+        ProtocolDocumentRef protocolDocument = null;
         if (device.productId != null) {
             try {
                 product = products.get(device.productId);
@@ -774,7 +795,7 @@ public class OpsAiRestController {
     }
 
     private Map<String, Object> billView(top.yealike.pep.ops.charging.domain.Bill bill) {
-        OpsDtos.BillView view = bills.view(bill);
+        BillView view = bills.view(bill);
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("source_type", view.sourceType());
         item.put("source_transaction_no", view.sourceTransactionNo());
@@ -790,7 +811,7 @@ public class OpsAiRestController {
         return item;
     }
 
-    private Map<String, Object> deviceSummary(DeviceDtos.DeviceRow device) {
+    private Map<String, Object> deviceSummary(DeviceRow device) {
         Map<String, Object> item = new LinkedHashMap<>();
         item.put("id", device.id());
         item.put("device_code", device.deviceSn());
@@ -810,8 +831,8 @@ public class OpsAiRestController {
         return item;
     }
 
-    private static OrderTelemetryService.Point firstWithSoc(List<OrderTelemetryService.Point> points) {
-        for (OrderTelemetryService.Point point : points) {
+    private static TelemetryPoint firstWithSoc(List<TelemetryPoint> points) {
+        for (TelemetryPoint point : points) {
             if (point.soc() != null) {
                 return point;
             }
@@ -819,7 +840,7 @@ public class OpsAiRestController {
         return null;
     }
 
-    private static OrderTelemetryService.Point lastWithSoc(List<OrderTelemetryService.Point> points) {
+    private static TelemetryPoint lastWithSoc(List<TelemetryPoint> points) {
         for (int i = points.size() - 1; i >= 0; i--) {
             if (points.get(i).soc() != null) {
                 return points.get(i);
@@ -828,7 +849,7 @@ public class OpsAiRestController {
         return null;
     }
 
-    private static BigDecimal socValue(OrderTelemetryService.Point point) {
+    private static BigDecimal socValue(TelemetryPoint point) {
         return point == null ? null : point.soc();
     }
 
@@ -842,7 +863,7 @@ public class OpsAiRestController {
         return value;
     }
 
-    private IdentityService.Identity requireActor(RequestContext context) {
+    private Identity requireActor(AiContext context) {
         try {
             return identities
                     .byId(Long.parseLong(context.actor()))
@@ -854,7 +875,7 @@ public class OpsAiRestController {
         }
     }
 
-    private void requireAiAdmin(RequestContext context) {
+    private void requireAiAdmin(AiContext context) {
         if (!requireActor(context).permissions().contains("ai:admin")) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         }
@@ -882,12 +903,9 @@ public class OpsAiRestController {
         }
     }
 
-    private record RequestContext(String actor, String session) {}
-
-    private RequestContext context(String operation, Map<String, Object> args) {
+    private AiContext context(String operation, Map<String, Object> args) {
         try {
-            var context = contexts.decode(operation, args.get("_ipe_context"));
-            return new RequestContext(context.actor(), context.session());
+            return contexts.decode(operation, args.get("_ipe_context"));
         } catch (GeneralSecurityException | IllegalArgumentException | tools.jackson.core.JacksonException ex) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED);
         }

@@ -8,13 +8,14 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import tools.jackson.databind.ObjectMapper;
-import top.yealike.pep.ops.api.dto.OpsDtos;
-import top.yealike.pep.ops.audit.AuditService;
+import top.yealike.pep.ops.api.internal.dto.CommandRequest;
+import top.yealike.pep.ops.api.internal.dto.CommandResult;
+import top.yealike.pep.ops.audit.service.AuditService;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
 import top.yealike.pep.ops.charging.domain.CommandRecord;
 import top.yealike.pep.ops.charging.mapper.CommandRecordMapper;
-import top.yealike.pep.ops.config.OpsProperties;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
+import top.yealike.pep.ops.config.properties.OpsProperties;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
 import top.yealike.pep.ops.devices.mapper.DeviceProtocolMappingMapper;
 import top.yealike.pep.ops.devices.service.DeviceService;
 import top.yealike.pep.ops.devices.service.ProtocolClient;
@@ -71,8 +72,8 @@ public class CommandService {
         record = commands.save(record);
 
         try {
-            OpsDtos.CommandResult result = protocol.execute(
-                    new OpsDtos.CommandRequest(
+            CommandResult result = protocol.execute(
+                    new CommandRequest(
                             device.protocol, protocolDeviceId, type, params == null ? Map.of() : params, operator),
                     properties.getServiceToken());
             record.sentAt = LocalDateTime.now();
@@ -202,7 +203,7 @@ public class CommandService {
                 .orElseThrow(() -> new IllegalArgumentException("设备未配置第三方协议设备号: " + deviceId));
     }
 
-    private static CommandRecord.Status classify(OpsDtos.CommandResult result) {
+    private static CommandRecord.Status classify(CommandResult result) {
         Object structured = result.data() == null ? null : result.data().get("outcome");
         if (structured != null) {
             String outcome = String.valueOf(structured);

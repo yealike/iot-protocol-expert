@@ -10,7 +10,6 @@ import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -23,7 +22,7 @@ import tools.jackson.databind.node.ObjectNode;
 import top.yealike.pep.codec.ocpp16.OcppConstants;
 import top.yealike.pep.codec.ocpp16.OcppMessage;
 import top.yealike.pep.codec.ocpp16.OcppMessageCodec;
-import top.yealike.pep.simulator.config.SimulatorProperties;
+import top.yealike.pep.simulator.config.properties.SimulatorProperties;
 
 /** OCPP 1.6J WebSocket 客户端。使用 JDK WebSocket，避免在模拟器内再维护一套 Netty 握手流水线。 */
 public class OcppSimulatorClient {
@@ -75,7 +74,7 @@ public class OcppSimulatorClient {
             WebSocket ws = http.newWebSocketBuilder()
                     .subprotocols(OcppConstants.SUB_PROTOCOL)
                     .connectTimeout(Duration.ofSeconds(5))
-                    .buildAsync(uri, new Listener(this))
+                    .buildAsync(uri, new OcppWebSocketListener(this))
                     .get(6, TimeUnit.SECONDS);
             this.socket = ws;
             this.connected = true;
@@ -275,7 +274,7 @@ public class OcppSimulatorClient {
 
     // ------------------------------------------------------------------ 下行
 
-    private void handle(String text) {
+    void handle(String text) {
         OcppMessage message;
         try {
             message = OcppMessageCodec.decode(text);
@@ -504,7 +503,7 @@ public class OcppSimulatorClient {
         return node.get(field).asInt(fallback);
     }
 
-    private static String rootMessage(Throwable error) {
+    static String rootMessage(Throwable error) {
         Throwable root = error;
         while (root.getCause() != null && root.getCause() != root) {
             root = root.getCause();
@@ -512,60 +511,11 @@ public class OcppSimulatorClient {
         return root.getMessage() == null ? root.getClass().getSimpleName() : root.getMessage();
     }
 
-    private static final class Listener implements WebSocket.Listener {
-
-        private final OcppSimulatorClient owner;
-        private final StringBuilder buffer = new StringBuilder();
-
-        private Listener(OcppSimulatorClient owner) {
-            this.owner = owner;
-        }
-
-        @Override
-        public void onOpen(WebSocket webSocket) {
-            webSocket.request(1);
-        }
-
-        @Override
-        public CompletionStage<?> onText(WebSocket webSocket, CharSequence data, boolean last) {
-            buffer.append(data);
-            if (last) {
-                String message = buffer.toString();
-                buffer.setLength(0);
-                try {
-                    owner.handle(message);
-                } catch (RuntimeException e) {
-                    log.warn("处理 OCPP 下行消息失败: {}", e.getMessage(), e);
-                }
-            }
-            webSocket.request(1);
-            return null;
-        }
-
-        @Override
-        public CompletionStage<?> onPing(WebSocket webSocket, java.nio.ByteBuffer message) {
-            webSocket.sendPong(message);
-            webSocket.request(1);
-            return null;
-        }
-
-        @Override
-        public CompletionStage<?> onClose(WebSocket webSocket, int statusCode, String reason) {
-            if (owner.socket == webSocket || owner.socket == null) {
-                owner.connected = false;
-                owner.socket = null;
-                owner.runtime.onOcppDisconnected("通道关闭 " + statusCode + " " + reason);
-            }
-            return null;
-        }
-
-        @Override
-        public void onError(WebSocket webSocket, Throwable error) {
-            if (owner.socket == webSocket || owner.socket == null) {
-                owner.connected = false;
-                owner.socket = null;
-                owner.runtime.onOcppDisconnected("通道异常: " + rootMessage(error));
-            }
+    void socketTerminated(WebSocket webSocket, String reason) {
+        if (socket == webSocket || socket == null) {
+            connected = false;
+            socket = null;
+            runtime.onOcppDisconnected(reason);
         }
     }
 }

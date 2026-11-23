@@ -8,11 +8,15 @@ import java.util.Objects;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
-import top.yealike.pep.ops.api.dto.OpsDtos;
+import top.yealike.pep.ops.api.internal.dto.BillRequest;
 import top.yealike.pep.ops.charging.domain.Bill;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
+import top.yealike.pep.ops.charging.domain.FeeTotal;
+import top.yealike.pep.ops.charging.domain.RateSnapshot;
+import top.yealike.pep.ops.charging.domain.YkcBillCalculation;
+import top.yealike.pep.ops.charging.dto.BillView;
 import top.yealike.pep.ops.charging.mapper.BillMapper;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
 import top.yealike.pep.ops.devices.service.DeviceService;
 
 @Service
@@ -42,7 +46,7 @@ public class BillService {
 
     /** 云快充 0x3B 交易记录：先按设备与协议交易号定位平台订单，再落电费、服务费和四段明细。 */
     @Transactional
-    public Bill acceptYkc(OpsDtos.BillRequest request) {
+    public Bill acceptYkc(BillRequest request) {
         DeviceInstance device = devices.resolve("YKC16", request.protocolDeviceId());
         bills.lockSourceTransaction(device.id, "YKC16", SOURCE_YKC_TRANSACTION, request.transactionNo());
         var existing = bills.findByDeviceAndProtocolAndSourceTypeAndSourceTransactionNo(
@@ -73,9 +77,9 @@ public class BillService {
         bill.partial = true;
 
         if (order == null) {
-            ChargeBillingService.RateSnapshot snapshot = billing.currentSnapshot();
-            ChargeBillingService.YkcBillCalculation calculation = billing.calculateYkcBill(snapshot, request);
-            ChargeBillingService.FeeTotal total = calculation.total();
+            RateSnapshot snapshot = billing.currentSnapshot();
+            YkcBillCalculation calculation = billing.calculateYkcBill(snapshot, request);
+            FeeTotal total = calculation.total();
             bill.energy = total.energy();
             bill.electricityFee = total.electricityFee();
             bill.serviceFee = total.serviceFee();
@@ -90,7 +94,7 @@ public class BillService {
             bill.accepted = false;
             bill.rejectReason = "订单设备或枪号不匹配";
         } else {
-            ChargeBillingService.FeeTotal fee = billing.applyYkcBill(order, request);
+            FeeTotal fee = billing.applyYkcBill(order, request);
             orders.settle(
                     order.orderNo,
                     fee.energy(),
@@ -172,14 +176,14 @@ public class BillService {
         return bills.findAllByOrderId(orderId);
     }
 
-    public OpsDtos.BillView view(Bill bill) {
+    public BillView view(Bill bill) {
         String deviceSn = null;
         try {
             deviceSn = devices.get(bill.deviceId).deviceCode;
         } catch (RuntimeException ignored) {
             // A bill remains readable after its device record is removed.
         }
-        return new OpsDtos.BillView(
+        return new BillView(
                 bill.id,
                 bill.orderId,
                 bill.orderNo,

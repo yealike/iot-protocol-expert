@@ -9,23 +9,28 @@ import java.time.LocalDateTime;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
-import top.yealike.pep.ops.api.dto.OpsDtos;
+import top.yealike.pep.ops.api.internal.dto.StartTransactionRequest;
+import top.yealike.pep.ops.api.internal.dto.StartTransactionResult;
+import top.yealike.pep.ops.api.internal.dto.StatusRequest;
+import top.yealike.pep.ops.api.internal.dto.StopTransactionRequest;
+import top.yealike.pep.ops.api.internal.dto.StopTransactionResult;
 import top.yealike.pep.ops.charging.domain.ChargeOrder;
+import top.yealike.pep.ops.charging.domain.FeeTotal;
 import top.yealike.pep.ops.charging.service.BillService;
 import top.yealike.pep.ops.charging.service.ChargeBillingService;
 import top.yealike.pep.ops.charging.service.OcppBusinessService;
 import top.yealike.pep.ops.charging.service.OrderService;
-import top.yealike.pep.ops.devices.entity.DeviceInstance;
+import top.yealike.pep.ops.devices.domain.DeviceInstance;
 import top.yealike.pep.ops.devices.service.DevicePropertyService;
 import top.yealike.pep.ops.devices.service.DeviceService;
-import top.yealike.pep.ops.telemetry.OrderTelemetryService;
+import top.yealike.pep.ops.telemetry.service.OrderTelemetryService;
 
 class OcppBusinessServiceTest {
 
     @Test
     void availableDoesNotMarkConnectorAsPlugged() {
         Fixture fixture = fixture();
-        fixture.service.status(new OpsDtos.StatusRequest("pile", 1, "Available", "NoError"));
+        fixture.service.status(new StatusRequest("pile", 1, "Available", "NoError"));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> values = ArgumentCaptor.forClass(Map.class);
@@ -33,7 +38,7 @@ class OcppBusinessServiceTest {
         assertEquals("idle", values.getValue().get("gunState"));
         assertEquals(false, values.getValue().get("plugged"));
 
-        fixture.service.status(new OpsDtos.StatusRequest("pile", 1, "Preparing", "NoError"));
+        fixture.service.status(new StatusRequest("pile", 1, "Preparing", "NoError"));
         verify(fixture.properties, times(2)).writeBatch(eq(1L), eq("01"), values.capture(), isNull());
         assertEquals("preparing", values.getValue().get("gunState"));
         assertEquals(true, values.getValue().get("plugged"));
@@ -44,7 +49,7 @@ class OcppBusinessServiceTest {
         Fixture fixture = fixture();
         when(fixture.properties.boolOf(1L, "01", "plugged", false)).thenReturn(true);
 
-        fixture.service.status(new OpsDtos.StatusRequest("pile", 1, "Faulted", "OtherError"));
+        fixture.service.status(new StatusRequest("pile", 1, "Faulted", "OtherError"));
 
         @SuppressWarnings("unchecked")
         ArgumentCaptor<Map<String, Object>> values = ArgumentCaptor.forClass(Map.class);
@@ -63,7 +68,7 @@ class OcppBusinessServiceTest {
         when(fixture.orders.active(1L, "01")).thenReturn(order);
         when(fixture.orders.lockByOrderNo("ORDER-1")).thenReturn(order);
 
-        OpsDtos.StartTransactionResult result = fixture.service.startTransaction(new OpsDtos.StartTransactionRequest(
+        StartTransactionResult result = fixture.service.startTransaction(new StartTransactionRequest(
                 "pile", 1, "TAG-B", BigDecimal.ZERO, LocalDateTime.parse("2026-11-18T12:00:00")));
 
         assertFalse(result.accepted());
@@ -77,8 +82,7 @@ class OcppBusinessServiceTest {
         Fixture fixture = fixture();
         when(fixture.orders.lockOcppTransactionId(1L, 99)).thenReturn(null);
 
-        OpsDtos.StopTransactionResult result =
-                fixture.service.stopTransaction(stopRequest("pile", 99, new BigDecimal("1200")));
+        StopTransactionResult result = fixture.service.stopTransaction(stopRequest("pile", 99, new BigDecimal("1200")));
 
         assertFalse(result.accepted());
         assertTrue(result.message().contains("不存在"));
@@ -98,7 +102,7 @@ class OcppBusinessServiceTest {
         settled.serviceFee = new BigDecimal("3.0000");
         settled.amount = new BigDecimal("12.0000");
         settled.lossEnergy = new BigDecimal("0.2000");
-        ChargeBillingService.FeeTotal fee = new ChargeBillingService.FeeTotal(
+        FeeTotal fee = new FeeTotal(
                 settled.energy,
                 settled.electricityFee,
                 settled.serviceFee,
@@ -111,8 +115,7 @@ class OcppBusinessServiceTest {
                 .thenReturn(fee);
         when(fixture.orders.require("ORDER-1")).thenReturn(settled);
 
-        OpsDtos.StopTransactionResult result =
-                fixture.service.stopTransaction(stopRequest("pile", 3, new BigDecimal("12000")));
+        StopTransactionResult result = fixture.service.stopTransaction(stopRequest("pile", 3, new BigDecimal("12000")));
 
         assertTrue(result.accepted());
         assertEquals(new BigDecimal("12.0000"), result.energy());
@@ -142,8 +145,7 @@ class OcppBusinessServiceTest {
         order.deviceId = 2L;
         when(fixture.orders.lockOcppTransactionId(1L, 3)).thenReturn(order);
 
-        OpsDtos.StopTransactionResult result =
-                fixture.service.stopTransaction(stopRequest("pile", 3, new BigDecimal("1200")));
+        StopTransactionResult result = fixture.service.stopTransaction(stopRequest("pile", 3, new BigDecimal("1200")));
 
         assertFalse(result.accepted());
         assertTrue(result.message().contains("不属于当前设备"));
@@ -158,8 +160,7 @@ class OcppBusinessServiceTest {
         order.status = ChargeOrder.Status.PENDING;
         when(fixture.orders.lockOcppTransactionId(1L, 3)).thenReturn(order);
 
-        OpsDtos.StopTransactionResult result =
-                fixture.service.stopTransaction(stopRequest("pile", 3, new BigDecimal("1200")));
+        StopTransactionResult result = fixture.service.stopTransaction(stopRequest("pile", 3, new BigDecimal("1200")));
 
         assertFalse(result.accepted());
         assertTrue(result.message().contains("状态不允许"));
@@ -176,8 +177,7 @@ class OcppBusinessServiceTest {
         order.amount = new BigDecimal("8.8888");
         when(fixture.orders.lockOcppTransactionId(1L, 3)).thenReturn(order);
 
-        OpsDtos.StopTransactionResult result =
-                fixture.service.stopTransaction(stopRequest("pile", 3, new BigDecimal("13000")));
+        StopTransactionResult result = fixture.service.stopTransaction(stopRequest("pile", 3, new BigDecimal("13000")));
 
         assertTrue(result.accepted());
         assertEquals(new BigDecimal("12.3456"), result.energy());
@@ -186,9 +186,8 @@ class OcppBusinessServiceTest {
         verifyNoInteractions(fixture.bills);
     }
 
-    private static OpsDtos.StopTransactionRequest stopRequest(
-            String pileCode, int transactionId, BigDecimal meterStop) {
-        return new OpsDtos.StopTransactionRequest(
+    private static StopTransactionRequest stopRequest(String pileCode, int transactionId, BigDecimal meterStop) {
+        return new StopTransactionRequest(
                 pileCode, transactionId, meterStop, LocalDateTime.parse("2026-11-18T12:00:00"), "Remote");
     }
 
