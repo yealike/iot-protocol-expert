@@ -11,6 +11,7 @@ public final class InternalPaths {
 
     public static final String CONTROL_BASE = "/internal/ai/v1";
     public static final String RUNTIME_BASE = "/internal/agent/v1";
+    public static final String CONTROL_A2A_TASKS = CONTROL_BASE + "/a2a/tasks";
 
     public static final String RUNTIME_PREPARE = RUNTIME_BASE + "/releases:prepare";
     public static final String RUNTIME_BASE_SERVICE = "iot-protocol-expert-agent-runtime";

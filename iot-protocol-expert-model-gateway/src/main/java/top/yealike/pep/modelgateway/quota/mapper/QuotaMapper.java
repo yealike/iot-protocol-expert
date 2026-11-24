@@ -76,7 +76,16 @@ public interface QuotaMapper {
 
     Call findCallById(@Param("id") UUID id);
 
-    int insertCall(Call call);
+    /** 创建调用记录及父子 Run 归属。 */
+    int insertCall(
+            @Param("call") Call call,
+            @Param("rootRunId") String rootRunId,
+            @Param("parentRunId") String parentRunId,
+            @Param("a2aTaskId") String a2aTaskId,
+            @Param("estimatedTokens") long estimatedTokens);
+
+    /** 汇总根 Run 的结算和未结算 Token。 */
+    long rootTokens(@Param("rootRunId") String rootRunId);
 
     int insertReservation(
             @Param("id") UUID id,

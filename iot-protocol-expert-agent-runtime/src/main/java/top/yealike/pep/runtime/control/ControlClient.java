@@ -1,6 +1,7 @@
 package top.yealike.pep.runtime.control;
 
 import java.net.URI;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.UUID;
@@ -19,6 +20,8 @@ import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.ControlReadiness;
 import top.yealike.pep.runtime.contract.CredentialResolveRequest;
 import top.yealike.pep.runtime.contract.CredentialResolveResponse;
+import top.yealike.pep.runtime.contract.DelegateTaskRequest;
+import top.yealike.pep.runtime.contract.DelegateTaskResponse;
 import top.yealike.pep.runtime.contract.DesiredReleasePage;
 import top.yealike.pep.runtime.contract.InternalPaths;
 import top.yealike.pep.runtime.contract.InternalSignature;
@@ -94,6 +97,20 @@ public class ControlClient {
 
     public RunClaimResponse claim(RunClaimRequest request) {
         return post(InternalPaths.controlClaim(request.runId()), request, RunClaimResponse.class);
+    }
+
+    /** 通过现有内部签名通道创建同实例子 Run。 */
+    public DelegateTaskResponse submitDelegation(DelegateTaskRequest request) {
+        return post(InternalPaths.CONTROL_A2A_TASKS, request, DelegateTaskResponse.class);
+    }
+
+    /** 以父执行权查询子任务结果。 */
+    public DelegateTaskResponse delegation(UUID taskId, DelegateTaskRequest request) {
+        return get(
+                InternalPaths.CONTROL_A2A_TASKS + "/" + taskId + "?parentRunId=" + request.parentRunId()
+                        + "&executionToken=" + request.executionToken()
+                        + "&instanceId=" + URLEncoder.encode(request.instanceId(), StandardCharsets.UTF_8),
+                DelegateTaskResponse.class);
     }
 
     public RunClaimResponse heartbeat(RunClaimRequest request) {

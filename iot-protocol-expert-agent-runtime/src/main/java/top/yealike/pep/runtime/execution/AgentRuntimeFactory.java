@@ -9,6 +9,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.stereotype.Component;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.McpDescriptor;
+import top.yealike.pep.runtime.contract.RunLineage;
 import top.yealike.pep.runtime.control.ControlClient;
 import top.yealike.pep.runtime.mcp.McpAgentTool;
 import top.yealike.pep.runtime.mcp.McpConnectionPool;
@@ -49,8 +50,27 @@ public class AgentRuntimeFactory {
 
     public ReActAgent build(
             PreparedRelease release, RunGuard guard, RunEventSink sink, String modelSecret, int maxIterations) {
+        return build(release, guard, sink, modelSecret, maxIterations, null, null, null);
+    }
+
+    /** 根据子 Run 的冻结范围装配 Toolkit 和调用归属。 */
+    public ReActAgent build(
+            PreparedRelease release,
+            RunGuard guard,
+            RunEventSink sink,
+            String modelSecret,
+            int maxIterations,
+            RunLineage lineage,
+            String instanceId,
+            DelegateTransport transport) {
         Toolkit toolkit = new Toolkit();
         for (PreparedTool tool : release.tools()) {
+            if (lineage != null
+                    && (!tool.descriptor().readOnly()
+                            || (!lineage.allowedTools().isEmpty()
+                                    && !lineage.allowedTools().contains(tool.alias())))) {
+                continue;
+            }
             McpDescriptor descriptor = release.mcps().get(tool.mcpKey());
             toolkit.registration()
                     .agentTool(
@@ -61,6 +81,11 @@ public class AgentRuntimeFactory {
             toolkit.registration().agentTool(skillTool).apply();
         }
         AgentManifest manifest = release.manifest();
+        if (transport != null && !manifest.delegates().isEmpty()) {
+            toolkit.registration()
+                    .agentTool(new DelegateAgentTool(release, guard, instanceId, transport))
+                    .apply();
+        }
         String displayName =
                 manifest.displayName() == null || manifest.displayName().isBlank()
                         ? manifest.agentKey()
@@ -75,7 +100,7 @@ public class AgentRuntimeFactory {
                 .enableMetaTool(false)
                 .enableTaskList(false)
                 .checkRunning(false)
-                .middleware(new ModelCallHeadersMiddleware(guard.runId()))
+                .middleware(new ModelCallHeadersMiddleware(guard.runId(), lineage))
                 .build();
     }
 

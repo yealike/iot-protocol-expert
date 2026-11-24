@@ -50,6 +50,45 @@
         last_heartbeat_at, dispatch_attempts, deadline_at, dispatch_next_attempt_at, cancel_requested_at
     </sql>
 
+    <resultMap id="LineageMap" type="top.yealike.pep.runtime.contract.RunLineage">
+        <constructor>
+            <arg column="parent_run_id" javaType="java.util.UUID"/>
+            <arg column="root_run_id" javaType="java.util.UUID"/>
+            <arg column="id" javaType="java.util.UUID"/>
+            <arg column="depth" javaType="_int"/>
+            <arg column="allowed_tools" javaType="java.util.List" typeHandler="top.yealike.pep.control.mybatis.JsonStringListTypeHandler"/>
+            <arg column="max_total_tokens" javaType="_long"/>
+        </constructor>
+    </resultMap>
+
+    <select id="lineage" resultMap="LineageMap">
+        select parent_run_id, root_run_id, id, depth, request_json -&gt; 'allowedTools' as allowed_tools,
+               (request_json -&gt;&gt; 'maxTotalTokens')::bigint as max_total_tokens
+          from ai_a2a_task where child_run_id = #{id}
+    </select>
+
+    <resultMap id="DescendantUsageMap" type="top.yealike.pep.runtime.contract.RunUsage">
+        <constructor>
+            <arg column="input_tokens" javaType="java.lang.Long"/>
+            <arg column="output_tokens" javaType="java.lang.Long"/>
+            <arg column="total_tokens" javaType="java.lang.Long"/>
+            <arg column="model_calls" javaType="java.lang.Long"/>
+            <arg column="tool_calls" javaType="java.lang.Long"/>
+            <arg column="duration_ms" javaType="java.lang.Long"/>
+        </constructor>
+    </resultMap>
+
+    <select id="descendantUsage" resultMap="DescendantUsageMap">
+        select sum((usage_json -&gt;&gt; 'inputTokens')::bigint)::bigint as input_tokens,
+               sum((usage_json -&gt;&gt; 'outputTokens')::bigint)::bigint as output_tokens,
+               sum((usage_json -&gt;&gt; 'totalTokens')::bigint)::bigint as total_tokens,
+               sum((usage_json -&gt;&gt; 'modelCalls')::bigint)::bigint as model_calls,
+               sum((usage_json -&gt;&gt; 'toolCalls')::bigint)::bigint as tool_calls,
+               null::bigint as duration_ms
+          from ai_run where root_run_id = #{rootRunId} and parent_run_id is not null
+                           and status in ('COMPLETED', 'FAILED', 'CANCELLED')
+    </select>
+
     <sql id="RuntimeInstanceMatch">
         <choose>
             <when test="instanceId != null">and runtime_instance_id = #{instanceId}</when>
@@ -92,11 +131,11 @@
                             agent_version, agent_release_id, manifest_digest, model_key, status, priority,
                             idempotency_key, policy_version,
                             trace_context,
-                            created_at, updated_at)
+                            created_at, updated_at, root_run_id)
         values (#{id}, #{conversationId}, #{userMessageId}, #{actor}, cast(#{actorRolesJson} as jsonb),
             #{actorAuthVersion}, #{question}, #{agentKey}, #{agentVersion}, #{agentReleaseId}, #{manifestDigest},
             #{modelKey}, 'QUEUED', #{priority}, #{idempotencyKey}, #{policyVersion}, #{traceContext}, #{createdAt},
-            #{createdAt})
+            #{createdAt}, #{id})
     </insert>
 
     <select id="find" resultMap="RunMap">
@@ -128,6 +167,7 @@
     <select id="selectNextQueued" resultType="java.util.UUID">
         select c.id from ai_run c
         where c.status = 'QUEUED'
+          and c.parent_run_id is null
           and (c.dispatch_next_attempt_at is null or c.dispatch_next_attempt_at &lt;= now())
           and not exists (
               select 1 from ai_run x
@@ -137,6 +177,7 @@
             select count(*)
               from ai_run a
              where a.actor = c.actor
+               and a.parent_run_id is null
                and a.status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
           ) &lt; #{perUserActiveLimit}
         order by c.priority desc, c.queue_seq asc
@@ -295,15 +336,24 @@
         where id = #{id} and execution_token = #{executionToken}
           <include refid="RuntimeInstanceMatch"/>
           and status not in ('COMPLETED', 'FAILED', 'CANCELLED')
+          and (parent_run_id is null or status = 'CANCEL_REQUESTED')
     </update>
 
     <update id="requestCancel">
+        with recursive parent_to_cancel as materialized (
+            select id from ai_run where id = #{id} and status in ('QUEUED', 'DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+            for update
+        ), affected(id) as (
+            select id from parent_to_cancel
+            union all
+            select child.id from ai_run child join affected parent on child.parent_run_id = parent.id
+        )
         update ai_run set status = case when status in ('DISPATCHING', 'RUNNING')
             then 'CANCEL_REQUESTED' else 'CANCELLED' end,
             finished_at = case when status = 'QUEUED' then now() else finished_at end,
             cancel_requested_at = case when status in ('DISPATCHING', 'RUNNING') then now() else cancel_requested_at end,
             updated_at = now()
-        where id = #{id} and status in ('QUEUED', 'DISPATCHING', 'RUNNING')
+        where id in (select id from affected) and status in ('QUEUED', 'DISPATCHING', 'RUNNING')
     </update>
 
     <update id="cancelQueued">
@@ -321,7 +371,7 @@
 
     <select id="countUserQueued" resultType="java.lang.Integer">
         select count(*) from ai_run
-        where actor = #{actor} and status = 'QUEUED'
+        where actor = #{actor} and status = 'QUEUED' and parent_run_id is null
         <if test="excludeConversationId != null">
           and conversation_id != #{excludeConversationId}
         </if>
@@ -330,6 +380,7 @@
     <select id="countUserActive" resultType="java.lang.Integer">
         select count(*) from ai_run
         where actor = #{actor}
+          and parent_run_id is null
           and status in ('DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
         <if test="excludeConversationId != null">
           and conversation_id != #{excludeConversationId}

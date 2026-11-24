@@ -29,12 +29,14 @@ import { api, openAiEventStream } from '../api/client'
 import type {
   AiAgentCatalogItem,
   AiConversationDetail,
+  AiDelegation,
   AiMessage,
   AiRun,
   AiRunUsage,
   AiStreamEvent
 } from '../api/types'
 import { formatDateTime } from '../utils/dateTime'
+import { DelegationStack } from '../components/DelegationCard'
 import { answerTokens, formatUnits, MY_QUOTA_KEY, MY_USAGE_KEY, quotaStatus } from '../utils/quota'
 import { QuotaOverview } from './Usage'
 
@@ -86,6 +88,7 @@ export default function Assistant() {
   const screens = Grid.useBreakpoint()
   const compact = screens.md === false
   const [historyOpen, setHistoryOpen] = useState(false)
+  const [selectedDelegation, setSelectedDelegation] = useState<AiDelegation | null>(null)
   const [quotaOpen, setQuotaOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [targetAgentKey, setTargetAgentKey] = useState<string | null>(readLastAgent)
@@ -254,6 +257,10 @@ export default function Assistant() {
       if (selectedIdRef.current !== selectedId) return
       if (eventCursor > 0) streamCursorRef.current = eventCursor
       if (type === 'stream.ready') {
+        refresh()
+        return
+      }
+      if (type.startsWith('delegate.')) {
         refresh()
         return
       }
@@ -469,6 +476,25 @@ export default function Assistant() {
   }
 
   const messages = detail.data?.messages
+  const delegationsByRun = useMemo(() => {
+    const groups = new Map<string, AiDelegation[]>()
+    for (const task of detail.data?.delegations ?? []) {
+      const tasks = groups.get(task.parentRunId) ?? []
+      tasks.push(task)
+      groups.set(task.parentRunId, tasks)
+    }
+    return groups
+  }, [detail.data?.delegations])
+  const child = useQuery({
+    queryKey: ['ai-child-conversation', selectedDelegation?.childConversationId],
+    queryFn: () => api.aiConversation(selectedDelegation!.childConversationId),
+    enabled: Boolean(selectedDelegation),
+    refetchInterval:
+      selectedDelegation &&
+      ['SUBMITTED', 'WORKING', 'CANCEL_REQUESTED'].includes(selectedDelegation.state)
+        ? 2000
+        : false
+  })
   const pending =
     pendingMessage &&
     !messages?.some(
@@ -486,10 +512,11 @@ export default function Assistant() {
     !submitting && currentRun && TERMINAL_RUN_STATUSES.has(currentRun.status) ? currentRun : null
   const closedRunId = closedRun?.id
   const quotaFailure = Boolean(closedRun?.errorCode && QUOTA_ERROR_CODES.has(closedRun.errorCode))
-  const retryQuestion = quotaFailure && closedRunId
-    ? (messages?.find((item) => item.role === 'user' && item.runId === closedRunId)?.content ??
-      (snapshotRun?.id === closedRunId ? snapshotRun.question : undefined))
-    : undefined
+  const retryQuestion =
+    quotaFailure && closedRunId
+      ? (messages?.find((item) => item.role === 'user' && item.runId === closedRunId)?.content ??
+        (snapshotRun?.id === closedRunId ? snapshotRun.question : undefined))
+      : undefined
 
   useEffect(() => {
     if (!closedRunId) return
@@ -732,7 +759,27 @@ export default function Assistant() {
                 </div>
               </div>
             ) : (
-              messages?.map((item) => <MessageBubble key={item.id} message={item} />)
+              messages?.map((item) => {
+                const tasks = item.runId ? delegationsByRun.get(item.runId) : undefined
+                const attached =
+                  item.role === 'assistant' ||
+                  item.runId === visiblePreview?.runId ||
+                  messages.some(
+                    (candidate) => candidate.role === 'assistant' && candidate.runId === item.runId
+                  )
+                return (
+                  <div key={item.id}>
+                    <MessageBubble
+                      message={item}
+                      delegations={item.role === 'assistant' ? tasks : undefined}
+                      onOpenDelegation={setSelectedDelegation}
+                    />
+                    {!attached && tasks?.length ? (
+                      <SubtaskCards tasks={tasks} onOpen={setSelectedDelegation} />
+                    ) : null}
+                  </div>
+                )
+              })
             )}
             {pending ? <MessageBubble message={pending} /> : null}
             {visiblePreview ? (
@@ -741,13 +788,22 @@ export default function Assistant() {
                 text={visiblePreview.text}
                 status={currentRun?.status}
                 usage={currentRun?.usage}
+                delegations={delegationsByRun.get(visiblePreview.runId)}
+                onOpenDelegation={setSelectedDelegation}
                 onRender={scrollIfFollowing}
               />
             ) : null}
             {busy ? (
               <RunActivity
                 run={running ? currentRun : null}
-                progress={progress}
+                progress={
+                  currentRun &&
+                  delegationsByRun
+                    .get(currentRun.id)
+                    ?.some((task) => task.state === 'SUBMITTED' || task.state === 'WORKING')
+                    ? '等待子任务'
+                    : progress
+                }
                 hasOutput={Boolean(visiblePreview)}
                 submittedAt={pending?.createdAt}
               />
@@ -863,6 +919,28 @@ export default function Assistant() {
         </div>
       </section>
       <Drawer
+        title={
+          selectedDelegation
+            ? `子任务 · ${selectedDelegation.targetAgentName || selectedDelegation.targetAgentKey}`
+            : '子任务'
+        }
+        open={Boolean(selectedDelegation)}
+        onClose={() => setSelectedDelegation(null)}
+        width={compact ? '100%' : 640}
+        extra={<Button onClick={() => setSelectedDelegation(null)}>返回父会话</Button>}
+      >
+        {child.isPending ? <LoadingOutlined /> : null}
+        {child.isError ? (
+          <Alert type="warning" message="无法查看子任务轨迹或访问权限已变化" />
+        ) : null}
+        {child.data?.messages.map((item) => (
+          <MessageBubble key={item.id} message={item} readOnlyChild />
+        ))}
+        {child.data?.latestRun?.errorMessage ? (
+          <Alert type="warning" message={child.data.latestRun.errorMessage} />
+        ) : null}
+      </Drawer>
+      <Drawer
         title="我的模型额度"
         placement="right"
         width="min(100%, 600px)"
@@ -954,11 +1032,15 @@ function StreamingAnswer({
   text,
   status,
   usage,
+  delegations,
+  onOpenDelegation,
   onRender
 }: {
   text: string
   status?: string
   usage?: AiRunUsage | null
+  delegations?: AiDelegation[]
+  onOpenDelegation: (task: AiDelegation) => void
   onRender: () => void
 }) {
   const deferredText = useDeferredValue(text)
@@ -969,6 +1051,7 @@ function StreamingAnswer({
     <div className="assistant-message">
       <div className="assistant-message-bubble">
         <div className="assistant-message-author">{interrupted ? '助手 · 部分输出' : '助手'}</div>
+        <SubtaskCards tasks={delegations} onOpen={onOpenDelegation} />
         <AnswerMarkdown>{content}</AnswerMarkdown>
         {status === 'COMPLETED' ? <AnswerTokenCount usage={usage} /> : null}
       </div>
@@ -990,9 +1073,13 @@ function AssistantQuota({ onOpen }: { onOpen: () => void }) {
       aria-live="polite"
     >
       <WalletOutlined />
-      {snapshot
-        ? <span>可用额度 <strong>{formatUnits(snapshot.availableUnits)}</strong> Units</span>
-        : <span>{quota.isError ? '额度暂不可查' : '正在查询额度'}</span>}
+      {snapshot ? (
+        <span>
+          可用额度 <strong>{formatUnits(snapshot.availableUnits)}</strong> Units
+        </span>
+      ) : (
+        <span>{quota.isError ? '额度暂不可查' : '正在查询额度'}</span>
+      )}
       {status && status.tone !== 'normal' ? <span>· {status.label}</span> : null}
     </button>
   )
@@ -1039,17 +1126,44 @@ function rememberAgent(agentKey: string) {
   }
 }
 
-const AnswerMarkdown = memo(function AnswerMarkdown({ children }: { children: string }) {
+function SubtaskCards({
+  tasks,
+  onOpen
+}: {
+  tasks?: AiDelegation[]
+  onOpen: (task: AiDelegation) => void
+}) {
+  return (
+    <DelegationStack
+      tasks={tasks}
+      onOpen={onOpen}
+      renderResult={(result) => <AnswerMarkdown readOnlyChild>{result}</AnswerMarkdown>}
+    />
+  )
+}
+
+const AnswerMarkdown = memo(function AnswerMarkdown({
+  children,
+  readOnlyChild
+}: {
+  children: string
+  readOnlyChild?: boolean
+}) {
   return (
     <div className="assistant-markdown">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
+        skipHtml
         components={{
-          a: ({ children, href }) => (
-            <a href={href} target="_blank" rel="noreferrer">
-              {children}
-            </a>
-          )
+          a: ({ children, href }) =>
+            readOnlyChild ? (
+              <span>{children}</span>
+            ) : (
+              <a href={href} target="_blank" rel="noreferrer">
+                {children}
+              </a>
+            ),
+          img: readOnlyChild ? ({ alt }) => <span>{alt}</span> : undefined
         }}
       >
         {children}
@@ -1058,18 +1172,29 @@ const AnswerMarkdown = memo(function AnswerMarkdown({ children }: { children: st
   )
 })
 
-const MessageBubble = memo(function MessageBubble({ message }: { message: AiMessage }) {
+const MessageBubble = memo(function MessageBubble({
+  message,
+  delegations,
+  onOpenDelegation,
+  readOnlyChild
+}: {
+  message: AiMessage
+  delegations?: AiDelegation[]
+  onOpenDelegation?: (task: AiDelegation) => void
+  readOnlyChild?: boolean
+}) {
   const isUser = message.role === 'user'
   return (
     <div className={`assistant-message${isUser ? ' user' : ''}`}>
       <div className="assistant-message-bubble">
         <div className="assistant-message-author">{isUser ? '我' : '助手'}</div>
+        {onOpenDelegation ? <SubtaskCards tasks={delegations} onOpen={onOpenDelegation} /> : null}
         {isUser ? (
           <Paragraph style={{ whiteSpace: 'pre-wrap', marginBottom: 0 }}>
             {message.content}
           </Paragraph>
         ) : (
-          <AnswerMarkdown>{message.content}</AnswerMarkdown>
+          <AnswerMarkdown readOnlyChild={readOnlyChild}>{message.content}</AnswerMarkdown>
         )}
         {message.citations.length > 0 ? (
           <div className="assistant-citations">

@@ -15,6 +15,9 @@ import javax.crypto.spec.SecretKeySpec;
 public final class RunTokenCodec {
 
     private static final String HMAC = "HmacSHA256";
+    private static final String V2 = "v2.";
+    private static final int V1_FIELDS = 11;
+    private static final int V2_FIELDS = 16;
     private static final Base64.Encoder ENCODER = Base64.getUrlEncoder().withoutPadding();
     private static final Base64.Decoder DECODER = Base64.getUrlDecoder();
 
@@ -23,29 +26,32 @@ public final class RunTokenCodec {
     public static String sign(RunTokenPayload payload, String secret) {
         String body = encodeBody(payload);
         String encoded = ENCODER.encodeToString(body.getBytes(StandardCharsets.UTF_8));
-        return encoded + "." + ENCODER.encodeToString(hmac(encoded, secret));
+        String signed = payload.lineage() == null ? encoded : V2 + encoded;
+        return signed + "." + ENCODER.encodeToString(hmac(signed, secret));
     }
 
     public static RunTokenPayload verify(String token, String secret, long nowEpochSeconds) {
         if (token == null || token.isBlank()) {
             throw new IllegalArgumentException("缺少运行凭据");
         }
-        int dot = token.indexOf('.');
-        if (dot <= 0 || dot == token.length() - 1) {
+        boolean versionTwo = token.startsWith(V2);
+        int dot = token.lastIndexOf('.');
+        if (dot <= (versionTwo ? V2.length() : 0) || dot == token.length() - 1) {
             throw new IllegalArgumentException("运行凭据格式非法");
         }
-        String encoded = token.substring(0, dot);
+        String signed = token.substring(0, dot);
         byte[] signature;
         try {
             signature = DECODER.decode(token.substring(dot + 1));
         } catch (IllegalArgumentException exception) {
             throw new IllegalArgumentException("运行凭据格式非法");
         }
-        if (!MessageDigest.isEqual(signature, hmac(encoded, secret))) {
+        if (!MessageDigest.isEqual(signature, hmac(signed, secret))) {
             throw new IllegalArgumentException("运行凭据签名无效");
         }
+        String encoded = versionTwo ? signed.substring(V2.length()) : signed;
         String body = new String(DECODER.decode(encoded), StandardCharsets.UTF_8);
-        RunTokenPayload payload = decodeBody(body);
+        RunTokenPayload payload = decodeBody(body, versionTwo);
         if (payload.exp() <= nowEpochSeconds) {
             throw new IllegalArgumentException("运行凭据已过期");
         }
@@ -55,7 +61,8 @@ public final class RunTokenCodec {
     public static String fingerprint(RunTokenPayload payload) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256")
-                    .digest(encodeBody(payload).getBytes(StandardCharsets.UTF_8));
+                    .digest(((payload.lineage() == null ? "" : V2) + encodeBody(payload))
+                            .getBytes(StandardCharsets.UTF_8));
             return HexFormat.of().formatHex(digest).substring(0, 32);
         } catch (java.security.NoSuchAlgorithmException exception) {
             throw new IllegalStateException("SHA-256 unavailable", exception);
@@ -83,15 +90,36 @@ public final class RunTokenCodec {
             }
             body.append(escape(values[index]));
         }
+        RunTokenLineage lineage = payload.lineage();
+        if (lineage != null) {
+            body.append('\n')
+                    .append(escape(lineage.rootRun()))
+                    .append('\n')
+                    .append(escape(lineage.parentRun()))
+                    .append('\n')
+                    .append(escape(lineage.a2aTask()))
+                    .append('\n')
+                    .append(lineage.depth())
+                    .append('\n')
+                    .append(lineage.maxTotalTokens());
+        }
         return body.toString();
     }
 
-    private static RunTokenPayload decodeBody(String body) {
+    private static RunTokenPayload decodeBody(String body, boolean versionTwo) {
         String[] parts = body.split("\n", -1);
-        if (parts.length != 11) {
+        if (parts.length != (versionTwo ? V2_FIELDS : V1_FIELDS)) {
             throw new IllegalArgumentException("运行凭据内容不完整");
         }
         try {
+            RunTokenLineage lineage = versionTwo
+                    ? new RunTokenLineage(
+                            unescape(parts[11]),
+                            nullable(parts[12]),
+                            nullable(parts[13]),
+                            Integer.parseInt(parts[14]),
+                            Long.parseLong(parts[15]))
+                    : null;
             return new RunTokenPayload(
                     unescape(parts[0]),
                     unescape(parts[1]),
@@ -103,7 +131,8 @@ public final class RunTokenCodec {
                     unescape(parts[7]),
                     unescape(parts[8]),
                     Long.parseLong(parts[9]),
-                    unescape(parts[10]));
+                    unescape(parts[10]),
+                    lineage);
         } catch (NumberFormatException exception) {
             throw new IllegalArgumentException("运行凭据内容不完整");
         }
@@ -130,5 +159,9 @@ public final class RunTokenCodec {
 
     private static String unescape(String value) {
         return value.replace("%0D", "\r").replace("%0A", "\n").replace("%25", "%");
+    }
+
+    private static String nullable(String value) {
+        return value.isEmpty() ? null : unescape(value);
     }
 }

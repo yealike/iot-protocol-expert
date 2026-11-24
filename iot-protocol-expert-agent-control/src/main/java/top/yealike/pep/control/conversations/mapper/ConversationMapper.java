@@ -29,6 +29,9 @@ public interface ConversationMapper {
 
     Long countByUser(@Param("userId") String userId);
 
+    /** 判断会话是否为只读子会话。 */
+    boolean isChild(@Param("id") UUID id);
+
     int touch(@Param("now") Instant now, @Param("id") UUID id);
 
     Long nextMessageSeq(@Param("conversationId") UUID conversationId);

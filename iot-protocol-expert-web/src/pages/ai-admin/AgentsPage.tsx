@@ -48,12 +48,8 @@ import type {
   AiSkillRelease
 } from '../../api/types'
 import { formatDateTime } from '../../utils/dateTime'
-import {
-  enabledTag,
-  ErrorAlert,
-  rememberPublication,
-  StateTag
-} from './shared'
+import { AgentTeamEditor } from './AgentTeamEditor'
+import { enabledTag, ErrorAlert, rememberPublication, StateTag } from './shared'
 
 const { Text, Paragraph } = Typography
 const MAX_OUTPUT_TOKENS = 131072
@@ -550,7 +546,13 @@ export default function AgentsPage() {
                 label="Temperature"
                 rules={[{ type: 'number', min: 0, max: 2 }]}
               >
-                <InputNumber style={{ width: '100%' }} min={0} max={2} step={0.1} placeholder="0.1" />
+                <InputNumber
+                  style={{ width: '100%' }}
+                  min={0}
+                  max={2}
+                  step={0.1}
+                  placeholder="0.1"
+                />
               </Form.Item>
               <Form.Item
                 name="maxTokens"
@@ -608,11 +610,14 @@ export default function AgentsPage() {
               <Form.Item
                 name="runTimeoutMs"
                 label="Run 超时（毫秒）"
-                rules={[
-                  { required: true, type: 'number', min: 5000, max: MAX_RUN_TIMEOUT_MS }
-                ]}
+                rules={[{ required: true, type: 'number', min: 5000, max: MAX_RUN_TIMEOUT_MS }]}
               >
-                <InputNumber min={5000} max={MAX_RUN_TIMEOUT_MS} step={5000} style={{ width: '100%' }} />
+                <InputNumber
+                  min={5000}
+                  max={MAX_RUN_TIMEOUT_MS}
+                  step={5000}
+                  style={{ width: '100%' }}
+                />
               </Form.Item>
             </div>
           </Card>
@@ -690,6 +695,19 @@ export default function AgentsPage() {
           </Card>
         </Form>
 
+        {detailAgent ? (
+          <AgentTeamEditor
+            key={detailAgent.id}
+            agent={detailAgent}
+            agents={agents.data ?? []}
+            revision={() => revisionRef.current ?? detailAgent.revision}
+            onSaved={(revision) => {
+              revisionRef.current = revision
+              setValidation(null)
+              void queryClient.invalidateQueries({ queryKey: ['ai-agents-admin'] })
+            }}
+          />
+        ) : null}
         {editingId ? (
           <Card
             size="small"

@@ -20,6 +20,7 @@ import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.ComponentDigests;
 import top.yealike.pep.runtime.contract.CredentialResolveRequest;
 import top.yealike.pep.runtime.contract.CredentialResolveResponse;
+import top.yealike.pep.runtime.contract.DelegationPolicy;
 import top.yealike.pep.runtime.contract.Digests;
 import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.runtime.contract.ManifestDigests;
@@ -103,6 +104,14 @@ public class PrepareService {
                 throw new PrepareException(422, "MANIFEST_DIGEST_MISMATCH", "发布清单摘要与派发摘要不一致");
             }
             validateManifest(manifest);
+            for (var binding : manifest.delegates()) {
+                boolean prepared = releases.find(binding.targetReleaseId())
+                        .filter(target -> binding.targetManifestDigest().equals(target.manifestDigest()))
+                        .isPresent();
+                if (!prepared) {
+                    throw new PrepareException(503, "TARGET_RELEASE_UNAVAILABLE", "委派目标版本尚未准备：" + binding.alias());
+                }
+            }
 
             List<String> warnings = new ArrayList<>();
             Map<String, McpDescriptor> mcps = new LinkedHashMap<>();
@@ -118,12 +127,13 @@ public class PrepareService {
             Set<String> aliases = new HashSet<>();
             for (PreparedTool tool : tools) {
                 if (RESERVED_ALIASES.contains(tool.alias().toLowerCase(Locale.ROOT))
+                        || (!manifest.delegates().isEmpty() && DelegationPolicy.TOOL_NAME.equals(tool.alias()))
                         || !aliases.add(tool.alias().toLowerCase(Locale.ROOT))) {
                     throw new PrepareException(422, "TOOL_ALIAS_CONFLICT", "工具别名冲突：" + tool.alias());
                 }
             }
             int skillToolCount = manifest.skills().isEmpty() ? 0 : 2;
-            if (tools.size() + skillToolCount > MAX_MCP_TOOLS) {
+            if (tools.size() + skillToolCount + manifest.delegates().size() > MAX_MCP_TOOLS) {
                 throw new PrepareException(
                         422, "TOOL_CATALOG_TOO_LARGE", "模型可见工具数量超过 32 个（含 load_skill/read_skill_resource）");
             }
@@ -369,6 +379,9 @@ public class PrepareService {
     }
 
     private void validateManifest(AgentManifest manifest) {
+        if (AgentManifest.V2.equals(manifest.schemaVersion())) {
+            validateDelegation(manifest);
+        }
         if (blank(manifest.agentKey()) || blank(manifest.version())) {
             throw new PrepareException(422, "INVALID_MANIFEST", "Agent key/version 不能为空");
         }
@@ -410,6 +423,29 @@ public class PrepareService {
         }
         if (manifest.executionPolicy() != null && manifest.executionPolicy().scriptExecution()) {
             throw new PrepareException(422, "UNSUPPORTED_EXECUTION_POLICY", "Runtime 不执行脚本或 Shell");
+        }
+    }
+
+    private static void validateDelegation(AgentManifest manifest) {
+        if (blank(manifest.description())
+                || manifest.delegates().size() > DelegationPolicy.MAX_DELEGATES
+                || (!manifest.delegates().isEmpty()
+                        && (manifest.budget() == null
+                                || manifest.delegationPolicy() == null
+                                || !manifest.delegationPolicy()
+                                        .validFor(manifest.budget().runTimeoutMs())))) {
+            throw new PrepareException(422, "INVALID_MANIFEST", "v2 发布清单的描述或委派策略不完整");
+        }
+        Set<String> aliases = new HashSet<>();
+        for (var binding : manifest.delegates()) {
+            if (blank(binding.alias())
+                    || !binding.alias().matches("[a-z][a-z0-9_]{1,39}")
+                    || !aliases.add(binding.alias())
+                    || binding.targetReleaseId() == null
+                    || blank(binding.targetManifestDigest())
+                    || manifest.agentKey().equals(binding.targetAgentKey())) {
+                throw new PrepareException(422, "INVALID_MANIFEST", "委派目标定位无效");
+            }
         }
     }
 

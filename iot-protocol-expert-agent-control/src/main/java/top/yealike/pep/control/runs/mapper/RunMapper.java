@@ -33,6 +33,12 @@ public interface RunMapper {
 
     List<Run> find(@Param("id") UUID id);
 
+    /** 读取本地子 Run 的归属及冻结的 MCP 工具范围。 */
+    top.yealike.pep.runtime.contract.RunLineage lineage(@Param("id") UUID id);
+
+    /** 汇总根 Run 所有已结束的子 Run 用量。 */
+    top.yealike.pep.runtime.contract.RunUsage descendantUsage(@Param("rootRunId") UUID rootRunId);
+
     List<Run> lockRun(@Param("id") UUID id);
 
     List<Run> findByIdempotency(

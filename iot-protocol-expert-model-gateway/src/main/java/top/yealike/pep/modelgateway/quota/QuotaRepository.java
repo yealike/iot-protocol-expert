@@ -128,8 +128,19 @@ public class QuotaRepository {
         return Optional.ofNullable(mapper.findCallById(id));
     }
 
-    public void insertCall(Call call) {
-        mapper.insertCall(call);
+    /** 写入模型调用及从签名凭据得到的归属。 */
+    public void insertCall(Call call, top.yealike.pep.model.contract.RunTokenLineage lineage, long estimatedTokens) {
+        mapper.insertCall(
+                call,
+                lineage == null ? call.runId() : lineage.rootRun(),
+                lineage == null ? null : lineage.parentRun(),
+                lineage == null ? null : lineage.a2aTask(),
+                estimatedTokens);
+    }
+
+    /** 返回根 Run 已使用和仍预占的原始 Token 数。 */
+    public long rootTokens(String rootRunId) {
+        return mapper.rootTokens(rootRunId);
     }
 
     public void insertReservation(UUID id, UUID modelCallId, long units, OffsetDateTime dispatchDeadline) {

@@ -41,6 +41,11 @@ public class ConversationRepository {
         return rows.stream().findFirst();
     }
 
+    /** 判断会话是否仅用于展示委派轨迹。 */
+    public boolean isChild(UUID id) {
+        return mapper.isChild(id);
+    }
+
     public List<Conversation> listByUser(String userId, int limit, int offset) {
         return mapper.listByUser(userId, limit, offset);
     }

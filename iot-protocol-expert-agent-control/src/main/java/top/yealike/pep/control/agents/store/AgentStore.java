@@ -8,11 +8,15 @@ import top.yealike.pep.control.agents.domain.AgentComponent;
 import top.yealike.pep.control.agents.domain.AgentMcpBinding;
 import top.yealike.pep.control.agents.domain.AgentRelease;
 import top.yealike.pep.control.agents.domain.AgentSkillBinding;
+import top.yealike.pep.control.agents.domain.AgentTeam;
+import top.yealike.pep.control.agents.domain.AgentTeamSettings;
 import top.yealike.pep.control.agents.domain.McpBindingInput;
 import top.yealike.pep.control.agents.domain.SkillBindingInput;
 import top.yealike.pep.control.agents.mapper.AgentPlatformMapper;
 import top.yealike.pep.control.support.JsonSupport;
+import top.yealike.pep.runtime.contract.A2aCapability;
 import top.yealike.pep.runtime.contract.AgentManifest;
+import top.yealike.pep.runtime.contract.DelegationPolicy;
 
 @Repository
 public class AgentStore {
@@ -81,7 +85,39 @@ public class AgentStore {
     }
 
     public int delete(UUID id) {
+        mapper.deleteDelegateBindings(id);
         return mapper.delete(id);
+    }
+
+    /** 加载当前草稿的委派配置。 */
+    public AgentTeam team(UUID agentId) {
+        AgentTeamSettings settings = mapper.teamSettings(agentId);
+        if (settings == null) {
+            return AgentTeam.EMPTY;
+        }
+        return new AgentTeam(
+                JsonSupport.readStringList(settings.tagsJson()),
+                JsonSupport.readList(settings.capabilitiesJson(), A2aCapability.class),
+                mapper.delegateBindings(agentId),
+                JsonSupport.read(settings.policyJson(), DelegationPolicy.class));
+    }
+
+    /** 在上层事务内替换指定修订的委派配置。 */
+    public boolean replaceTeam(UUID agentId, long revision, AgentTeam team) {
+        AgentTeamSettings settings = new AgentTeamSettings(
+                JsonSupport.write(team.capabilityTags()),
+                JsonSupport.write(team.a2aCapabilities()),
+                team.delegationPolicy() == null ? null : JsonSupport.write(team.delegationPolicy()));
+        if (mapper.updateTeamSettings(agentId, revision, settings) == 0) {
+            return false;
+        }
+        mapper.deleteDelegateBindings(agentId);
+        if (!team.delegates().isEmpty()
+                && mapper.insertDelegateBindings(agentId, team.delegates())
+                        != team.delegates().size()) {
+            throw top.yealike.pep.control.support.AiExceptions.conflict("TARGET_RELEASE_UNAVAILABLE", "委派目标版本已变化");
+        }
+        return true;
     }
 
     public List<AgentMcpBinding> mcpBindings(UUID agentId) {

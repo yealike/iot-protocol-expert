@@ -787,6 +787,11 @@ export interface AiAgentSkillBindingInput {
 }
 
 export interface AiAgentManifest {
+  description?: string | null
+  capabilityTags?: string[]
+  a2aCapabilities?: AiA2aCapability[]
+  delegates?: AiDelegateBinding[]
+  delegationPolicy?: AiDelegationPolicy | null
   schemaVersion: string
   agentKey: string
   version: string
@@ -864,6 +869,48 @@ export interface AiAgentCatalogItem {
   skills: string[]
   healthy: boolean
   healthVerified?: boolean
+  capabilityTags?: string[]
+  delegates?: Array<Pick<AiDelegateBinding, 'alias' | 'targetAgentKey' | 'description'>>
+}
+
+export interface AiA2aCapability {
+  id: string
+  name: string
+  description: string
+  tags?: string[]
+  examples?: string[]
+  inputModes?: string[]
+  outputModes?: string[]
+}
+
+export interface AiDelegateBinding {
+  alias: string
+  targetAgentKey?: string
+  targetReleaseId: string
+  targetVersion?: string
+  targetManifestDigest?: string
+  description: string
+  whenToUse?: string
+  allowedTools: string[]
+  required: boolean
+  maxCalls: number
+  timeoutMs: number
+  order: number
+}
+
+export interface AiDelegationPolicy {
+  maxDepth: number
+  maxCallsPerRun: number
+  maxParallel: number
+  maxTotalTokens: number
+  maxWallClockMs: number
+}
+
+export interface AiAgentTeam {
+  capabilityTags: string[]
+  a2aCapabilities: AiA2aCapability[]
+  delegates: AiDelegateBinding[]
+  delegationPolicy?: AiDelegationPolicy | null
 }
 
 export interface AiCitation {
@@ -957,6 +1004,29 @@ export interface AiConversationDetail {
   messages: AiMessage[]
   currentRun: AiRun | null
   latestRun?: AiRun | null
+  delegations?: AiDelegation[]
+}
+
+export interface AiDelegation {
+  taskId: string
+  parentRunId: string
+  childRunId: string
+  childConversationId: string
+  alias: string
+  targetAgentKey: string
+  targetAgentName?: string
+  state:
+    'SUBMITTED' | 'WORKING' | 'CANCEL_REQUESTED' | 'COMPLETED' | 'FAILED' | 'CANCELED' | 'REJECTED'
+  depth: number
+  taskSummary?: string
+  resultSummary?: string
+  truncated: boolean
+  errorCode?: string
+  errorMessage?: string
+  usage?: AiRunUsage
+  startedAt?: string
+  finishedAt?: string
+  durationMs?: number
 }
 
 export interface AiStreamEvent {

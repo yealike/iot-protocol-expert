@@ -145,6 +145,20 @@ public class RuntimeRunCoordinator {
             return deniedClaim(run, "AGENT_RELEASE_MISSING", false);
         }
         AgentRelease release = agents.release(run.agentReleaseId());
+        if (RunStatus.DISPATCHING.equals(run.status())
+                && !release.manifest().delegates().isEmpty()) {
+            boolean unavailable = release.manifest().delegates().stream()
+                    .filter(top.yealike.pep.runtime.contract.DelegateBinding::required)
+                    .anyMatch(binding -> !agents.delegateTargetActive(binding));
+            if (unavailable) {
+                return deniedClaim(run, "TARGET_RELEASE_UNAVAILABLE", false);
+            }
+        }
+        var runLineage = runs.lineage(run.id());
+        if (runLineage != null && !isParentRunning(runLineage.parentRunId(), request.instanceId())) {
+            runs.requestCancel(run.id());
+            return deniedClaim(run, "PARENT_RUN_STOPPED", true);
+        }
         if (RunStatus.DISPATCHING.equals(run.status())) {
             try {
                 UserIdentity current = identities.resolveActor(run.actor());
@@ -193,8 +207,7 @@ public class RuntimeRunCoordinator {
     }
 
     public RunContext context(UUID runId, long executionToken) {
-        requireActiveExecution(runId, executionToken, false);
-        Run run = runs.find(runId).orElseThrow(() -> AiExceptions.notFound("Run 不存在"));
+        Run run = requireActiveExecution(runId, executionToken, false);
         List<Message> history = conversations.listMessagesThrough(
                 run.conversationId(),
                 run.userMessageId(),
@@ -206,7 +219,7 @@ public class RuntimeRunCoordinator {
             }
             messages.add(new RunMessage(message.role(), message.content(), null, null));
         }
-        return new RunContext(run.id(), run.conversationId(), run.question(), messages);
+        return new RunContext(run.id(), run.conversationId(), run.question(), messages, runs.lineage(run.id()));
     }
 
     public top.yealike.pep.runtime.contract.RunEventAck events(RunEventBatch batch) {
@@ -249,16 +262,22 @@ public class RuntimeRunCoordinator {
             }
             RunTerminalStatus status =
                     RunStatus.CANCEL_REQUESTED.equals(current.status()) ? RunTerminalStatus.CANCELLED : requestedStatus;
+            var usage = request.usage();
+            if (runs.lineage(current.id()) == null && usage != null) {
+                var aggregate = runs.withDescendantUsage(current.id(), usage);
+                if (aggregate != null) {
+                    usage = aggregate;
+                }
+            }
             boolean changed;
             String type;
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("status", status.name());
-            payload.put("usage", request.usage());
+            payload.put("usage", usage);
             payload.put("warnings", request.warnings());
             switch (status) {
                 case SUCCEEDED -> {
-                    changed = runs.markCompleted(
-                            current.id(), current.executionToken(), request.instanceId(), request.usage());
+                    changed = runs.markCompleted(current.id(), current.executionToken(), request.instanceId(), usage);
                     if (changed && !answer.isBlank()) {
                         long seq = conversations.nextMessageSeq(current.conversationId());
                         UUID messageId = UUID.randomUUID();
@@ -278,8 +297,7 @@ public class RuntimeRunCoordinator {
                     type = "run.completed";
                 }
                 case CANCELLED -> {
-                    changed = runs.markCancelled(
-                            current.id(), current.executionToken(), request.instanceId(), request.usage());
+                    changed = runs.markCancelled(current.id(), current.executionToken(), request.instanceId(), usage);
                     type = "run.cancelled";
                 }
                 default -> {
@@ -294,12 +312,7 @@ public class RuntimeRunCoordinator {
                     payload.put("errorCode", code);
                     payload.put("message", message);
                     changed = runs.markFailed(
-                            current.id(),
-                            current.executionToken(),
-                            request.instanceId(),
-                            code,
-                            message,
-                            request.usage());
+                            current.id(), current.executionToken(), request.instanceId(), code, message, usage);
                     type = "run.failed";
                 }
             }
@@ -312,6 +325,12 @@ public class RuntimeRunCoordinator {
 
     public ToolAuthorizeResponse authorize(ToolAuthorizeRequest request) {
         Run run = requireActiveExecution(request.runId(), request.executionToken(), false);
+        var lineage = runs.lineage(run.id());
+        if (lineage != null
+                && !lineage.allowedTools().isEmpty()
+                && !lineage.allowedTools().contains(request.toolAlias())) {
+            return denied(run, ErrorCodes.TOOL_DENIED, "委派绑定未开放该工具");
+        }
         AgentRelease release = agents.release(run.agentReleaseId());
         AgentManifest manifest = release.manifest();
         AgentManifest.McpBinding binding = manifest.mcp().stream()
@@ -365,7 +384,9 @@ public class RuntimeRunCoordinator {
             requireActiveExecution(request.runId(), request.executionToken(), false);
             resolvedRun = runs.find(request.runId()).orElseThrow(() -> AiExceptions.notFound("Run 不存在"));
             AgentRelease release = agents.release(resolvedRun.agentReleaseId());
-            collectManifestCredentials(release.manifest(), allowedRefs);
+            var lineage = runs.lineage(resolvedRun.id());
+            collectManifestCredentials(
+                    release.manifest(), allowedRefs, lineage == null ? List.of() : lineage.allowedTools());
         } else if (request.publicationId() != null) {
             Publication publication = publications.find(request.publicationId()).orElse(null);
             if (publication != null) {
@@ -384,8 +405,11 @@ public class RuntimeRunCoordinator {
                 throw AiExceptions.forbidden(ErrorCodes.CREDENTIAL_UNAVAILABLE, "只有运行中的 Run 可以获取模型网关凭据");
             }
             // 上游供应商密钥只在模型网关；Runtime 仅拿到受众限定的短期运行凭据。
-            String token = gatewayTokens.issueForRun(
-                    resolvedRun.actor(), resolvedRun.conversationId(), resolvedRun.id(), resolvedRun.modelKey());
+            var lineage = runs.lineage(resolvedRun.id());
+            String token = lineage == null
+                    ? gatewayTokens.issueForRun(
+                            resolvedRun.actor(), resolvedRun.conversationId(), resolvedRun.id(), resolvedRun.modelKey())
+                    : gatewayTokens.issueForChild(resolvedRun, lineage);
             return new CredentialResolveResponse(
                     request.credentialRef(), 1L, token, Instant.now().plusSeconds(600));
         }
@@ -398,11 +422,19 @@ public class RuntimeRunCoordinator {
     }
 
     private void collectManifestCredentials(AgentManifest manifest, Set<String> refs) {
+        collectManifestCredentials(manifest, refs, List.of());
+    }
+
+    private void collectManifestCredentials(AgentManifest manifest, Set<String> refs, List<String> allowedTools) {
         if (manifest.model() != null && manifest.model().credentialRef() != null) {
             refs.add(manifest.model().credentialRef());
         }
         for (AgentManifest.McpBinding binding : manifest.mcp()) {
-            mcps.findRelease(binding.key(), binding.version()).ifPresent(release -> addMcpCredential(release, refs));
+            if (allowedTools.isEmpty()
+                    || binding.tools().stream().anyMatch(tool -> allowedTools.contains(tool.alias()))) {
+                mcps.findRelease(binding.key(), binding.version())
+                        .ifPresent(release -> addMcpCredential(release, refs));
+            }
         }
     }
 
@@ -474,5 +506,17 @@ public class RuntimeRunCoordinator {
 
     private int leaseSeconds() {
         return Math.max(30, platform.runtime().leaseSeconds());
+    }
+
+    private boolean isParentRunning(UUID parentRunId, String instanceId) {
+        Instant now = Instant.now();
+        return runs.find(parentRunId)
+                .filter(parent -> RunStatus.RUNNING.equals(parent.status())
+                        && Objects.equals(parent.runtimeInstanceId(), instanceId)
+                        && parent.leaseUntil() != null
+                        && parent.leaseUntil().isAfter(now)
+                        && parent.deadlineAt() != null
+                        && parent.deadlineAt().isAfter(now))
+                .isPresent();
     }
 }

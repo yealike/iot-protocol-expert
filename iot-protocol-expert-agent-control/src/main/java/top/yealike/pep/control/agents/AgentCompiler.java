@@ -13,6 +13,7 @@ import org.springframework.stereotype.Component;
 import top.yealike.pep.control.agents.domain.AgentComponent;
 import top.yealike.pep.control.agents.domain.AgentMcpBinding;
 import top.yealike.pep.control.agents.domain.AgentSkillBinding;
+import top.yealike.pep.control.agents.domain.AgentTeam;
 import top.yealike.pep.control.agents.domain.CompileIssue;
 import top.yealike.pep.control.agents.domain.CompileResult;
 import top.yealike.pep.control.agents.domain.McpRelease;
@@ -26,6 +27,7 @@ import top.yealike.pep.control.agents.store.SkillStore;
 import top.yealike.pep.control.config.ModelGatewayProperties;
 import top.yealike.pep.model.contract.ModelGatewayCredentials;
 import top.yealike.pep.runtime.contract.AgentManifest;
+import top.yealike.pep.runtime.contract.DelegationPolicy;
 import top.yealike.pep.runtime.contract.ManifestDigests;
 import top.yealike.pep.runtime.contract.McpToolDescriptor;
 import top.yealike.pep.runtime.contract.ModelOptions;
@@ -89,6 +91,13 @@ public class AgentCompiler {
 
         AgentManifest.ModelSpec model = compileModel(draft, errors);
         AgentManifest.Budget budget = compileBudget(draft, errors);
+        AgentTeam team = DelegationCompiler.compile(agents, draft, budget.runTimeoutMs(), errors);
+        String description =
+                draft.description() == null ? "" : draft.description().strip();
+        boolean versionTwo = !description.isEmpty() || !team.equals(AgentTeam.EMPTY);
+        if (versionTwo && description.isEmpty()) {
+            errors.add(new CompileIssue("DESCRIPTION_REQUIRED", "启用能力声明或委派时，Agent 描述不能为空", "description"));
+        }
         List<AgentManifest.SkillBinding> skillBindings = compileSkills(draft.id(), errors, warnings);
         List<AgentManifest.McpBinding> mcpBindings = compileMcps(draft.id(), errors, warnings);
 
@@ -100,7 +109,9 @@ public class AgentCompiler {
                 if (!aliases.add(tool.alias().toLowerCase(Locale.ROOT))) {
                     errors.add(new CompileIssue("TOOL_ALIAS_CONFLICT", "工具别名冲突：" + tool.alias(), "mcp.tools"));
                 }
-                if ("load_skill".equals(tool.alias()) || "read_skill_resource".equals(tool.alias())) {
+                if ("load_skill".equals(tool.alias())
+                        || "read_skill_resource".equals(tool.alias())
+                        || DelegationPolicy.TOOL_NAME.equals(tool.alias())) {
                     errors.add(
                             new CompileIssue("TOOL_ALIAS_RESERVED", "工具别名与内置 Skill 工具冲突：" + tool.alias(), "mcp.tools"));
                 }
@@ -108,6 +119,9 @@ public class AgentCompiler {
         }
         if (!skillBindings.isEmpty()) {
             visibleTools += 2;
+        }
+        if (!team.delegates().isEmpty() && visibleTools + team.delegates().size() > MAX_VISIBLE_TOOLS) {
+            errors.add(new CompileIssue("DELEGATE_TOOL_BUDGET_EXCEEDED", "计入委派后可见工具数超过上限", "delegates"));
         }
         if (visibleTools > MAX_VISIBLE_TOOLS) {
             errors.add(new CompileIssue(
@@ -121,7 +135,7 @@ public class AgentCompiler {
             return new CompileResult(false, null, null, List.copyOf(errors), List.copyOf(warnings));
         }
         AgentManifest manifest = new AgentManifest(
-                "ipe.agent/v1",
+                versionTwo ? AgentManifest.V2 : AgentManifest.V1,
                 draft.key(),
                 version,
                 draft.displayName(),
@@ -130,7 +144,12 @@ public class AgentCompiler {
                 skillBindings,
                 mcpBindings,
                 budget,
-                new AgentManifest.ExecutionPolicy(false, "DENY"));
+                new AgentManifest.ExecutionPolicy(false, "DENY"),
+                versionTwo ? description : null,
+                team.capabilityTags(),
+                team.a2aCapabilities(),
+                team.delegates(),
+                team.delegationPolicy());
         return new CompileResult(true, manifest, ManifestDigests.digest(manifest), List.of(), List.copyOf(warnings));
     }
 

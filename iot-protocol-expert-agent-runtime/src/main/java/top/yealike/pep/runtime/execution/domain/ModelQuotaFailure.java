@@ -11,7 +11,8 @@ public record ModelQuotaFailure(String code, String message) {
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final Map<String, String> MESSAGES = Map.of(
             "QUOTA_EXHAUSTED", "当前模型额度不足或未分配，请联系管理员分配额度",
-            "QUOTA_TOTAL_EXHAUSTED", "模型总量额度已耗尽或已过期，请联系管理员补充额度");
+            "QUOTA_TOTAL_EXHAUSTED", "模型总量额度已耗尽或已过期，请联系管理员补充额度",
+            "DELEGATION_BUDGET_EXHAUSTED", "委派 Token 预算已耗尽");
 
     public static Optional<ModelQuotaFailure> from(Throwable failure) {
         // SDK/reactor may wrap the HTTP exception; bound traversal for malformed cause chains.

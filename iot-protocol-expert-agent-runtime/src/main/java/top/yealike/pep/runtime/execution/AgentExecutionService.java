@@ -50,6 +50,7 @@ import top.yealike.pep.runtime.config.properties.RuntimeProperties;
 import top.yealike.pep.runtime.contract.AgentManifest;
 import top.yealike.pep.runtime.contract.CredentialResolveRequest;
 import top.yealike.pep.runtime.contract.CredentialResolveResponse;
+import top.yealike.pep.runtime.contract.DelegationPolicy;
 import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.runtime.contract.RunClaimRequest;
 import top.yealike.pep.runtime.contract.RunClaimResponse;
@@ -279,6 +280,49 @@ public class AgentExecutionService {
         return execution.view(executionToken);
     }
 
+    private void executeNested(RunDispatchRequest request) {
+        PreparedRelease release = releases.find(request.releaseId())
+                .orElseThrow(() -> new RunRejectedException(409, ErrorCodes.RELEASE_NOT_ACTIVE, "目标版本尚未准备", null));
+        verifyRelease(request.agentKey(), request.agentVersion(), request, release);
+        String instanceId = nacos.instanceId();
+        RunExecution execution = new RunExecution(request, release, instanceId, true);
+        RunClaimResponse claim = control.claim(new RunClaimRequest(
+                request.runId(),
+                request.executionToken(),
+                instanceId,
+                UUID.randomUUID().toString()));
+        if (claim == null || !claim.allowed() || claim.cancelRequired()) {
+            throw new RunRejectedException(409, ErrorCodes.EXECUTION_LOST, "子 Run 未获得执行权", null);
+        }
+        execution.claim(claim);
+        execution.guard(new RunGuard(
+                request.runId(),
+                request.executionToken(),
+                claim.authVersion(),
+                effectiveDeadline(request, claim, release),
+                effectiveToolCalls(release, claim)));
+        execution.maxIterations(effectiveIterations(release, claim));
+        execution.publisher(new RunEventPublisher(
+                control, metrics, eventScheduler, request.runId(), request.executionToken(), instanceId));
+        if (executions.register(execution) != execution) {
+            closePublisher(execution);
+            throw new RunRejectedException(409, ErrorCodes.STALE_EXECUTION_TOKEN, "子 Run 已被认领", null);
+        }
+        try {
+            execution.heartbeat(startHeartbeat(execution));
+            if (execution.markWorkerStarted()) {
+                observability.observeSupplier("agent.delegate.child", () -> {
+                    execute(execution);
+                    return execution.status();
+                });
+            }
+        } catch (RuntimeException exception) {
+            closePublisher(execution);
+            executions.remove(request.runId(), execution);
+            throw exception;
+        }
+    }
+
     public RuntimeRunStatus cancel(UUID runId, long executionToken) {
         RunExecution execution = executions
                 .find(runId)
@@ -334,6 +378,14 @@ public class AgentExecutionService {
             if (context == null) {
                 throw new ControlException(502, "CONTEXT_UNAVAILABLE", "Control 未返回 Run 上下文");
             }
+            if (context.lineage() != null) {
+                var lineage = context.lineage();
+                var span = io.opentelemetry.api.trace.Span.current();
+                span.setAttribute("a2a.task.id", lineage.taskId().toString());
+                span.setAttribute("a2a.parent.run.id", lineage.parentRunId().toString());
+                span.setAttribute("a2a.root.run.id", lineage.rootRunId().toString());
+                span.setAttribute("a2a.depth", lineage.depth());
+            }
             List<Msg> messages = messageMapper.toMessages(context);
             if (messages.isEmpty()) {
                 throw new ControlException(422, "CONTEXT_EMPTY", "Run 没有可执行的用户消息");
@@ -341,7 +393,14 @@ public class AgentExecutionService {
             String modelSecret = resolveModelSecret(execution);
             guard.ensureActive();
             ReActAgent agent = agentFactory.build(
-                    execution.release(), guard, execution.publisher(), modelSecret, execution.maxIterations());
+                    execution.release(),
+                    guard,
+                    execution.publisher(),
+                    modelSecret,
+                    execution.maxIterations(),
+                    context.lineage(),
+                    execution.instanceId(),
+                    new LocalNestedDelegateTransport(control, this::executeNested));
             execution.agent(agent);
 
             RuntimeContext runtimeContext = RuntimeContext.builder()
@@ -467,8 +526,12 @@ public class AgentExecutionService {
                 return;
             }
             ToolCallTiming timing = timings.get(callEvent.getToolCallId());
+            String alias = timing == null ? callEvent.getToolCallName() : timing.alias();
+            if (DelegationPolicy.TOOL_NAME.equals(alias)) {
+                return;
+            }
             Map<String, Object> payload = new LinkedHashMap<>();
-            put(payload, "toolAlias", timing == null ? callEvent.getToolCallName() : timing.alias());
+            put(payload, "toolAlias", alias);
             put(payload, "toolCallId", callEvent.getToolCallId());
             payload.put("arguments", evidence.argumentsEvidence());
             execution.publisher().emit("tool.arguments", payload);
@@ -493,7 +556,7 @@ public class AgentExecutionService {
             if (timing != null) {
                 payload.put("durationMs", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - timing.startedNanos()));
             }
-            if (evidence != null && evidence.hasResult()) {
+            if (!DelegationPolicy.TOOL_NAME.equals(alias) && evidence != null && evidence.hasResult()) {
                 payload.put("resultSummary", evidence.resultEvidence());
             }
             boolean success = state == ToolResultState.SUCCESS || state == null;
@@ -555,7 +618,7 @@ public class AgentExecutionService {
             put(payload, "toolCallId", toolCallId);
             put(payload, "errorCode", errorCode);
             payload.put("durationMs", TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - timing.startedNanos()));
-            if (evidence != null && evidence.hasArguments()) {
+            if (!DelegationPolicy.TOOL_NAME.equals(timing.alias()) && evidence != null && evidence.hasArguments()) {
                 payload.put("arguments", evidence.argumentsEvidence());
             }
             try {
@@ -806,8 +869,10 @@ public class AgentExecutionService {
                 .tag("status", outcome.status().name())
                 .register(metrics)
                 .record(durationNanos, TimeUnit.NANOSECONDS);
-        activeRuns.decrementAndGet();
-        admission.leave();
+        if (!execution.localChild()) {
+            activeRuns.decrementAndGet();
+            admission.leave();
+        }
     }
 
     private void submitCompletion(RunCompletionRequest request) {
@@ -923,6 +988,9 @@ public class AgentExecutionService {
     }
 
     private static String claimReasonCode(String reason) {
+        if ("TARGET_RELEASE_UNAVAILABLE".equals(reason)) {
+            return reason;
+        }
         if (reason != null && reason.toUpperCase(java.util.Locale.ROOT).contains("STALE")) {
             return ErrorCodes.STALE_EXECUTION_TOKEN;
         }

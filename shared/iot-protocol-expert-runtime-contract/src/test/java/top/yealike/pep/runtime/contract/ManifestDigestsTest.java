@@ -4,9 +4,70 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class ManifestDigestsTest {
+    @Test
+    void existingV1ReleaseRetainsItsStoredDigest() {
+        assertThat(ManifestDigests.digest(manifest(0.1)))
+                .isEqualTo("99f6a9ef9c97e365c1caea0d69a4f696b0511b53fc65a7264555bd22060aef41");
+    }
+
+    @Test
+    void v2DigestCoversFrozenTargetAndAllowedToolScope() {
+        var target = UUID.randomUUID();
+        var binding = new DelegateBinding(
+                "domain",
+                "specialist",
+                target,
+                "1.0.0",
+                "digest",
+                "匹配协议版本",
+                null,
+                List.of("lookup"),
+                true,
+                2,
+                30_000,
+                0);
+        var changed = new DelegateBinding(
+                "domain",
+                "specialist",
+                target,
+                "1.0.0",
+                "digest",
+                "匹配协议版本",
+                null,
+                List.of("lookup", "details"),
+                true,
+                2,
+                30_000,
+                0);
+
+        assertThat(ManifestDigests.digest(v2(binding))).isNotEqualTo(ManifestDigests.digest(v2(changed)));
+        var delegates = (List<?>) ManifestDigests.canonical(v2(binding)).get("delegates");
+        assertThat(((Map<?, ?>) delegates.getFirst()).get("targetReleaseId")).isEqualTo(target.toString());
+    }
+
+    private static AgentManifest v2(DelegateBinding binding) {
+        var base = manifest(0.1);
+        return new AgentManifest(
+                AgentManifest.V2,
+                base.agentKey(),
+                base.version(),
+                base.displayName(),
+                base.systemPrompt(),
+                base.model(),
+                base.skills(),
+                base.mcp(),
+                base.budget(),
+                base.executionPolicy(),
+                "充电协议专家",
+                List.of("ocpp"),
+                List.of(),
+                List.of(binding),
+                DelegationPolicy.defaults(120_000));
+    }
 
     @Test
     void digestIsStableAcrossEquivalentManifests() {

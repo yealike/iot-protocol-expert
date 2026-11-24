@@ -2,6 +2,75 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="top.yealike.pep.control.agents.mapper.AgentPlatformMapper">
 
+    <resultMap id="TeamSettingsMap" type="top.yealike.pep.control.agents.domain.AgentTeamSettings">
+        <constructor>
+            <arg column="tags_json" javaType="java.lang.String"/>
+            <arg column="capabilities_json" javaType="java.lang.String"/>
+            <arg column="policy_json" javaType="java.lang.String"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="DelegateBindingMap" type="top.yealike.pep.runtime.contract.DelegateBinding">
+        <constructor>
+            <arg column="alias" javaType="java.lang.String"/>
+            <arg column="target_agent_key" javaType="java.lang.String"/>
+            <arg column="target_release_id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
+            <arg column="target_version" javaType="java.lang.String"/>
+            <arg column="target_manifest_digest" javaType="java.lang.String"/>
+            <arg column="description" javaType="java.lang.String"/>
+            <arg column="when_to_use" javaType="java.lang.String"/>
+            <arg column="allowed_tools" javaType="java.util.List" typeHandler="top.yealike.pep.control.mybatis.JsonStringListTypeHandler"/>
+            <arg column="required" javaType="_boolean"/>
+            <arg column="max_calls" javaType="_int"/>
+            <arg column="timeout_ms" javaType="_int"/>
+            <arg column="order_no" javaType="_int"/>
+        </constructor>
+    </resultMap>
+
+    <select id="teamSettings" resultMap="TeamSettingsMap">
+        select capability_tags::text as tags_json, a2a_capabilities::text as capabilities_json,
+               delegation_policy::text as policy_json
+          from ai_agent_component where id = #{agentId}
+    </select>
+
+    <update id="updateTeamSettings">
+        update ai_agent_component
+           set capability_tags = cast(#{settings.tagsJson} as jsonb),
+               a2a_capabilities = cast(#{settings.capabilitiesJson} as jsonb),
+               delegation_policy = cast(#{settings.policyJson,jdbcType=VARCHAR} as jsonb),
+               revision = revision + 1, updated_at = now()
+         where id = #{agentId} and revision = #{revision}
+    </update>
+
+    <select id="delegateBindings" resultMap="DelegateBindingMap">
+        select b.alias, c.component_key as target_agent_key, b.target_release_id, b.target_version,
+               b.target_manifest_digest, b.description, b.when_to_use, b.allowed_tools,
+               b.required, b.max_calls, b.timeout_ms, b.order_no
+          from ai_agent_delegate_binding b
+          join ai_agent_component c on c.id = b.target_agent_id
+         where b.agent_id = #{agentId}
+         order by b.order_no, b.alias
+         limit 8
+    </select>
+
+    <delete id="deleteDelegateBindings">
+        delete from ai_agent_delegate_binding where agent_id = #{agentId}
+    </delete>
+
+    <insert id="insertDelegateBindings">
+        insert into ai_agent_delegate_binding
+            (id, agent_id, alias, target_agent_id, target_release_id, target_version, target_manifest_digest,
+             description, when_to_use, allowed_tools, required, max_calls, timeout_ms, order_no)
+        <foreach collection="bindings" item="binding" separator=" union all ">
+            select gen_random_uuid(), #{agentId}, #{binding.alias}, r.agent_id, r.id,
+                   #{binding.targetVersion}, #{binding.targetManifestDigest}, #{binding.description},
+                   #{binding.whenToUse,jdbcType=VARCHAR},
+                   cast(#{binding.allowedTools,typeHandler=top.yealike.pep.control.mybatis.JsonStringListTypeHandler} as jsonb),
+                   #{binding.required}, #{binding.maxCalls}, #{binding.timeoutMs}, #{binding.order}
+              from ai_agent_release r where r.id = #{binding.targetReleaseId}
+        </foreach>
+    </insert>
+
     <resultMap id="AgentComponentMap" type="top.yealike.pep.control.agents.domain.AgentComponent">
         <constructor>
             <arg column="id" javaType="java.util.UUID" typeHandler="top.yealike.pep.control.mybatis.UuidTypeHandler"/>
@@ -248,6 +317,13 @@
                      from ai_run
                     where agent_release_id is not null
                       and status in ('QUEUED', 'DISPATCHING', 'RUNNING', 'CANCEL_REQUESTED')
+               )
+               or exists (
+                   select 1 from ai_agent_release source
+                   join ai_agent_component owner on owner.id = source.agent_id
+                   where source.state = 'ACTIVE' and owner.enabled = true
+                     and (source.manifest_json -&gt; 'delegates') @&gt;
+                         jsonb_build_array(jsonb_build_object('targetReleaseId', r.id::text))
                )
            )
          order by r.release_cursor

@@ -154,7 +154,11 @@ async function request<T>(
   ) {
     const envelope = responseBody as { code: string; msg?: string; data: T }
     if (envelope.code !== 'OK') {
-      throw new ApiError(response.status, envelope.msg ?? `请求失败 ${envelope.code}`, envelope.code)
+      throw new ApiError(
+        response.status,
+        envelope.msg ?? `请求失败 ${envelope.code}`,
+        envelope.code
+      )
     }
     return envelope.data
   }
@@ -476,6 +480,13 @@ export const api = {
   // ---------------------------------------------------------------- 对话
 
   aiAgentCatalog: () => aiRequest<AiAgentCatalogItem[]>('/agent-catalog'),
+  aiAgentTeam: (id: string) =>
+    aiRequest<import('./types').AiAgentTeam>(`/agents/${encodeURIComponent(id)}/team`),
+  aiSaveAgentTeam: (id: string, team: import('./types').AiAgentTeam, expectedRevision: number) =>
+    aiRequest<import('./types').AiAgentTeam>(
+      `/agents/${encodeURIComponent(id)}/delegates`,
+      aiJson({ ...team, expectedRevision }, 'PUT')
+    ),
 
   aiConversations: (page = 0, size = 30) =>
     aiRequest<PageResult<AiConversation>>(`/conversations?page=${page}&size=${size}`),
@@ -493,12 +504,9 @@ export const api = {
     ),
 
   aiCancelRun: (runId: string) =>
-    aiRequest<AiRunCancelResult>(
-      `/runs/${encodeURIComponent(runId)}/cancel`,
-      {
-        method: 'POST'
-      }
-    ),
+    aiRequest<AiRunCancelResult>(`/runs/${encodeURIComponent(runId)}/cancel`, {
+      method: 'POST'
+    }),
   myQuota: () => request<QuotaSnapshot>('/api/control/v1/me/quota'),
   myUsage: (limit = 100) => request<UsageList>(`/api/control/v1/me/usage?limit=${limit}`),
   quotaSubjects: (scopeKind: QuotaGrantRequest['scopeKind'], query: string) =>

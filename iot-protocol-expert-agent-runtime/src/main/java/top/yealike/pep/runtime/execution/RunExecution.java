@@ -22,6 +22,7 @@ public final class RunExecution {
     private final RunDispatchRequest dispatch;
     private final PreparedRelease release;
     private final String instanceId;
+    private final boolean localChild;
     private final Instant acceptedAt = Instant.now();
     private final AtomicReference<RunGuard> guard = new AtomicReference<>();
     private final AtomicReference<RunEventPublisher> publisher = new AtomicReference<>();
@@ -47,9 +48,20 @@ public final class RunExecution {
     private volatile int maxIterations;
 
     public RunExecution(RunDispatchRequest dispatch, PreparedRelease release, String instanceId) {
+        this(dispatch, release, instanceId, false);
+    }
+
+    /** 本地子 Run 复用执行句柄，但不占用根 Run 的准入槽。 */
+    public RunExecution(RunDispatchRequest dispatch, PreparedRelease release, String instanceId, boolean localChild) {
         this.dispatch = dispatch;
         this.release = release;
         this.instanceId = instanceId;
+        this.localChild = localChild;
+    }
+
+    /** 返回是否通过父 Run 本地启动。 */
+    public boolean localChild() {
+        return localChild;
     }
 
     public RunDispatchRequest dispatch() {

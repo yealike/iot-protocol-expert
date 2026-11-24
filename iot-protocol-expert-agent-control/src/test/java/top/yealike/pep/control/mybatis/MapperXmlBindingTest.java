@@ -22,6 +22,7 @@ import top.yealike.pep.control.access.mapper.AccessMapper;
 import top.yealike.pep.control.access.mapper.QuotaSubjectMapper;
 import top.yealike.pep.control.access.policy.domain.PolicyRule;
 import top.yealike.pep.control.access.policy.mapper.PermissionPolicyMapper;
+import top.yealike.pep.control.agents.domain.AgentTeamSettings;
 import top.yealike.pep.control.agents.mapper.AgentPlatformMapper;
 import top.yealike.pep.control.agents.mapper.CredentialMapper;
 import top.yealike.pep.control.agents.mapper.McpPlatformMapper;
@@ -34,9 +35,14 @@ import top.yealike.pep.control.audit.AiAuditLogMapper;
 import top.yealike.pep.control.conversations.domain.Message;
 import top.yealike.pep.control.conversations.mapper.ConversationMapper;
 import top.yealike.pep.control.knowledge.mapper.KnowledgeMapper;
+import top.yealike.pep.control.runs.delegation.A2aTask;
+import top.yealike.pep.control.runs.delegation.A2aTaskState;
+import top.yealike.pep.control.runs.delegation.A2aTaskTransition;
 import top.yealike.pep.control.runs.domain.Run;
+import top.yealike.pep.control.runs.mapper.A2aTaskMapper;
 import top.yealike.pep.control.runs.mapper.RunMapper;
 import top.yealike.pep.runtime.contract.AgentManifest;
+import top.yealike.pep.runtime.contract.DelegateBinding;
 import top.yealike.pep.runtime.contract.McpToolDescriptor;
 import top.yealike.pep.runtime.contract.McpToolExecutionCategory;
 import top.yealike.pep.runtime.contract.RunUsage;
@@ -48,6 +54,7 @@ class MapperXmlBindingTest {
     private static final Instant NOW = Instant.parse("2026-11-16T00:00:00Z");
     private static final List<Class<?>> MAPPERS = List.of(
             AccessMapper.class,
+            A2aTaskMapper.class,
             AgentPlatformMapper.class,
             AiAuditLogMapper.class,
             ConversationMapper.class,
@@ -86,6 +93,21 @@ class MapperXmlBindingTest {
                     Object[] args = Arrays.stream(method.getParameterTypes())
                             .map(type -> sample(type, nullable))
                             .toArray();
+                    if ("insertDelegateBindings".equals(method.getName())) {
+                        args[1] = List.of(new DelegateBinding(
+                                "worker",
+                                "target",
+                                ID,
+                                "1.0.0",
+                                "0123",
+                                "worker",
+                                null,
+                                List.of("read"),
+                                false,
+                                2,
+                                5000,
+                                0));
+                    }
                     Object params = new ParamNameResolver(configuration, method).getNamedParams(args);
                     BoundSql sql = statement.getBoundSql(params);
                     assertFalse(sql.getSql().isBlank(), statement.getId());
@@ -124,6 +146,35 @@ class MapperXmlBindingTest {
         if (type == long.class) return 1L;
         if (type == byte[].class) return new byte[] {1};
         if (type == List.class) return List.of();
+        if (type == AgentTeamSettings.class) return new AgentTeamSettings("[]", "[]", nullable ? null : "{}");
+        if (type == A2aTask.class)
+            return new A2aTask(
+                    ID,
+                    ID,
+                    ID,
+                    ID,
+                    ID,
+                    "context",
+                    ID,
+                    ID,
+                    ID,
+                    ID,
+                    "worker",
+                    1,
+                    A2aTaskState.SUBMITTED,
+                    "key",
+                    "digest",
+                    Map.of(),
+                    Map.of(),
+                    null,
+                    null,
+                    null,
+                    NOW,
+                    0,
+                    NOW,
+                    null);
+        if (type == A2aTaskTransition.class)
+            return new A2aTaskTransition(ID, 0, A2aTaskState.FAILED, "{}", "{}", nullable ? null : "FAILED", null);
         if (nullable) return null;
         if (type == Boolean.class) return true;
         if (type == Integer.class) return 10;
@@ -163,9 +214,11 @@ class MapperXmlBindingTest {
         var statement = configuration.getMappedStatement(RunMapper.class.getName() + ".insertRun");
         String sql = statement.getBoundSql(Map.of()).getSql().replaceAll("\\s+", " ");
         assertTrue(sql.contains("'QUEUED'"));
-        assertEquals(18, statement.getBoundSql(Map.of()).getParameterMappings().size());
-        assertTrue(sql.contains("created_at, updated_at"));
-        assertTrue(sql.matches(".*\\?\\s*,\\s*\\?\\s*\\)\\s*"));
+        assertEquals(19, statement.getBoundSql(Map.of()).getParameterMappings().size());
+        assertTrue(sql.contains("created_at, updated_at, root_run_id"));
+        assertEquals(
+                "id",
+                statement.getBoundSql(Map.of()).getParameterMappings().getLast().getProperty());
     }
 
     @Test

@@ -10,6 +10,26 @@ import top.yealike.pep.control.agents.domain.AgentSkillBinding;
 
 public interface AgentPlatformMapper {
 
+    /** 读取草稿的能力和委派策略。 */
+    top.yealike.pep.control.agents.domain.AgentTeamSettings teamSettings(@Param("agentId") UUID agentId);
+
+    /** 按草稿修订号保存能力和策略。 */
+    int updateTeamSettings(
+            @Param("agentId") UUID agentId,
+            @Param("revision") long revision,
+            @Param("settings") top.yealike.pep.control.agents.domain.AgentTeamSettings settings);
+
+    /** 按固定顺序读取委派绑定。 */
+    List<top.yealike.pep.runtime.contract.DelegateBinding> delegateBindings(@Param("agentId") UUID agentId);
+
+    /** 清理指定草稿的委派绑定。 */
+    int deleteDelegateBindings(@Param("agentId") UUID agentId);
+
+    /** 批量创建已解析目标 Release 的草稿绑定。 */
+    int insertDelegateBindings(
+            @Param("agentId") UUID agentId,
+            @Param("bindings") List<top.yealike.pep.runtime.contract.DelegateBinding> bindings);
+
     List<AgentComponent> list();
 
     List<AgentComponent> find(@Param("id") UUID id);

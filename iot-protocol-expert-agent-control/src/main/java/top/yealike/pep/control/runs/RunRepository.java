@@ -69,6 +69,33 @@ public class RunRepository {
         return mapper.find(id).stream().findFirst();
     }
 
+    /** 根 Run 无委派归属。 */
+    public top.yealike.pep.runtime.contract.RunLineage lineage(UUID id) {
+        return mapper.lineage(id);
+    }
+
+    /** 合并根 Run 与子 Run 的已落库展示用量。 */
+    public RunUsage withDescendantUsage(UUID runId, RunUsage own) {
+        RunUsage children = mapper.descendantUsage(runId);
+        if (children == null || own == null) {
+            return own;
+        }
+        return new RunUsage(
+                sum(own.inputTokens(), children.inputTokens()),
+                sum(own.outputTokens(), children.outputTokens()),
+                sum(own.totalTokens(), children.totalTokens()),
+                sum(own.modelCalls(), children.modelCalls()),
+                sum(own.toolCalls(), children.toolCalls()),
+                own.durationMs());
+    }
+
+    private static Long sum(Long left, Long right) {
+        if (left == null || right == null) {
+            return left == null ? right : left;
+        }
+        return Math.addExact(left, right);
+    }
+
     public Optional<Run> lock(UUID id) {
         return mapper.lockRun(id).stream().findFirst();
     }

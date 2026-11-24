@@ -92,7 +92,9 @@ public class ModelCallService {
                 model.profile().key(),
                 model.provider().code(),
                 model.profile().upstreamModel(),
-                reserve));
+                reserve,
+                token.lineage(),
+                estimator.reserveUnits(body, maxOutput, 1, 1)));
         if (reservation.replayed()) {
             throw ApiException.conflict(ModelErrorCodes.CALL_CONFLICT, "同一逻辑调用已完成预占，不能重复派发；请使用新的调用 ID 或递增 attempt");
         }

@@ -43,6 +43,11 @@ class MeteringMigrationPostgresTest {
             assertThat(count(connection, "select count(*) from pep_metering.quota_policy_version"))
                     .isEqualTo(1);
             assertThat(count(connection, """
+                    select count(*) from information_schema.columns
+                     where table_schema = 'pep_metering' and table_name = 'model_call'
+                        and column_name in ('root_run_id', 'parent_run_id', 'a2a_task_id')
+                    """)).isEqualTo(3);
+            assertThat(count(connection, """
                     select count(*)
                       from pg_constraint c
                       join pg_namespace n on n.oid = c.connamespace

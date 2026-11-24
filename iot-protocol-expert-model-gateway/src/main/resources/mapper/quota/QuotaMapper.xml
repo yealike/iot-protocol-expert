@@ -261,11 +261,20 @@
     <insert id="insertCall">
         insert into pep_metering.model_call
             (id, logical_call_id, attempt_no, billing_subject_id, scope_kind, actor_id, tenant_id,
-             project_id, task_id, run_id, model_profile_key, provider, model, request_hash, state)
-        values (#{id}, #{logicalCallId}, #{attemptNo}, #{billingSubjectId}, #{scopeKind}, #{actorId}, #{tenantId},
-                #{projectId}, #{taskId}, #{runId}, #{modelProfileKey}, #{provider}, #{model}, #{requestHash},
-                #{state})
+             project_id, task_id, run_id, model_profile_key, provider, model, request_hash, state,
+             root_run_id, parent_run_id, a2a_task_id, estimated_tokens)
+        values (#{call.id}, #{call.logicalCallId}, #{call.attemptNo}, #{call.billingSubjectId}, #{call.scopeKind},
+                #{call.actorId}, #{call.tenantId}, #{call.projectId}, #{call.taskId}, #{call.runId}, #{call.modelProfileKey},
+                #{call.provider}, #{call.model}, #{call.requestHash}, #{call.state},
+                #{rootRunId}, #{parentRunId}, #{a2aTaskId}, #{estimatedTokens})
     </insert>
+
+    <select id="rootTokens" resultType="_long">
+        select coalesce(sum(coalesce(u.input_tokens + u.output_tokens, c.estimated_tokens)), 0)::bigint
+          from pep_metering.model_call c
+          left join pep_metering.model_usage u on u.model_call_id = c.id
+         where c.root_run_id = #{rootRunId} and c.state != 'RELEASED'
+    </select>
 
     <insert id="insertReservation">
         insert into pep_metering.quota_reservation

@@ -1,0 +1,188 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "https://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="top.yealike.pep.control.runs.mapper.A2aTaskMapper">
+    <resultMap id="TaskMap" type="top.yealike.pep.control.runs.delegation.A2aTask">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID"/>
+            <arg column="root_run_id" javaType="java.util.UUID"/>
+            <arg column="parent_run_id" javaType="java.util.UUID"/>
+            <arg column="child_run_id" javaType="java.util.UUID"/>
+            <arg column="child_conversation_id" javaType="java.util.UUID"/>
+            <arg column="context_id" javaType="java.lang.String"/>
+            <arg column="source_agent_id" javaType="java.util.UUID"/>
+            <arg column="source_release_id" javaType="java.util.UUID"/>
+            <arg column="target_agent_id" javaType="java.util.UUID"/>
+            <arg column="target_release_id" javaType="java.util.UUID"/>
+            <arg column="delegate_alias" javaType="java.lang.String"/>
+            <arg column="depth" javaType="_int"/>
+            <arg column="state" javaType="top.yealike.pep.control.runs.delegation.A2aTaskState"/>
+            <arg column="idempotency_key" javaType="java.lang.String"/>
+            <arg column="request_digest" javaType="java.lang.String"/>
+            <arg column="request_json" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="result_json" javaType="java.util.Map" typeHandler="top.yealike.pep.control.mybatis.JsonMapTypeHandler"/>
+            <arg column="usage_json" javaType="top.yealike.pep.runtime.contract.RunUsage" typeHandler="top.yealike.pep.control.mybatis.RunUsageTypeHandler"/>
+            <arg column="error_code" javaType="java.lang.String"/>
+            <arg column="error_message" javaType="java.lang.String"/>
+            <arg column="deadline_at" javaType="java.time.Instant"/>
+            <arg column="version" javaType="_long"/>
+            <arg column="created_at" javaType="java.time.Instant"/>
+            <arg column="completed_at" javaType="java.time.Instant"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="CountsMap" type="top.yealike.pep.control.runs.delegation.A2aTaskCounts">
+        <constructor>
+            <arg column="total" javaType="_int"/>
+            <arg column="matching_alias" javaType="_int"/>
+            <arg column="active" javaType="_int"/>
+        </constructor>
+    </resultMap>
+
+    <resultMap id="DelegationViewMap" type="top.yealike.pep.control.runs.delegation.DelegationView">
+        <constructor>
+            <arg column="id" javaType="java.util.UUID"/>
+            <arg column="parent_run_id" javaType="java.util.UUID"/>
+            <arg column="child_run_id" javaType="java.util.UUID"/>
+            <arg column="child_conversation_id" javaType="java.util.UUID"/>
+            <arg column="delegate_alias" javaType="java.lang.String"/>
+            <arg column="agent_key" javaType="java.lang.String"/>
+            <arg column="agent_name" javaType="java.lang.String"/>
+            <arg column="state" javaType="top.yealike.pep.control.runs.delegation.A2aTaskState"/>
+            <arg column="depth" javaType="_int"/>
+            <arg column="task_summary" javaType="java.lang.String"/>
+            <arg column="result_summary" javaType="java.lang.String"/>
+            <arg column="truncated" javaType="_boolean"/>
+            <arg column="error_code" javaType="java.lang.String"/>
+            <arg column="error_message" javaType="java.lang.String"/>
+            <arg column="usage_json" javaType="top.yealike.pep.runtime.contract.RunUsage" typeHandler="top.yealike.pep.control.mybatis.RunUsageTypeHandler"/>
+            <arg column="started_at" javaType="java.time.Instant"/>
+            <arg column="completed_at" javaType="java.time.Instant"/>
+            <arg column="duration_ms" javaType="java.lang.Long"/>
+        </constructor>
+    </resultMap>
+
+    <sql id="TaskColumns">
+        t.id, t.root_run_id, t.parent_run_id, t.child_run_id, t.child_conversation_id, t.context_id,
+        t.source_agent_id, t.source_release_id, t.target_agent_id, t.target_release_id, t.delegate_alias,
+        t.depth, t.state, t.idempotency_key, t.request_digest, t.request_json, t.result_json, t.usage_json,
+        t.error_code, t.error_message, t.deadline_at, t.version, t.created_at, t.completed_at
+    </sql>
+
+    <insert id="insertTask">
+        insert into ai_a2a_task
+            (id, root_run_id, parent_run_id, child_run_id, child_conversation_id, context_id,
+             source_agent_id, source_release_id, target_agent_id, target_release_id, delegate_alias,
+             depth, state, idempotency_key, request_digest, request_json, deadline_at, created_at, updated_at)
+        values (#{task.id}, #{task.rootRunId}, #{task.parentRunId}, #{task.childRunId}, #{task.childConversationId},
+                #{task.contextId}, #{task.sourceAgentId}, #{task.sourceReleaseId}, #{task.targetAgentId},
+                #{task.targetReleaseId}, #{task.alias}, #{task.depth}, #{task.state}, #{task.idempotencyKey},
+                #{task.requestDigest}, cast(#{requestJson} as jsonb), #{task.deadlineAt}, #{task.createdAt}, #{task.createdAt})
+    </insert>
+
+    <insert id="insertChildConversation">
+        insert into ai_conversation
+            (id, user_id, org_id, title, agent_key, agent_version, agent_release_id, manifest_digest, status,
+             root_conversation_id, parent_conversation_id, conversation_kind)
+        select #{task.childConversationId}, c.user_id, c.org_id, #{title}, #{agentKey}, #{agentVersion},
+               #{task.targetReleaseId}, #{manifestDigest}, 'ACTIVE', coalesce(c.root_conversation_id, c.id),
+               c.id, 'A2A_CHILD'
+          from ai_conversation c where c.id = #{parentConversationId}
+    </insert>
+
+    <insert id="insertChildRun">
+        insert into ai_run
+            (id, conversation_id, user_message_id, actor, actor_roles, actor_auth_version, question, agent_key,
+             agent_version, agent_release_id, manifest_digest, model_key, status, priority, idempotency_key,
+             policy_version, trace_context, parent_run_id, root_run_id, delegation_depth, a2a_task_id,
+             a2a_context_id, dispatch_mode, runtime_instance_id, lease_owner, execution_token, lease_until,
+             deadline_at, started_at)
+        select #{task.childRunId}, #{task.childConversationId}, #{messageId}, r.actor, r.actor_roles,
+               r.actor_auth_version, #{question}, #{agentKey}, #{agentVersion}, #{task.targetReleaseId},
+               #{manifestDigest}, #{modelKey}, 'DISPATCHING', r.priority, #{task.idempotencyKey}, r.policy_version,
+               r.trace_context, r.id, #{task.rootRunId}, #{task.depth}, #{task.id}, #{task.contextId}, 'PARENT_LOCAL',
+               r.runtime_instance_id, r.runtime_instance_id, 1, #{leaseUntil}, #{task.deadlineAt}, now()
+          from ai_run r where r.id = #{task.parentRunId}
+    </insert>
+
+    <select id="find" resultMap="TaskMap">
+        select <include refid="TaskColumns"/> from ai_a2a_task t where t.id = #{id}
+    </select>
+
+    <select id="lock" resultMap="TaskMap">
+        select <include refid="TaskColumns"/> from ai_a2a_task t where t.id = #{id} for update
+    </select>
+
+    <select id="findByKey" resultMap="TaskMap">
+        select <include refid="TaskColumns"/> from ai_a2a_task t
+         where t.parent_run_id = #{parentRunId} and t.idempotency_key = #{key}
+    </select>
+
+    <select id="counts" resultMap="CountsMap">
+        select count(*)::integer as total,
+               count(*) filter (where delegate_alias = #{alias})::integer as matching_alias,
+               count(*) filter (where state in ('SUBMITTED', 'WORKING', 'CANCEL_REQUESTED'))::integer as active
+          from ai_a2a_task where parent_run_id = #{parentRunId}
+    </select>
+
+    <select id="usedTokens" resultType="_long">
+        select coalesce(sum(coalesce((usage_json -&gt;&gt; 'totalTokens')::bigint, 0)), 0)::bigint
+          from ai_run where root_run_id = #{rootRunId} or id = #{rootRunId}
+    </select>
+
+    <select id="activeRoots" resultType="_int">
+        select count(distinct root_run_id)::integer
+          from ai_a2a_task
+         where root_run_id != #{rootRunId} and state in ('SUBMITTED', 'WORKING', 'CANCEL_REQUESTED')
+    </select>
+
+    <update id="transition">
+        update ai_a2a_task
+           set state = #{state}, version = version + 1, updated_at = now(),
+               result_json = cast(#{resultJson} as jsonb), usage_json = cast(#{usageJson} as jsonb),
+               error_code = #{errorCode}, error_message = #{errorMessage},
+               cancel_requested_at = case when #{state} = 'CANCEL_REQUESTED' then now() else cancel_requested_at end,
+               completed_at = case when #{state} in ('COMPLETED', 'FAILED', 'CANCELED', 'REJECTED') then now() end
+         where id = #{id} and version = #{version}
+           and state in ('SUBMITTED', 'WORKING', 'CANCEL_REQUESTED')
+    </update>
+
+    <insert id="insertEvent">
+        insert into ai_a2a_task_event (id, task_id, seq, type)
+        values (gen_random_uuid(), #{taskId}, #{seq}, #{type})
+    </insert>
+
+    <select id="pendingSync" resultType="java.util.UUID">
+        select t.id from ai_a2a_task t join ai_run r on r.id = t.child_run_id
+         where (t.state in ('SUBMITTED', 'WORKING', 'CANCEL_REQUESTED')
+                    and r.status in ('COMPLETED', 'FAILED', 'CANCELLED'))
+            or (t.state in ('SUBMITTED', 'WORKING') and r.status = 'CANCEL_REQUESTED')
+            or (t.state = 'SUBMITTED' and r.status = 'RUNNING')
+         order by t.updated_at, t.id limit #{limit}
+    </select>
+
+    <select id="byConversation" resultMap="DelegationViewMap">
+        select t.id, t.parent_run_id, t.child_run_id, t.child_conversation_id, t.delegate_alias,
+               target.component_key as agent_key, release.manifest_json -&gt;&gt; 'displayName' as agent_name,
+               t.state, t.depth, t.request_json -&gt;&gt; 'task' as task_summary,
+               t.result_json -&gt;&gt; 'summary' as result_summary,
+               coalesce((t.result_json -&gt;&gt; 'truncated')::boolean, false) as truncated,
+               t.error_code, t.error_message, t.usage_json,
+               case when child.last_heartbeat_at is not null then child.started_at end as started_at, t.completed_at,
+               coalesce((t.usage_json -&gt;&gt; 'durationMs')::bigint,
+                        (extract(epoch from t.completed_at - t.created_at) * 1000)::bigint) as duration_ms
+          from ai_a2a_task t
+          join ai_run parent on parent.id = t.parent_run_id
+          join ai_run child on child.id = t.child_run_id
+          join ai_agent_component target on target.id = t.target_agent_id
+          join ai_agent_release release on release.id = t.target_release_id
+         where parent.conversation_id = #{conversationId}
+         order by t.created_at desc, t.id limit #{limit}
+    </select>
+
+    <select id="orphanRuns" resultType="java.util.UUID">
+        select child.id from ai_run child join ai_run parent on parent.id = child.parent_run_id
+         where parent.status in ('COMPLETED', 'FAILED', 'CANCELLED', 'CANCEL_REQUESTED')
+           and child.status in ('DISPATCHING', 'RUNNING')
+         order by child.created_at, child.id limit #{limit}
+    </select>
+</mapper>

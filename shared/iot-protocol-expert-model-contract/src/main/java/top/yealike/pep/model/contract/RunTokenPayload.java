@@ -16,4 +16,27 @@ public record RunTokenPayload(
         String run,
         String modelProfile,
         long exp,
-        String jti) {}
+        String jti,
+        RunTokenLineage lineage) {
+
+    /** 构造兼容既有网关的 v1 凭据。 */
+    public RunTokenPayload(
+            String aud,
+            String sub,
+            String scopeKind,
+            String actor,
+            String tenant,
+            String project,
+            String task,
+            String run,
+            String modelProfile,
+            long exp,
+            String jti) {
+        this(aud, sub, scopeKind, actor, tenant, project, task, run, modelProfile, exp, jti, null);
+    }
+
+    /** 根 Run 归属，v1 用户凭据视作根执行。 */
+    public String rootRun() {
+        return lineage == null ? run : lineage.rootRun();
+    }
+}

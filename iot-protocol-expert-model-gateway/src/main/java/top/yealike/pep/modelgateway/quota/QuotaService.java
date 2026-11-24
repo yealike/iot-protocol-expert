@@ -81,6 +81,17 @@ public class QuotaService {
             return new ReservationHandle(reservation.id(), call.id(), reservation.reservedUnits(), List.of(), true);
         }
 
+        String rootRun =
+                request.lineage() == null ? request.runId() : request.lineage().rootRun();
+        if (rootRun != null && !rootRun.isBlank()) {
+            repository.lockAdvisory("model-root-run:" + rootRun);
+            if (request.lineage() != null
+                    && repository.rootTokens(rootRun)
+                            > request.lineage().maxTotalTokens() - request.estimatedTokens()) {
+                throw new ApiException(429, "DELEGATION_BUDGET_EXHAUSTED", "委派 Token 预算不足以执行本次模型调用");
+            }
+        }
+
         OffsetDateTime now = repository.now();
         List<Account> accounts = repository.lockAccounts(request.scopeKind(), request.subjectId());
         if (accounts.isEmpty()) {
@@ -115,22 +126,25 @@ public class QuotaService {
         }
 
         UUID callId = UUID.randomUUID();
-        repository.insertCall(new Call(
-                callId,
-                request.logicalCallId(),
-                request.attemptNo(),
-                request.subjectId(),
-                request.scopeKind(),
-                request.actorId(),
-                request.tenantId(),
-                request.projectId(),
-                request.taskId(),
-                request.runId(),
-                request.modelProfileKey(),
-                request.provider(),
-                request.model(),
-                request.requestHash(),
-                "HELD"));
+        repository.insertCall(
+                new Call(
+                        callId,
+                        request.logicalCallId(),
+                        request.attemptNo(),
+                        request.subjectId(),
+                        request.scopeKind(),
+                        request.actorId(),
+                        request.tenantId(),
+                        request.projectId(),
+                        request.taskId(),
+                        request.runId(),
+                        request.modelProfileKey(),
+                        request.provider(),
+                        request.model(),
+                        request.requestHash(),
+                        "HELD"),
+                request.lineage(),
+                request.estimatedTokens());
 
         UUID reservationId = UUID.randomUUID();
         OffsetDateTime deadline = now.plusSeconds(properties.dispatchDeadlineSeconds());

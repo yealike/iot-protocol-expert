@@ -72,8 +72,18 @@ class MyBatisMapperXmlTest {
                 "HELD");
         BoundSql insertCall = configuration
                 .getMappedStatement(QuotaMapper.class.getName() + ".insertCall")
-                .getBoundSql(call);
-        assertThat(insertCall.getParameterMappings()).hasSize(15);
+                .getBoundSql(Map.of(
+                        "call",
+                        call,
+                        "rootRunId",
+                        "root",
+                        "parentRunId",
+                        "parent",
+                        "a2aTaskId",
+                        "task",
+                        "estimatedTokens",
+                        200));
+        assertThat(insertCall.getParameterMappings()).hasSize(19);
     }
 
     private static Configuration configuration() throws Exception {

@@ -8,4 +8,9 @@
         insert into ai_audit_log (actor, action, target_type, target_id, result) values (#{actor}, #{action},
             'DOCUMENT', #{target}, #{result})
     </insert>
+    <insert id="auditDelegation">
+        insert into ai_audit_log (actor, action, target_type, target_id, result, detail)
+        values (#{actor}, #{action}, #{targetType}, #{target}, #{result},
+                jsonb_build_object('reason', cast(#{reason,jdbcType=VARCHAR} as text)))
+    </insert>
 </mapper>

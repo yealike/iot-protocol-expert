@@ -31,7 +31,64 @@ public final class ManifestDigests {
         value.put("mcp", mcps(manifest.mcp()));
         value.put("budget", budget(manifest.budget()));
         value.put("executionPolicy", policy(manifest.executionPolicy()));
+        if (AgentManifest.V2.equals(manifest.schemaVersion())) {
+            value.put("description", manifest.description());
+            value.put("capabilityTags", manifest.capabilityTags());
+            value.put(
+                    "a2aCapabilities",
+                    manifest.a2aCapabilities().stream()
+                            .map(ManifestDigests::capability)
+                            .toList());
+            value.put(
+                    "delegates",
+                    manifest.delegates().stream().map(ManifestDigests::delegate).toList());
+            value.put("delegationPolicy", delegationPolicy(manifest.delegationPolicy()));
+        }
         return value;
+    }
+
+    private static Map<String, Object> capability(A2aCapability capability) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("id", capability.id());
+        value.put("name", capability.name());
+        value.put("description", capability.description());
+        value.put("tags", capability.tags());
+        value.put("examples", capability.examples());
+        value.put("inputModes", capability.inputModes());
+        value.put("outputModes", capability.outputModes());
+        return value;
+    }
+
+    private static Map<String, Object> delegate(DelegateBinding delegate) {
+        Map<String, Object> value = new LinkedHashMap<>();
+        value.put("alias", delegate.alias());
+        value.put("targetAgentKey", delegate.targetAgentKey());
+        value.put(
+                "targetReleaseId",
+                delegate.targetReleaseId() == null
+                        ? null
+                        : delegate.targetReleaseId().toString());
+        value.put("targetVersion", delegate.targetVersion());
+        value.put("targetManifestDigest", delegate.targetManifestDigest());
+        value.put("description", delegate.description());
+        value.put("whenToUse", delegate.whenToUse());
+        value.put("allowedTools", delegate.allowedTools());
+        value.put("required", delegate.required());
+        value.put("maxCalls", delegate.maxCalls());
+        value.put("timeoutMs", delegate.timeoutMs());
+        value.put("order", delegate.order());
+        return value;
+    }
+
+    private static Map<String, Object> delegationPolicy(DelegationPolicy policy) {
+        return policy == null
+                ? Map.of()
+                : Map.of(
+                        "maxDepth", policy.maxDepth(),
+                        "maxCallsPerRun", policy.maxCallsPerRun(),
+                        "maxParallel", policy.maxParallel(),
+                        "maxTotalTokens", policy.maxTotalTokens(),
+                        "maxWallClockMs", policy.maxWallClockMs());
     }
 
     private static Map<String, Object> model(AgentManifest.ModelSpec model) {

@@ -70,6 +70,9 @@ public class RunService {
             throw AiExceptions.badRequest("问题过长，请控制在 " + MAX_QUESTION_LENGTH + " 字以内");
         }
         Conversation conversation = requireConversation(identity, conversationId);
+        if (conversations.isChild(conversationId)) {
+            throw AiExceptions.conflict("CHILD_CONVERSATION_READ_ONLY", "子任务会话只读");
+        }
         Decision decision = policy.canUseAgent(identity, conversation.agentKey());
         if (!decision.allowed()) {
             throw AiExceptions.forbidden("AGENT_DENIED", decision.reason());

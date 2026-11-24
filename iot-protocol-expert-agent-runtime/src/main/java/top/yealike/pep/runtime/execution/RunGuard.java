@@ -18,6 +18,7 @@ public final class RunGuard {
     private final AtomicInteger toolCalls = new AtomicInteger();
     private final Semaphore toolSlots = new Semaphore(2);
     private final AtomicBoolean cancelled = new AtomicBoolean();
+    private final AtomicBoolean delegateActive = new AtomicBoolean();
     private volatile String cancelReason;
     private volatile String cancelCode;
 
@@ -96,6 +97,16 @@ public final class RunGuard {
 
     public void releaseToolSlot() {
         toolSlots.release();
+    }
+
+    /** 委派单独串行，不占用 MCP 工具并发槽。 */
+    public boolean tryEnterDelegation() {
+        return delegateActive.compareAndSet(false, true);
+    }
+
+    /** 释放本地委派槽。 */
+    public void leaveDelegation() {
+        delegateActive.set(false);
     }
 
     public void ensureActive() {

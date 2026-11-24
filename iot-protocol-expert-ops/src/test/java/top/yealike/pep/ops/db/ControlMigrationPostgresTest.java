@@ -55,6 +55,14 @@ class ControlMigrationPostgresTest {
                     .isNotNegative();
             assertThat(count(connection, "select count(*) from pep_agent.investigation_task"))
                     .isNotNegative();
+            assertThat(count(connection, "select count(*) from pep_agent.ai_a2a_task"))
+                    .isNotNegative();
+            assertThat(count(connection, "select count(*) from pep_agent.ai_a2a_task_event"))
+                    .isNotNegative();
+            assertThat(count(connection, "select count(*) from pep_agent.ai_agent_delegate_binding"))
+                    .isNotNegative();
+            assertThat(count(connection, "select count(*) from pep_agent.ai_run where parent_run_id is not null"))
+                    .isNotNegative();
             assertThat(count(connection, """
                     select count(*) from pep_platform.role_permission
                      where permission_code in ('investigation:create', 'investigation:read', 'investigation:operate')

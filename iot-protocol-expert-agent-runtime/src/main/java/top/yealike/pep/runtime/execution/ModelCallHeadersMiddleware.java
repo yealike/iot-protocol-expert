@@ -10,14 +10,21 @@ import java.util.UUID;
 import java.util.function.Function;
 import reactor.core.publisher.Flux;
 import top.yealike.pep.model.contract.ModelCallHeaders;
+import top.yealike.pep.runtime.contract.RunLineage;
 
 /** 为每次 Agent 模型调用附加稳定幂等头，同一模型的内部重试复用同一逻辑调用 ID。 */
 final class ModelCallHeadersMiddleware implements MiddlewareBase {
 
     private final UUID runId;
+    private final RunLineage lineage;
 
     ModelCallHeadersMiddleware(UUID runId) {
+        this(runId, null);
+    }
+
+    ModelCallHeadersMiddleware(UUID runId, RunLineage lineage) {
         this.runId = runId;
+        this.lineage = lineage;
     }
 
     @Override
@@ -30,13 +37,21 @@ final class ModelCallHeadersMiddleware implements MiddlewareBase {
     }
 
     ModelCallInput withHeaders(ModelCallInput input) {
-        GenerateOptions headers = GenerateOptions.builder()
+        var headers = GenerateOptions.builder()
                 .additionalHeader(
                         ModelCallHeaders.LOGICAL_CALL_ID, UUID.randomUUID().toString())
                 .additionalHeader(ModelCallHeaders.ATTEMPT_NO, "1")
                 .additionalHeader(ModelCallHeaders.RUN_ID, runId.toString())
-                .build();
-        GenerateOptions options = GenerateOptions.mergeOptions(headers, input.options());
+                .additionalHeader(
+                        ModelCallHeaders.ROOT_RUN_ID, (lineage == null ? runId : lineage.rootRunId()).toString());
+        if (lineage != null) {
+            headers.additionalHeader(
+                            ModelCallHeaders.PARENT_RUN_ID,
+                            lineage.parentRunId().toString())
+                    .additionalHeader(
+                            ModelCallHeaders.A2A_TASK_ID, lineage.taskId().toString());
+        }
+        GenerateOptions options = GenerateOptions.mergeOptions(headers.build(), input.options());
         return new ModelCallInput(input.messages(), input.tools(), options, input.model());
     }
 }

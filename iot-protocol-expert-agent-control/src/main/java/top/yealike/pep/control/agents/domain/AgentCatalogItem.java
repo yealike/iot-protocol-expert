@@ -13,4 +13,6 @@ public record AgentCatalogItem(
         int skillCount,
         List<String> skills,
         boolean healthy,
-        boolean healthVerified) {}
+        boolean healthVerified,
+        List<String> capabilityTags,
+        List<AgentCatalogDelegate> delegates) {}

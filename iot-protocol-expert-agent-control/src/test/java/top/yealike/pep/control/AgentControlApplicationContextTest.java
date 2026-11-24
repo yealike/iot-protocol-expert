@@ -17,6 +17,7 @@ import org.springframework.context.ApplicationContext;
             "spring.datasource.hikari.connection-init-sql=",
             "spring.flyway.enabled=false",
             "ipe.ai.bootstrap.enabled=false",
+            "ipe.ai.delegation.reconcile-delay-ms=300000",
             "ipe.ai.platform.bootstrap.enabled=false",
             "ipe.ai.platform.registry.enabled=false",
             "spring.cloud.nacos.discovery.enabled=false",

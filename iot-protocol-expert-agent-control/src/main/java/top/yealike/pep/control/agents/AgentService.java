@@ -11,6 +11,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import top.yealike.pep.control.access.policy.PolicyService;
 import top.yealike.pep.control.agents.domain.AgentBudget;
+import top.yealike.pep.control.agents.domain.AgentCapabilityCard;
+import top.yealike.pep.control.agents.domain.AgentCardSnapshot;
+import top.yealike.pep.control.agents.domain.AgentCatalogDelegate;
 import top.yealike.pep.control.agents.domain.AgentCatalogItem;
 import top.yealike.pep.control.agents.domain.AgentComponent;
 import top.yealike.pep.control.agents.domain.AgentComponentView;
@@ -30,6 +33,7 @@ import top.yealike.pep.control.agents.store.PublicationStore;
 import top.yealike.pep.control.agents.store.SkillStore;
 import top.yealike.pep.control.support.AiExceptions;
 import top.yealike.pep.control.support.JsonSupport;
+import top.yealike.pep.runtime.contract.DelegateBinding;
 import top.yealike.pep.runtime.contract.ErrorCodes;
 import top.yealike.pep.runtime.contract.ModelOptions;
 import top.yealike.pep.runtime.contract.UserIdentity;
@@ -292,7 +296,11 @@ public class AgentService {
                             release.agentKey(),
                             release.version(),
                             manifest.displayName(),
-                            "",
+                            manifest.description() == null
+                                    ? agents.find(release.agentId())
+                                            .map(AgentComponent::description)
+                                            .orElse("")
+                                    : manifest.description(),
                             "ACTIVE",
                             toolCount,
                             manifest.skills().size(),
@@ -300,9 +308,36 @@ public class AgentService {
                                     .map(top.yealike.pep.runtime.contract.AgentManifest.SkillBinding::key)
                                     .toList(),
                             true,
-                            false));
+                            false,
+                            manifest.capabilityTags(),
+                            manifest.delegates().stream()
+                                    .filter(binding -> policy.canUseAgent(identity, binding.targetAgentKey())
+                                            .allowed())
+                                    .map(binding -> new AgentCatalogDelegate(
+                                            binding.alias(), binding.targetAgentKey(), binding.description()))
+                                    .toList()));
         }
         return new ArrayList<>(result.values());
+    }
+
+    /** 生成当前用户可见的已发布能力卡片。 */
+    public AgentCardSnapshot card(UserIdentity identity, UUID agentId) {
+        var component = require(agentId);
+        policy.reload();
+        if (!policy.canUseAgent(identity, component.key()).allowed()) {
+            throw AiExceptions.notFound("能力卡片不存在");
+        }
+        AgentRelease release = requirePublishedRelease(component.key(), null);
+        var manifest = release.manifest();
+        String description = manifest.description() == null ? manifest.displayName() : manifest.description();
+        return new AgentCardSnapshot(
+                new AgentCapabilityCard(
+                        release.agentKey(),
+                        description,
+                        release.version(),
+                        manifest.capabilityTags(),
+                        manifest.a2aCapabilities()),
+                release.manifestDigest());
     }
 
     public AgentRelease requirePublishedRelease(String agentKey, String version) {
@@ -328,6 +363,16 @@ public class AgentService {
 
     public List<AgentRelease> releases(UUID agentId) {
         return agents.releases(agentId);
+    }
+
+    /** 判断父 Run 的必需委派依赖是否仍可用。 */
+    public boolean delegateTargetActive(DelegateBinding binding) {
+        return agents.findRelease(binding.targetReleaseId())
+                .filter(target -> "ACTIVE".equals(target.state())
+                        && binding.targetManifestDigest().equals(target.manifestDigest()))
+                .flatMap(target -> agents.find(target.agentId()))
+                .map(AgentComponent::enabled)
+                .orElse(false);
     }
 
     private void validateBindingReferences(List<McpBindingInput> mcpBindings, List<SkillBindingInput> skillBindings) {

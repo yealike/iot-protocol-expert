@@ -3,6 +3,7 @@ package top.yealike.pep.control.runs;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 import top.yealike.pep.control.conversations.ConversationService;
+import top.yealike.pep.control.runs.delegation.DelegationViewService;
 import top.yealike.pep.control.runs.domain.ConversationView;
 import top.yealike.pep.control.runs.domain.MessageView;
 import top.yealike.pep.control.runs.domain.Run;
@@ -15,10 +16,13 @@ public class ConversationRunViewService {
 
     private final ConversationService conversations;
     private final RunRepository runs;
+    private final DelegationViewService delegations;
 
-    public ConversationRunViewService(ConversationService conversations, RunRepository runs) {
+    public ConversationRunViewService(
+            ConversationService conversations, RunRepository runs, DelegationViewService delegations) {
         this.conversations = conversations;
         this.runs = runs;
+        this.delegations = delegations;
     }
 
     public ConversationView detail(UserIdentity identity, UUID conversationId) {
@@ -33,6 +37,7 @@ public class ConversationRunViewService {
                 detail.conversation(),
                 detail.messages().stream().map(MessageView::from).toList(),
                 currentRun == null ? null : RunView.from(currentRun, runs.listToolCalls(currentRun.id())),
-                latestRun == null ? null : RunView.from(latestRun, runs.listToolCalls(latestRun.id())));
+                latestRun == null ? null : RunView.from(latestRun, runs.listToolCalls(latestRun.id())),
+                delegations.list(identity, conversationId));
     }
 }
